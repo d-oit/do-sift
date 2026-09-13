@@ -1,0 +1,18 @@
+{
+  "name": "search-fixture",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "search",
+  "description": "Offline fixture-backed search provider (SRC-02). Zero capabilities: no network, no secrets — retrieval is deterministic keyword scoring over a config-supplied corpus. Activation is terms-gated: config must name the sources.md entry that clears this source.",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "termsAcceptedAt": "",
+    "sourcesEntry": "",
+    "fixtures": []
+  },
+  "entry": "createFixtureSearch"
+}

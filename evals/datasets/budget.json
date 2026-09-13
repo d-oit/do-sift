@@ -1,0 +1,38 @@
+[
+  {
+    "name": "estimate within ceiling reserves",
+    "maxInput": 4000,
+    "maxOutput": 700,
+    "estimate": 3900,
+    "now": 1000,
+    "expectThrow": false
+  },
+  {
+    "name": "estimate above ceiling throws",
+    "maxInput": 4000,
+    "maxOutput": 700,
+    "estimate": 4001,
+    "now": 1000,
+    "expectThrow": true
+  },
+  {
+    "name": "usage under reservation does not overrun",
+    "maxInput": 4000,
+    "maxOutput": 700,
+    "estimate": 3900,
+    "now": 1000,
+    "expectThrow": false,
+    "actual": { "inputTokens": 3800, "outputTokens": 600 },
+    "expectOverrun": false
+  },
+  {
+    "name": "usage above reservation overruns and is reported",
+    "maxInput": 4000,
+    "maxOutput": 700,
+    "estimate": 3900,
+    "now": 1000,
+    "expectThrow": false,
+    "actual": { "inputTokens": 4200, "outputTokens": 100 },
+    "expectOverrun": true
+  }
+]

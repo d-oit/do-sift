@@ -1,0 +1,17 @@
+{
+  "name": "model-router",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "model",
+  "description": "Config-driven model router (ANS-01). Selects among injected providers, refuses paid providers without a dated sources.md entry, enforces a per-call cost ceiling from request token ceilings and verified pricing, and delegates exactly one bounded synthesis call (ADR 0006). Zero capabilities: providers inject their own.",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "defaultProvider": "",
+    "maxCostMicroUsd": 0
+  },
+  "entry": "createModelRouter"
+}

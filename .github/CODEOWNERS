@@ -1,0 +1,11 @@
+# CODEOWNERS — do-sift
+
+# Security- and policy-critical paths require owner review. In a
+# single-maintainer repo this documents responsibility, not independent
+# review (see plans/risks.md R-08).
+*                       @doswa
+
+# Release and CI infrastructure
+/.github/workflows/     @doswa
+/scripts/policy.ts      @doswa
+/plans/invariants.json  @doswa

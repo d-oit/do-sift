@@ -1,0 +1,122 @@
+[
+  {
+    "name": "whitespace/case variants share a key",
+    "a": {
+      "ownerId": "o1",
+      "question": "Does X support Windows?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "b": {
+      "ownerId": "o1",
+      "question": "does   X support windows? ",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "expectSameKey": true
+  },
+  {
+    "name": "negation changes the key",
+    "a": {
+      "ownerId": "o1",
+      "question": "Does X support Windows?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "b": {
+      "ownerId": "o1",
+      "question": "Does X NOT support Windows?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "expectSameKey": false
+  },
+  {
+    "name": "different owners never share",
+    "a": {
+      "ownerId": "o1",
+      "question": "What is X?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "b": {
+      "ownerId": "o2",
+      "question": "What is X?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "expectSameKey": false
+  },
+  {
+    "name": "quantity difference changes the key",
+    "a": {
+      "ownerId": "o1",
+      "question": "How much does X cost: 50 USD?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "b": {
+      "ownerId": "o1",
+      "question": "How much does X cost: 500 USD?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "expectSameKey": false
+  },
+  {
+    "name": "different source versions change the key",
+    "a": {
+      "ownerId": "o1",
+      "question": "What is X?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-aaaa"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "b": {
+      "ownerId": "o1",
+      "question": "What is X?",
+      "mode": "answer",
+      "language": "en",
+      "sourceVersions": ["srcv-bbbb"],
+      "policyRevision": "p1",
+      "promptRevision": "pr1",
+      "modelRevision": "m1"
+    },
+    "expectSameKey": false
+  }
+]

@@ -1,0 +1,40 @@
+{
+  "$comment": "Machine-checked invariants. policy.ts validates structure; the enforcing check must exist and pass. Add no invariant without an enforcing check.",
+  "invariants": [
+    {
+      "id": "INV-001",
+      "statement": "No authored Python files, manifests, or invocations in maintained code and tooling",
+      "enforcedBy": "scripts/policy.ts (check noPython)"
+    },
+    {
+      "id": "INV-002",
+      "statement": "Every skill in .agents/skills has valid frontmatter, name matching directory, and referenced commands exist in package.json or the repo",
+      "enforcedBy": "scripts/skills-check.ts"
+    },
+    {
+      "id": "INV-003",
+      "statement": "Plugins declaring paid or computer capabilities cannot activate without an explicit recorded grant",
+      "enforcedBy": "packages/kernel/test/kernel.test.ts (guard tests)"
+    },
+    {
+      "id": "INV-004",
+      "statement": "Browser/computer harness code contains no stealth, anti-detection, or CAPTCHA-bypass patterns",
+      "enforcedBy": "scripts/policy.ts (check noStealthPatterns)"
+    },
+    {
+      "id": "INV-005",
+      "statement": "No secrets (tokens, private keys) are committed",
+      "enforcedBy": "scripts/policy.ts (check noSecretLikeFiles) + secret scanning"
+    },
+    {
+      "id": "INV-006",
+      "statement": "Offline eval datasets are non-empty and deterministic; a check may not pass with zero registered checks",
+      "enforcedBy": "scripts/eval.ts + scripts/check.ts"
+    },
+    {
+      "id": "INV-007",
+      "statement": "Site-access default-deny list includes bot-prohibiting sites (linkedin.com)",
+      "enforcedBy": "scripts/policy.ts (check defaultDenyList)"
+    }
+  ]
+}

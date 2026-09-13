@@ -1,0 +1,58 @@
+[
+  {
+    "name": "all citations resolve",
+    "answer": {
+      "ownerId": "owner-1",
+      "question": "What changed in version 2.0?",
+      "evidenceOnly": false,
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "Version 2.0 changed X.",
+          "citations": ["doc-a-p1", "doc-b-p3"]
+        }
+      ]
+    },
+    "evidenceIds": ["doc-a-p1", "doc-b-p3", "doc-c-p1"],
+    "expectValid": true
+  },
+  {
+    "name": "hallucinated citation id",
+    "answer": {
+      "ownerId": "owner-1",
+      "question": "What changed in version 2.0?",
+      "evidenceOnly": false,
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "Version 2.0 changed X.",
+          "citations": ["doc-a-p1", "made-up-id"]
+        }
+      ]
+    },
+    "evidenceIds": ["doc-a-p1"],
+    "expectValid": false
+  },
+  {
+    "name": "cross-owner evidence id is unknown",
+    "answer": {
+      "ownerId": "owner-2",
+      "question": "What changed?",
+      "evidenceOnly": false,
+      "blocks": [{ "kind": "paragraph", "text": "Claim.", "citations": ["owner1-doc-p1"] }]
+    },
+    "evidenceIds": [],
+    "expectValid": false
+  },
+  {
+    "name": "evidence-only answer with no citations is valid",
+    "answer": {
+      "ownerId": "owner-1",
+      "question": "What changed in version 2.0?",
+      "evidenceOnly": true,
+      "blocks": []
+    },
+    "evidenceIds": [],
+    "expectValid": true
+  }
+]

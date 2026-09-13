@@ -1,0 +1,13 @@
+{
+  "name": "@do-sift/plugin-search-fixture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@do-sift/contracts": "*",
+    "@do-sift/kernel": "*"
+  }
+}

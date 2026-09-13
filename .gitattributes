@@ -1,0 +1,3 @@
+# Line-ending policy: keep shell hook shebangs working under sh on all platforms.
+.githooks/* text eol=lf
+*.sh text eol=lf

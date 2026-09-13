@@ -1,0 +1,17 @@
+{
+  "name": "harness-research",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "harness",
+  "description": "Zero-LLM research pipeline: search hits, policy check, page fetch, passage extraction, and evidence storage with per-source provenance before any merge. Fetch and search I/O are host-injected services, never raw sockets.",
+  "capabilities": ["network"],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "maxHits": 6,
+    "maxFetches": 3
+  },
+  "entry": "createResearchHarness"
+}

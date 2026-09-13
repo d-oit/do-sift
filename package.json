@@ -1,0 +1,40 @@
+{
+  "name": "do-sift",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Research with receipts: a plugin-based, token-frugal web research engine.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "packages/plugins/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "check:fast": "tsx scripts/check.ts --fast",
+    "check": "tsx scripts/check.ts",
+    "policy": "tsx scripts/policy.ts",
+    "skills:check": "tsx scripts/skills-check.ts",
+    "eval:offline": "tsx scripts/eval.ts",
+    "release:check": "tsx scripts/release-check.ts",
+    "signals": "tsx packages/dev-harness/src/cli.ts",
+    "hooks:install": "tsx packages/dev-harness/src/cli.ts hook install",
+    "test": "vitest run",
+    "build": "tsc -b tsconfig.build.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  }
+}

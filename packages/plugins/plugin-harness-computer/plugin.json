@@ -1,0 +1,18 @@
+{
+  "name": "harness-computer",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "harness",
+  "description": "Local desktop automation harness (CMP-01, ADR 0005): action-class consent with interactive per-class approval, remembered decisions, and disabled-by-default activation. Local-only, no remote control surface, no stealth. Requires the kernel's computer grant (INV-003) even when enabled.",
+  "capabilities": ["computer"],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "enabled": false,
+    "actionDelayMs": 500,
+    "typeDelayMs": 60
+  },
+  "entry": "createComputerHarness"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@do-sift/plugin-harness-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@do-sift/contracts": "*",
+    "@do-sift/kernel": "*",
+    "@do-sift/plugin-policy-siteaccess": "*"
+  }
+}

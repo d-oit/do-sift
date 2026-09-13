@@ -1,0 +1,18 @@
+{
+  "name": "extract-readability",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "extractor",
+  "description": "Deterministic text-to-passages extraction for evidence storage. Pure function of its input: no scripts, no subresource fetching, no network, no fs. Rejects boilerplate/nav lines, drops short fragments and duplicates, truncates at sentence boundaries (marked partial).",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "minLength": 40,
+    "maxExcerptLength": 8192,
+    "maxPassages": 20
+  },
+  "entry": "createReadabilityExtractor"
+}

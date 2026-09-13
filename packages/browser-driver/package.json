@@ -1,0 +1,13 @@
+{
+  "name": "@do-sift/browser-driver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@do-sift/plugin-harness-browser": "*",
+    "playwright": "^1.50.0"
+  }
+}

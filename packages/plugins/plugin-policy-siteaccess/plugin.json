@@ -1,0 +1,19 @@
+{
+  "name": "policy-siteaccess",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "policy",
+  "description": "Site-access policy (CORE-08, ADR 0005): layered host decisions over the shipped default-deny list — per-site robots/ToS registry, configurable allow/deny lists, and a strict requireRegistry mode that denies unregistered hosts. Zero capabilities: decisions are pure config lookups.",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "denylist": [],
+    "allowlist": [],
+    "sitePolicies": [],
+    "requireRegistry": false
+  },
+  "entry": "createSiteAccessPolicy"
+}

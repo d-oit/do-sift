@@ -1,0 +1,17 @@
+{
+  "name": "storage",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "storage",
+  "description": "First-party libSQL storage plugin: local file by default, Turso remote only when the DB host is allowlisted and the auth token resolves through the kernel secret service. Runs numbered migrations on activation.",
+  "capabilities": ["fs", "network"],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "url": "file:do-sift.db",
+    "migrationsDir": "migrations"
+  },
+  "entry": "createStoragePlugin"
+}

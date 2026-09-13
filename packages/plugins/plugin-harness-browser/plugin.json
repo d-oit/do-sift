@@ -1,0 +1,19 @@
+{
+  "name": "harness-browser",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "harness",
+  "description": "Human-paced browser action layer (BRW-01, ADR 0005): executes bounded navigate/scroll/type/click action plans against an injected driver with fixed, configured pacing for gentleness — deliberately never randomized or fingerprint-shaped, since pacing here is politeness, not evasion. Every navigation passes the site-access policy; every action lands in a replayable run log.",
+  "capabilities": ["browser"],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "actionDelayMs": 750,
+    "typeDelayMs": 60,
+    "scrollStepPx": 600,
+    "scrollPauseMs": 400
+  },
+  "entry": "createBrowserHarness"
+}

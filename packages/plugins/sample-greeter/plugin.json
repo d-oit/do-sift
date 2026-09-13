@@ -1,0 +1,16 @@
+{
+  "name": "sample-greeter",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "ui",
+  "description": "Minimal first-party sample plugin: logs a greeting on activation. Proves the manifest → grant → activate → deactivate round-trip.",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "greeting": "hello from do-sift"
+  },
+  "entry": "createGreeter"
+}

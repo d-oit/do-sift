@@ -1,0 +1,50 @@
+name: release
+
+# Manual, exact-SHA release candidate flow (Plan 007 / prepare-release skill).
+# Publishing is a separate approval-gated step; this workflow NEVER publishes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Reviewed commit SHA on main to release"
+        required: true
+      version:
+        description: "Version to release (must match CHANGELOG, e.g. 0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate candidate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: verify sha is on main
+        run: git merge-base --is-ancestor "${{ inputs.sha }}" origin/main
+      - name: verify version consistency
+        run: npm run release:check
+      - run: npm run check
+      - name: record candidate
+        run: |
+          echo "candidate: v${{ inputs.version }} @ ${{ inputs.sha }}" | tee candidate.txt
+          git rev-parse HEAD >> candidate.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-candidate-${{ inputs.version }}
+          path: candidate.txt
+          retention-days: 90
+
+  # publish job intentionally absent: publication (tag, GHCR, npm) requires an
+  # environment with reviewers where available, or the documented maintainer
+  # publication ritual in docs/release.md. Do not add an unpinned publish job.
