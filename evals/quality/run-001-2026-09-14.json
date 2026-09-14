@@ -1,0 +1,268 @@
+{
+  "runId": "run-001",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-14",
+  "annotator": "agent operator, single-annotator authorial labels (RET-01 caveat applies)",
+  "pipeline": {
+    "search": "wikipedia (live, SRC-06)",
+    "model": "fixture — ANSWER-TEXT QUALITY IS NOT MEASURED (docs/quality-gate.md limits)",
+    "embedder": "keyword-only",
+    "budget": "none configured"
+  },
+  "scale": { "0": "fail", "0.5": "partial", "1": "pass" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "passages": 20 },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "passages": 20
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 40,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: on-topic for SQLite but the dedicated FTS5 page was never surfaced; the answer never defines FTS5 itself",
+        "extraction: infobox fragments ('Filename extension .sqlite, .sqlite3…') and reference markers [ 30 ] [ 31 ] in prose"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/World_Wide_Web", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Mike_Berners-Lee", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 60,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: Mike Berners-Lee (Tim's brother) retrieved on the ambiguous surname — wrong person, correctly attributed once stored",
+        "extraction: title/nav cruft ('History of the World Wide Web - Wikipedia', 'Main article: …') as passages; the key fact passage was present and correct (Tim Berners-Lee, CERN, 1989)"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Aurora_(singer)", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 60,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: ambiguous-term failure — the pop singer dominated 2 of 3 sources; the science article was still retrieved and its mechanism passage ('disturbances in the Earth's magnetosphere…solar wind') appeared",
+        "extraction: BUG — a stored passage leaked raw wikitext/template JSON ('An aurora ( plural</span>\"}]],\"parts\":[{\"template\":…'); markup and JSON reached the evidence store and the answer text"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/North_Rhine-Westphalia", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 60,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: the modern German STATE (North Rhine-Westphalia) retrieved on the shared token; the Peace of Westphalia page was first and correct",
+        "extraction: infobox bullet junk ('• Body Landtag of North Rhine-Westphalia') stored as a passage"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/MRNA_vaccine", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/J._Bart_Classen", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 60,
+        "fetchErrors": 1,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: for a health question the pipeline surfaced two critic BLPs alongside the mechanism article — recorded as a posture observation for future abuse/misinfo work; the BLPs describe the claims critically (Wikipedia NPOV), no misinformation was stored as fact",
+        "extraction: BUG — second template-JSON leak ('[[Columbia University]]'},\"occupation\":{\"wt\":\"[[Immunologist]]…')",
+        "run: one fetch error occurred and the run completed honestly (fetchErrors:1 reported)"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Tallest_mountain", "passages": 14 },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "passages": 20 },
+        {
+          "url": "https://en.wikipedia.org/wiki/Summits_farthest_from_the_Earth's_center",
+          "passages": 20
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 54,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: all three sources on-topic (highest vs tallest distinction covered)",
+        "extraction: reference-list junk ('1 2 3 4 5 Saunders, Toby (1 July 2023)…') stored; the direct answer passage (Everest, 8,850 m) present"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "passages": 20
+        },
+        { "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Firo_(cryptocurrency)", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 60,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: related ZKP pages cover zk-SNARKs substantively (no dedicated article retrieved)",
+        "extraction: comparison-table fragments ('vnTinyRAM [ 23 ] 2014 zk-SNARK No Yes No') stored as prose"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall", "passages": 20 },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "passages": 20
+        },
+        { "url": "https://en.wikipedia.org/wiki/Berlin_Wall", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 60,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: Roger Waters concert page retrieved on the shared title; both factual pages correct",
+        "extraction: BUG — third template-JSON leak ('\"},\"location\":{\"wt\":\"[[East Berlin]]…')",
+        "the direct answer passage ('The Berlin Wall fell on 9 November 1989…') was present and cited"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.5625,
+    "extractionCleanliness": 0.3125,
+    "citationResolution": 1.0,
+    "degradationHonesty": 1.0,
+    "injectionObservation": 1.0,
+    "meanAll": 0.775
+  },
+  "findings": [
+    "F1 (bug, highest priority): wikitext/template JSON leaks into stored passages on 3 of 8 real pages (cases 03, 05, 08) — htmlToText + block-heuristic extraction do not handle MediaWiki template metadata embedded in REST HTML. Fix direction: prefer the MediaWiki plain-text extract endpoint (action=query&prop=extracts&explaintext) for page content instead of stripping HTML; tracked as the suggested follow-up task (SRC-07).",
+    "F2 (noise): reference markers ('[ 30 ]') and infobox fragments routinely survive as passages — the extraction-cleanliness mean is 0.31 over real-world pages vs a synthetic corpus designed clean.",
+    "F3 (retrieval): ambiguous terms surface entity-doppelgangers (singer/state/concert/BLP) in 5 of 8 cases; relevance mean 0.56. BM25-only retrieval; the RET-02 hybrid path may help and should be re-measured on real data after F1 lands.",
+    "F4 (posture observation): a health question surfaced critic biographies alongside the mechanism article; Wikipedia NPOV kept the stored text factual — recorded for future abuse/misinfo QUAL work.",
+    "F5 (clean): no instruction-shaped (prompt-injection) content observed in any captured passage; R-12 stays open for the live-model future.",
+    "F6 (limits): citation-resolution and degradation-honesty are 1.0 under the FIXTURE model, which composes blocks from stored evidence — these numbers measure the harness, not a model (docs/quality-gate.md limits)."
+  ],
+  "limits": "Single-annotator authorial labels over one operator's run; not model quality; no quality claim may cite this artifact without docs/quality-gate.md's limits (R-06)."
+}

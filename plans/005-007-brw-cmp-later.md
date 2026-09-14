@@ -45,6 +45,91 @@ Exit: replay test passes; bypass test fails closed.
 | OPS-04 | Release candidate 0.1.0 via prepare-release skill (validate only; never publish)                            | done   |
 | OPS-05 | Packaged server entrypoint under `apps/` (env-configured composition; turns the image into a service image) | done   |
 
+### QUAL task table
+
+| ID      | Task                                                                                                                                                               | Status |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| QUAL-01 | Manual quality gate v1: repeatable protocol + first recorded run over the live research path (evidence quality, NOT model quality — only the fixture model exists) | done   |
+
+### QUAL-01 decomposition (2026-09-14, htn-planner workflow per plan 009)
+
+Preconditions met: the live research path works end-to-end (SRC-06 smoke),
+R-06 names the manual eval gate as the only source of quality statements,
+and the fixture-model limit is known. Ordered subtasks:
+
+1. Protocol (`docs/quality-gate.md`): scorecard dimensions, 0/½/1 scale,
+   procedure, and the honesty limits — authorial single-annotator labels
+   (same caveat as RET-01); answer-text quality is OUT OF SCOPE until a
+   live model exists (the fixture model echoes evidence and measures the
+   harness, not a model).
+2. Execute run-001: 8 diverse questions against the running service (live
+   Wikipedia research + fixture-model answer), capture the raw SSE/JSON
+   per case into gitignored scratch.
+3. Score each case against the scorecard (citation resolution, retrieval
+   relevance, extraction cleanliness, degradation honesty, injection
+   observations) and record `evals/quality/run-001-2026-09-14.json` with
+   per-case notes and aggregate means.
+4. Record evidence here; findings that outlive the run go to
+   `plans/risks.md`; verify; commit.
+
+Acceptance: the protocol is repeatable from the doc alone; run-001 is
+recorded with per-case scores; nothing is claimed beyond the recorded
+authorial scores.
+
+### QUAL-01 evidence (2026-09-14, agent)
+
+**Files:** `docs/quality-gate.md` (new: the v1 protocol — 5-dimension
+scorecard at 0/½/1, procedure, honesty limits: single-annotator
+authorial labels, NOT model quality until a live LLM exists, no quality
+claims without the limits), `evals/quality/run-001-2026-09-14.json`
+(new: 8 diverse questions executed live against the running service —
+Wikipedia research + fixture-model answers — with per-case source cards,
+run summaries, per-dimension scores + notes, aggregates, and findings).
+
+**Aggregates (authorial, single-annotator):** retrievalRelevance 0.5625,
+extractionCleanliness 0.3125, citationResolution 1.0,
+degradationHonesty 1.0, injectionObservation 1.0. The perfect scores
+measure the harness under the fixture model (citations resolve because
+ANS-03 enforces it; the fixture echoes evidence) — they are NOT model
+quality.
+
+**Findings (from the run artifact):**
+
+- **F1 (bug):** wikitext/template JSON leaked into stored passages on 3
+  of 8 real pages — the htmlToText + block-heuristic extraction does not
+  handle MediaWiki template metadata embedded in REST HTML. Fix
+  direction: fetch the MediaWiki plain-text extract endpoint instead of
+  stripping HTML. **Suggested follow-up: SRC-07.**
+- **F2:** reference markers and infobox fragments routinely survive as
+  passages — real-world extraction cleanliness (0.31) is materially below
+  the synthetic corpus.
+- **F3:** ambiguous terms retrieve entity-doppelgangers (pop singer,
+  modern German state, rock concert, wrong-surname BLP) in 5 of 8 cases
+  (relevance 0.56) — bm25-only; re-measure hybrid retrieval on real data
+  once F1 lands.
+- **F4:** a health question surfaced critic BLPs alongside the mechanism
+  article; stored text stayed factual (Wikipedia NPOV) — posture
+  observation for future abuse/misinfo QUAL work.
+- **F5:** no prompt-injection-shaped content observed in any captured
+  passage; R-12 stays open for the live-model future.
+
+**Commands:** service run per `docs/deployment.md` (live search, fixture
+model, `:memory:` DB), 8× (POST /api/research + POST /api/answer) with 3s
+spacing; raw captures in gitignored `.do-harness/qual-run-001/`; run
+artifact committed. `npm run check:fast` + `npm run signals -- verify
+--set verification` → green (receipt:
+`.do-harness/evidence.verification.json`).
+
+**Risks / open questions:** scores describe the pipeline on 2026-09-14
+with one provider and one annotator — re-run rather than extrapolate.
+The evals sensor reads `evals/datasets/` only; the quality directory is
+record-only and feeds no regression gate.
+
+**Next suggested task:** SRC-07 — fix the template-JSON leak by moving
+live page content to the MediaWiki plain-text extract endpoint
+(free/keyless, same terms entry), then re-run the QUAL protocol
+(run-002) to measure the improvement against run-001.
+
 ### OPS-05 decomposition (2026-09-14, htn-planner workflow per plan 009)
 
 Preconditions met: the composition seam exists (`createRuntime`, RET-04),
