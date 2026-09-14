@@ -335,6 +335,16 @@ export class Repositories {
       });
       return res.rows.map(documentFromRow);
     },
+    /** ANS-08: document ids linked to the given research request ids. */
+    idsByRequestIds: async (ownerId: string, requestIds: string[]): Promise<string[]> => {
+      if (requestIds.length === 0) return [];
+      const placeholders = requestIds.map(() => "?").join(", ");
+      const res = await this.client.execute({
+        sql: `SELECT id FROM documents WHERE owner_id = ? AND request_id IN (${placeholders})`,
+        args: [ownerId, ...requestIds],
+      });
+      return res.rows.map((row) => String(row.id));
+    },
     /** ANS-07: research-run linkage per document id (owner-scoped). */
     linkByDocumentId: async (
       ownerId: string,

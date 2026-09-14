@@ -148,7 +148,9 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
   const maxOutputTokens = options.maxOutputTokens ?? DEFAULTS.maxOutputTokens;
   const maxPassages = options.maxPassages ?? DEFAULTS.maxPassages;
   const revisions = {
-    policyRevision: options.revisions?.policyRevision ?? "p0",
+    // p1: ANS-08 — retrieval became question-scoped (linkage filter);
+    // revision bump invalidates answers cached under unscoped retrieval.
+    policyRevision: options.revisions?.policyRevision ?? "p1",
     // pr1: packing semantics changed in ANS-02 (output budget reserved from
     // the input ceiling) — revision bump invalidates pre-ANS-02 cache rows.
     promptRevision: options.revisions?.promptRevision ?? "pr1",
@@ -194,16 +196,35 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
     async answer(task: AnswerTask, signal?: AbortSignal): Promise<AnswerOutcome> {
       if (signal?.aborted) throw new AnswerCancelledError();
 
+      // ANS-08: scope candidates to this question's completed runs when
+      // any exist; otherwise fall back to the whole owner corpus.
+      const ownRunIds = (await deps.repositories.requests.completedSearches(task.ownerId))
+        .filter((r) => normalizeQuestion(r.question) === normalizeQuestion(task.question))
+        .map((r) => r.id);
+      let scopedDocIds: string[] | undefined;
+      if (ownRunIds.length > 0) {
+        const scoped = await deps.repositories.documents.idsByRequestIds(task.ownerId, ownRunIds);
+        if (scoped.length > 0) scopedDocIds = scoped;
+      }
+
       const retrieved =
         deps.embedder === undefined
-          ? await searchPassages(deps.client, task.ownerId, task.question, maxPassages)
+          ? await searchPassages(
+              deps.client,
+              task.ownerId,
+              task.question,
+              maxPassages,
+              scopedDocIds,
+            )
           : await hybridSearch(
               deps.client,
               task.ownerId,
               task.question,
               maxPassages,
               deps.embedder,
+              scopedDocIds,
             );
+
       const sourceVersions = [...new Set(retrieved.map((p) => p.contentHash))].sort();
       const cacheKey = cacheKeyFor(task.ownerId, task.question, sourceVersions);
       const basis =

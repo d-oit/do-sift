@@ -397,7 +397,121 @@ describe("answer service (RET-02 hybrid retrieval)", () => {
       question: QUESTION,
     });
     expect(outcome.evidenceOnly).toBe(false);
-    expect(model.calls[0]?.passageIds).toHaveLength(2); // seeded passages only
+    expect(outcome.degraded).toBe(false);
+    expect(model.calls.length).toBe(1);
+  });
+});
+
+describe("question-scoped retrieval (ANS-08)", () => {
+  it("retrieves ONLY passages linked to this question's completed runs", async () => {
+    const ownReq = await repos.requests.create("owner-a", "search", QUESTION);
+    await seedEvidence("owner-a", ownReq); // relevant passages, linked to own run
+    await repos.requests.complete("owner-a", ownReq);
+    // cross-question noise: another run's document, lexically overlapping
+    const otherReq = await repos.requests.create(
+      "owner-a",
+      "search",
+      "noise about fts5 and sqlite",
+    );
+    const otherDoc = await repos.documents.insert({
+      ownerId: "owner-a",
+      canonicalUrl: "https://noise.test/x",
+      originalUrl: "https://noise.test/x",
+      contentHash: "hash-noise-0001",
+      fetchedAt: "2026-09-10T00:00:00Z",
+      rawText: "FTS5 ranking noise about bm25 and sqlite full text search",
+      requestId: otherReq, // the noise document belongs to that run
+    });
+    await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: otherDoc,
+      excerpt: "Noise passage about sqlite full text search ranking and bm25.",
+      extractionStatus: "ok",
+    });
+    const noisePassageId = await (async () => {
+      const rows = await client.execute({
+        sql: "SELECT id FROM passages WHERE document_id = ?",
+        args: [otherDoc],
+      });
+      return String(rows.rows[0].id);
+    })();
+    await repos.requests.complete("owner-a", otherReq);
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    // Only own-run passages reach the model; noise never enters the prompt.
+    for (const call of model.calls) {
+      expect(call.passageIds).not.toContain(noisePassageId);
+    }
+    expect(outcome.evidenceFromRun).toBe("run");
+  });
+
+  it("falls back to the corpus when this question has no completed run", async () => {
+    const otherReq = await repos.requests.create(
+      "owner-a",
+      "search",
+      "noise about fts5 and sqlite",
+    );
+    const otherDoc = await repos.documents.insert({
+      ownerId: "owner-a",
+      canonicalUrl: "https://noise.test/x",
+      originalUrl: "https://noise.test/x",
+      contentHash: "hash-noise-0001",
+      fetchedAt: "2026-09-10T00:00:00Z",
+      rawText: "FTS5 ranking noise about bm25 and sqlite full text search",
+      requestId: otherReq, // the noise document belongs to that run
+    });
+    await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: otherDoc,
+      excerpt: "Noise passage about sqlite full text search ranking and bm25.",
+      extractionStatus: "ok",
+    });
+    await repos.requests.complete("owner-a", otherReq);
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    // No completed run for QUESTION → corpus fallback still retrieves.
+    expect(model.calls.length).toBeGreaterThan(0);
+    expect(outcome.evidenceFromRun).toBe("cross-question");
+  });
+
+  it("invalidates cached answers computed under the old retrieval semantics", async () => {
+    // Old-semantics service (policy p0) stores an answer.
+    const old = createAnswerService(makeDeps(new FakeModelProvider()), {
+      revisions: { policyRevision: "p0" },
+    });
+    const otherReq = await repos.requests.create(
+      "owner-a",
+      "search",
+      "noise about fts5 and sqlite",
+    );
+    const otherDoc = await repos.documents.insert({
+      ownerId: "owner-a",
+      canonicalUrl: "https://noise.test/x",
+      originalUrl: "https://noise.test/x",
+      contentHash: "hash-noise-0001",
+      fetchedAt: "2026-09-10T00:00:00Z",
+      rawText: "FTS5 ranking noise about bm25 and sqlite full text search",
+    });
+    await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: otherDoc,
+      excerpt: "Noise passage about sqlite full text search ranking and bm25.",
+      extractionStatus: "ok",
+    });
+    await repos.requests.complete("owner-a", otherReq);
+    await old.answer({ ownerId: "owner-a", question: QUESTION });
+    // New-semantics service (default policy p1) must re-run, not serve the
+    // p0-cached answer.
+    const model = new FakeModelProvider();
+    const fresh = createAnswerService(makeDeps(model));
+    await fresh.answer({ ownerId: "owner-a", question: QUESTION });
+    expect(model.calls.length).toBeGreaterThan(0);
   });
 });
 

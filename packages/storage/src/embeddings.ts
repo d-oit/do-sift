@@ -130,15 +130,23 @@ export async function searchByEmbedding(
   modelId: string,
   queryVector: number[],
   limit = 10,
+  documentIds?: string[],
 ): Promise<VectorHit[]> {
   if (queryVector.length === 0) return [];
+  const docFilter =
+    documentIds && documentIds.length > 0
+      ? ` AND p.document_id IN (${documentIds.map(() => "?").join(", ")})`
+      : "";
   const res = await client.execute({
     sql: `SELECT pe.passage_id, p.document_id, d.content_hash, p.excerpt, pe.vector
           FROM passage_embeddings pe
           JOIN passages p ON p.id = pe.passage_id AND p.owner_id = ?
           JOIN documents d ON d.id = p.document_id
-          WHERE pe.owner_id = ? AND pe.model_id = ?`,
-    args: [ownerId, ownerId, modelId],
+          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}`,
+    args:
+      documentIds && documentIds.length > 0
+        ? [ownerId, ownerId, modelId, ...documentIds]
+        : [ownerId, ownerId, modelId],
   });
   return res.rows
     .map((row: Row) => vectorHitFromRow(row, queryVector))
@@ -196,9 +204,17 @@ export async function hybridSearch(
   question: string,
   limit = 10,
   embedder: TextEmbedder,
+  documentIds?: string[],
 ): Promise<PassageHit[]> {
-  const bm25 = await searchPassages(client, ownerId, question, limit);
+  const bm25 = await searchPassages(client, ownerId, question, limit, documentIds);
   const queryVector = await embedder.embedQuery(question);
-  const vector = await searchByEmbedding(client, ownerId, embedder.modelId, queryVector, limit);
+  const vector = await searchByEmbedding(
+    client,
+    ownerId,
+    embedder.modelId,
+    queryVector,
+    limit,
+    documentIds,
+  );
   return rrfFuse(bm25, vector, limit);
 }

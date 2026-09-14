@@ -81,26 +81,35 @@ function hitFromRow(row: Row): PassageHit {
  * Rank the owner's passages for a question. Returns [] for tokenless
  * queries. The join against passages drops rows whose passage row has
  * disappeared; owner scoping is enforced both on the FTS mirror and the
- * joined row.
+ * joined row. `documentIds` (ANS-08) optionally restricts the candidate
+ * set to those documents (question-scoped retrieval).
  */
 export async function searchPassages(
   client: Client,
   ownerId: string,
   queryText: string,
   limit = 10,
+  documentIds?: string[],
 ): Promise<PassageHit[]> {
   const match = buildMatchQuery(queryText);
   if (match === null) return [];
+  const docFilter =
+    documentIds && documentIds.length > 0
+      ? ` AND p.document_id IN (${documentIds.map(() => "?").join(", ")})`
+      : "";
   const res = await client.execute({
     sql: `SELECT f.passage_id, p.document_id, d.content_hash, f.excerpt, bm25(passages_fts) AS score
           FROM passages_fts f
           JOIN passages p ON p.id = f.passage_id AND p.owner_id = ?
           JOIN documents d ON d.id = p.document_id
           WHERE passages_fts MATCH ?
-            AND f.owner_id = ?
+            AND f.owner_id = ?${docFilter}
           ORDER BY score
           LIMIT ?`,
-    args: [ownerId, match, ownerId, limit],
+    args:
+      documentIds && documentIds.length > 0
+        ? [ownerId, match, ownerId, ...documentIds, limit]
+        : [ownerId, match, ownerId, limit],
   });
   return res.rows.map(hitFromRow);
 }
