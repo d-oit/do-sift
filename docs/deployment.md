@@ -109,8 +109,14 @@ against the site-access policy — `DO_SIFT_FETCH_ALLOWLIST` is an
 exhaustive allowlist when set, and the shipped default-deny list stays
 absolute. Content is **CC BY-SA**: the evidence store preserves
 attribution (source URL + title per passage); publishing derived content
-would require the same license. Fetched HTML is converted to text by the
-host before the block-heuristic extractor; no live test runs in CI — the
+would require the same license. Page content comes from the MediaWiki
+plain-text extract endpoint (clean article prose — no HTML-stripping
+pipeline, so template metadata cannot leak into stored passages); every
+live request (search and content) carries the adapter's descriptive
+User-Agent per the Wikimedia UA policy (checked 2026-09-14), and the
+search adapter's single 429 retry never fires before the instructed
+`Retry-After`. No
+live test runs in CI — the
 live shape was verified by the recorded SRC-06 spike, and offline tests
 use recorded fixtures.
 

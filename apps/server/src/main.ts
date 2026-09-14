@@ -18,7 +18,11 @@ import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
 import type { PageContent } from "@do-sift/plugin-harness-research";
 import { createSiteAccessPolicy } from "@do-sift/plugin-policy-siteaccess";
-import { createWikipediaSearch } from "@do-sift/plugin-search-wikipedia";
+import {
+  createWikipediaSearch,
+  USER_AGENT,
+  wikipediaExtractUrl,
+} from "@do-sift/plugin-search-wikipedia";
 import { safeFetch, type DnsResolver, type FetchLike } from "@do-sift/safe-fetch";
 import {
   createResearchServer,
@@ -82,32 +86,6 @@ const WIKIPEDIA_TERMS = {
   termsAcceptedAt: "2026-09-14",
   sourcesEntry: "Wikipedia (MediaWiki action API, en.wikipedia.org) — checked 2026-09-14",
 };
-
-/**
- * Minimal HTML→text for the live fetch path (SRC-06). The readability
- * extractor (SRC-03) is a block heuristic, not a DOM parser, so the host
- * preprocesses: drop script/style/comments, turn block boundaries into
- * paragraph breaks, strip remaining tags, decode the common entities.
- * The result is data — the UI renders it via createTextNode only; this is
- * preprocessing, not a sanitizer.
- */
-export function htmlToText(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, " ")
-    .replace(/<\/(p|div|h[1-6]|li|tr|blockquote|section|article)>/gi, "\n\n")
-    .replace(/<br\s*\/?>/gi, "\n\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&amp;/gi, "&")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
 
 export interface ComposeDeps {
   /** Test seam: overrides config.dbUrl (e.g. ":memory:" for hermetic tests). */
@@ -198,15 +176,34 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
 
     const dns: DnsResolver = deps.dns ?? realDns;
     fetchPage = async (fetchUrl) => {
-      const result = await safeFetch(fetchUrl, {
+      // SRC-07: content comes from the plain-text extract endpoint — no
+      // HTML stripping pipeline exists, so template metadata cannot leak
+      // into passages (QUAL run-001 finding F1). Same guards, same host.
+      const extractApiUrl = wikipediaExtractUrl(fetchUrl);
+      if (extractApiUrl === undefined) {
+        throw new Error(`unsupported content url in wikipedia mode: ${fetchUrl}`);
+      }
+      const result = await safeFetch(extractApiUrl, {
         maxBytes: 2_000_000,
         timeoutMs: 10_000,
         maxRedirects: 3,
+        // The 2026 Wikimedia UA policy: descriptive UA on all requests;
+        // Node's generic default is block-eligible and lands in the
+        // 10 req/min unidentified rate class instead of 200 req/min.
+        headers: { "user-agent": USER_AGENT, accept: "application/json" },
         dns,
         fetchImpl,
         checkHost: (host) => siteAccess.assertAllowed(host),
       });
-      return { text: htmlToText(result.text), contentType: result.contentType };
+      const body = JSON.parse(result.text) as {
+        query?: { pages?: Record<string, { extract?: unknown }> };
+      };
+      const page = Object.values(body.query?.pages ?? {})[0];
+      const extract = page?.extract;
+      if (typeof extract !== "string" || extract === "") {
+        throw new Error(`no plain-text extract returned for ${fetchUrl}`);
+      }
+      return { text: extract, contentType: "text/plain" };
     };
   }
 

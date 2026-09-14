@@ -5,9 +5,11 @@
  * activation refuses without a dated `termsAcceptedAt` and the
  * `plans/sources.md` entry that clears this source (checked 2026-09-14).
  *
- * Politeness (per plans/sources.md): descriptive User-Agent, one bounded
- * retry on 429 honoring `Retry-After` (capped by config.retryCapMs), typed
- * errors for every failure — never a hang, never an automatic fallback.
+ * Politeness (per plans/sources.md, tightened by the 2026-09-14 policy
+ * research in SRC-07): descriptive User-Agent, one bounded 429 retry that
+ * NEVER fires before the instructed `Retry-After` — over-cap instructions
+ * and caps too small for the 5s etiquette floor mean no retry at all —
+ * typed errors for every failure, never a hang, never a fallback.
  * Provider objects never cross the zod boundary: hits are mapped and
  * validated against the SearchHit contract here; snippet HTML is stripped
  * at this boundary. MediaWiki timestamps are last-edit, not publish, so
@@ -67,7 +69,14 @@ export interface WikipediaSearchInstance extends PluginInstance {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/u;
 const HOST = "en.wikipedia.org";
-const USER_AGENT = "do-sift/0.1 (research-with-receipts engine; contact via repo)";
+/**
+ * Descriptive UA per the Wikimedia User-Agent policy (checked
+ * 2026-09-14): `<client>/<version> (<contact>)`. The contact slot names
+ * the repo — no public URL or email is recorded for this project yet
+ * (plans/risks.md); generic defaults are 403-eligible and land in the
+ * 10 req/min unidentified rate class.
+ */
+export const USER_AGENT = "do-sift/0.1 (research-with-receipts engine; contact via repo)";
 
 /** Provider snippets carry HTML markup; strip it at the contract boundary. */
 function stripHtml(html: string): string {
@@ -81,6 +90,60 @@ function stripHtml(html: string): string {
 
 function wikiUrl(title: string): string {
   return `https://${HOST}/wiki/${encodeURIComponent(title.replaceAll(" ", "_").slice(0, 512))}`;
+}
+
+/**
+ * Map a wiki page URL to its MediaWiki plain-text extract API URL
+ * (SRC-07): `prop=extracts&explaintext=1` returns article prose instead
+ * of HTML, so no stripping pipeline is needed and template metadata
+ * cannot leak into stored passages. undefined for anything that is not
+ * an en.wikipedia.org wiki page.
+ */
+export function wikipediaExtractUrl(wikiUrl: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(wikiUrl);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== "https:" || parsed.hostname !== HOST) return undefined;
+  const match = /^\/wiki\/(.+)$/u.exec(parsed.pathname);
+  if (match === null || match[1] === undefined || match[1] === "") return undefined;
+  let title: string;
+  try {
+    title = decodeURIComponent(match[1]);
+  } catch {
+    return undefined;
+  }
+  return `https://${HOST}/w/api.php?action=query&prop=extracts&explaintext=1&format=json&redirects=1&titles=${encodeURIComponent(title)}`;
+}
+
+/**
+ * Compute the wait before a single 429 retry from `Retry-After`
+ * (RFC 9110 §10.2.3: delay-seconds or HTTP-date). The 2026 Wikimedia
+ * rate-limit policy says respect the header — so the delay is honored
+ * exactly when it fits `capMs`, and an instruction that exceeds the cap
+ * (or a cap too small for the 5s etiquette floor when no header is
+ * usable) returns null: no retry beats an early or hot one.
+ */
+export function retry429DelayMs(
+  retryAfter: string | null,
+  capMs: number,
+  nowMs: number = Date.now(),
+): number | null {
+  if (retryAfter !== null && retryAfter.trim() !== "") {
+    const seconds = Number(retryAfter);
+    if (Number.isInteger(seconds) && seconds >= 0) {
+      const delayMs = seconds * 1000;
+      return delayMs <= capMs ? delayMs : null;
+    }
+    const at = Date.parse(retryAfter);
+    if (Number.isFinite(at)) {
+      const delayMs = Math.max(0, at - nowMs);
+      return delayMs <= capMs ? delayMs : null;
+    }
+  }
+  return capMs >= 5000 ? 5000 : null;
 }
 
 interface MwSearchItem {
@@ -163,12 +226,13 @@ export function createWikipediaSearch(deps: WikipediaSearchDeps = {}): Wikipedia
         );
       }
       if (res.status === 429) {
-        // The path that fetched without the retry wrapper — same bounded rule.
-        const retryAfter = Number(res.headers.get("retry-after") ?? "0");
-        const delayMs = Math.max(
-          0,
-          Math.min(Number.isFinite(retryAfter) ? retryAfter * 1000 : 0, retryCapMs),
-        );
+        const delayMs = retry429DelayMs(res.headers.get("retry-after"), retryCapMs);
+        if (delayMs === null) {
+          throw new SearchProviderError(
+            "rate-limited",
+            "wikipedia search is rate-limited (429; instructed Retry-After exceeds the bounded retry cap — no early retry)",
+          );
+        }
         if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
         res = await fetchImpl(url, {
           headers: { "user-agent": USER_AGENT, accept: "application/json" },

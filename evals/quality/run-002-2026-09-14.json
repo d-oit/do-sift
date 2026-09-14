@@ -1,0 +1,314 @@
+{
+  "runId": "run-002",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-14",
+  "annotator": "agent operator, single-annotator authorial labels (RET-01 caveat applies)",
+  "pipeline": {
+    "search": "wikipedia (live, SRC-07 plain-text extracts)",
+    "model": "fixture — ANSWER-TEXT QUALITY IS NOT MEASURED (docs/quality-gate.md limits)",
+    "embedder": "keyword-only",
+    "budget": "none configured"
+  },
+  "scale": { "0": "fail", "0.5": "partial", "1": "pass" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "passages": 14 },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "passages": 20
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 34,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: both sources on-topic for SQLite and the FTS5 mechanism passage is now present and cited ('full-text search through its FTS5 loadable extension, which allows users to efficiently search for a keyword…') — run-001's gap (FTS5 never defined in the answer) is closed",
+        "extraction: MediaWiki section headings ('== Features ==') and comparison-table caption stubs ('Information about what partitioning methods are supported natively.') stored as passages; no template JSON, no reference markers"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/World_Wide_Web", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Mike_Berners-Lee", "passages": 6 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 46,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: Mike Berners-Lee (Tim's brother) still retrieved on the ambiguous surname — provider-side ambiguity unchanged from run-001; the key fact passage (Tim Berners-Lee, CERN, 1989) present and cited",
+        "extraction: this case's answer blocks are clean prose with one section-heading remnant ('== Early life and education =='); the Mike B-L doc also stores a bibliography-list passage ('== Selected publications == … ISBN …') that surfaced in case-05's answer via cross-question retrieval — no template JSON"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F", "passages": 12 },
+        { "url": "https://en.wikipedia.org/wiki/Aurora_(singer)", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 52,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: ambiguous-term failure persists — the pop singer + album still 2 of 3 sources; the science article's mechanism passages ('disturbances in the Earth's magnetosphere caused by enhanced speeds of solar wind…') present and cited",
+        "extraction: F1 FIX CONFIRMED on this page — the exact passage that leaked raw template JSON in run-001 ('An aurora ( plural</span>\"}],\"parts\":[{\"template\":…') now stores as clean prose; remaining noise is MediaWiki section headings ('== Causes ==', '==== STEVE ====') and an album-singles nav passage; no template JSON"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia", "passages": 18 },
+        { "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees", "passages": 10 },
+        { "url": "https://en.wikipedia.org/wiki/North_Rhine-Westphalia", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: the modern German STATE (North Rhine-Westphalia) still retrieved on the shared token — unchanged from run-001; Peace of Westphalia first and correct (two-treaties 1648 summary + Westphalian-sovereignty debate)",
+        "extraction: cleanest case this run — every answer block is clean prose; run-001's infobox-bullet junk ('• Body Landtag of North Rhine-Westphalia') is gone; the NRW doc now yields a substantive region-history passage"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough", "passages": 8 },
+        { "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/MRNA_vaccine", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: for a health question a critic BLP (McCullough) is still the first source; the third slot changed vs run-001 (J. Bart Classen → COVID-19 vaccine page — live provider variance); mRNA mechanism passages present, correct and cited (spike-protein expression, lipid-nanoparticle delivery); Wikipedia NPOV held, no misinformation stored as fact — posture observation for future abuse/misinfo work",
+        "extraction: F1 FIX CONFIRMED — run-001's second leak ('[[Columbia University]]'},\"occupation\":{\"wt\":\"[[Immunologist]]…') occurred on a BLP page; the McCullough doc stores 8 passages and none leak; observed noise: section headings ('=== Side effects ===') and cross-question answer noise (a Berners-Lee publications block BM25-matched on 'How')",
+        "run: fetchErrors 0 this run (run-001 reported 1)"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Tallest_mountain", "passages": 2 },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "passages": 18 },
+        {
+          "url": "https://en.wikipedia.org/wiki/Summits_farthest_from_the_Earth's_center",
+          "passages": 3
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 23,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: all three sources on-topic (highest vs tallest vs farthest-from-center fully covered) — same as run-001",
+        "extraction: list-section passages stored ('== See also ==', '== Further reading =='); run-001's reference-list junk ('1 2 3 4 5 Saunders, Toby…') not observed this run; key answer passages (Everest 8,848 m; Mauna Kea base-to-peak; Chimborazo) present and clean"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "passages": 5
+        },
+        { "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Firo_(cryptocurrency)", "passages": 13 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 38,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: ZKP-family pages cover zk-SNARKs substantively (definition 'zero-knowledge succinct non-interactive argument of knowledge', Chiesa 2012, zk-STARK contrast) — same shape as run-001, no dedicated zk-SNARK article",
+        "extraction: single '== Analysis ==' heading remnant in the Firo passage; run-001's table-row fragments ('vnTinyRAM [ 23 ] 2014 zk-SNARK…') not observed this run; the answer also pulled cross-question RDBMS stubs matched on 'what' ('== Partitioning ==') — retrieval noise, not markup"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall", "passages": 20 },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "passages": 9
+        },
+        { "url": "https://en.wikipedia.org/wiki/Berlin_Wall", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: Roger Waters concert page still retrieved on the shared title — unchanged from run-001; both factual pages correct and the direct answer passage ('The Berlin Wall fell on 9 November 1989…') is the first answer block and cited",
+        "extraction: F1 FIX CONFIRMED — run-001's third leak ('\"},\"location\":{\"wt\":\"[[East Berlin]]…') occurred on the infobox-rich Berlin Wall page; now clean prose; remaining noise: section headings ('==== 20th anniversary celebrations ====', '=== Official demolition ===')"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.6875,
+    "extractionCleanliness": 0.5625,
+    "citationResolution": 1.0,
+    "degradationHonesty": 1.0,
+    "injectionObservation": 1.0,
+    "meanAll": 0.85
+  },
+  "comparison": {
+    "baseline": "evals/quality/run-001-2026-09-14.json (same 8 questions, same order, each asked exactly once)",
+    "postureDelta": "port 18111→18112 only; search content path SRC-06 (REST HTML + htmlToText + block heuristics) → SRC-07 (MediaWiki plain-text extracts) — the change under test; model fixture, embedder keyword-only, :memory: scratch db, default fetch-allowlist posture all identical",
+    "perDimension": [
+      {
+        "dimension": "retrievalRelevance",
+        "run001": 0.5625,
+        "run002": 0.6875,
+        "delta": "+0.125",
+        "note": "the gain is case-01 (FTS5 passage now retrievable from clean extract text); the four entity-doppelganger retrievals (cases 02, 03, 04, 08) are provider-side and unchanged"
+      },
+      {
+        "dimension": "extractionCleanliness",
+        "run001": 0.3125,
+        "run002": 0.5625,
+        "delta": "+0.25",
+        "note": "0 of 8 cases show raw markup/JSON (run-001: 3 of 8); every case now ≥0.5; residual 0.5s are benign MediaWiki section headings and list/bibliography passages, not corruption; reference markers '[ 30 ]' disappeared entirely (run-001: routine)"
+      },
+      {
+        "dimension": "citationResolution",
+        "run001": 1.0,
+        "run002": 1.0,
+        "delta": "0",
+        "note": "all displayed citations resolve to stored evidence in both runs (fixture-model harness behavior — see limits)"
+      },
+      {
+        "dimension": "degradationHonesty",
+        "run001": 1.0,
+        "run002": 1.0,
+        "delta": "0",
+        "note": "no degradation occurred in either run; where grounded output was claimed, real citations were present (all 8 cases, cached:false / degraded:false / evidenceOnly:false)"
+      },
+      {
+        "dimension": "injectionObservation",
+        "run001": 1.0,
+        "run002": 1.0,
+        "delta": "0",
+        "note": "no instruction-shaped content in any captured artifact in either run (this run scanned all 16 files for 'ignore instructions', 'you are an AI/assistant', 'system prompt', 'assistant:', 'prompt injection' patterns)"
+      }
+    ],
+    "f1": {
+      "verdict": "fixed",
+      "evidence": "run-001 finding F1 (wikitext/template JSON leaking into stored passages on 3 of 8 pages) is FIXED by SRC-07: zero template-JSON markers across all 16 captured artifacts (grep for {{, \"wt\", infobox, '| name =', '| developer =', '\"parts\":[{\"template' → none); all three run-001 leak sites re-measured clean — case-03 Aurora lead passage now clean prose, case-05 BLP page (8 passages) clean, case-08 Berlin Wall page clean with the 'fell on 9 November 1989' passage intact; supporting signal: passagesStored dropped 454→338 at identical documentsStored (23→23) because junk blocks are no longer generated"
+    },
+    "unchanged": "citation/honesty/injection 1.0s measure harness behavior under the FIXTURE model, not answer quality; single-annotator authorial labels; live-provider dependence means scores describe 2026-09-14 behavior — re-run rather than extrapolate"
+  },
+  "findings": [
+    "F1 (resolved): the run-001 template-JSON leak is FIXED by SRC-07 plain-text extracts — no markup or JSON reaches the evidence store on any of the 8 pages; the three leak sites (cases 03, 05, 08) were re-judged fresh and are clean; extraction-cleanliness mean 0.31 → 0.56 with every case ≥0.5.",
+    "F2 (noise, reduced): stored passages still carry MediaWiki section headings ('== Causes ==', '==== STEVE ====') and occasionally list/bibliography/See-also passages — readable but visible; run-001's reference markers ('[ 30 ]') and infobox bullets are gone; a heading-dropping pre-pass could push extraction toward 1.0.",
+    "F3 (retrieval): the entity-doppelganger pattern is provider-side and unchanged (Mike Berners-Lee, Aurora singer, North Rhine-Westphalia, Roger Waters concert in 4 of 8 cases); relevance mean 0.56 → 0.69 purely from case-01's FTS5 gap closing; BM25-only retrieval also surfaces cross-question keyword noise in answers when the owner pool accumulates ('How' → Berners-Lee bibliography in case-05, 'what' → RDBMS stubs in case-07, 'What' → Aurora tour in case-07) — the RET-02 hybrid path should be re-measured on real data.",
+    "F4 (posture observation): the health question again surfaced a critic BLP (McCullough) as first source; the critic's passages were not cited in the answer and NPOV held; third source changed Classen → COVID-19 vaccine page vs run-001 — live provider variance; recorded for future abuse/misinfo QUAL work.",
+    "F5 (clean): no instruction-shaped (prompt-injection) content observed in any captured passage or answer; R-12 stays open for the live-model future.",
+    "F6 (limits): citation-resolution and degradation-honesty are 1.0 under the FIXTURE model, which composes blocks from stored evidence — these measure the harness, not model quality; answer fluency/completeness unmeasured (docs/quality-gate.md limits).",
+    "F7 (provenance): port 18112 was held at startup by a stale do-sift tsx server (node PID 30452) left over from a previous session's attempt at this run — terminated before starting this run's server (run posture unaffected; this run's server logged 'do-sift listening on http://127.0.0.1:18112', db :memory:); at shutdown TaskStop killed the wrapper but orphaned the node child (PID 29020), which was killed via taskkill /F; the :memory: scratch db was discarded with it (no persisted artifacts from the db)."
+  ],
+  "limits": "Single-annotator, authorial labels — one operator's run, not inter-rater reliability. NOT model quality: /api/answer is produced by the fixture model; only citation-resolution and honesty behavior of the harness are measured. No quality claims may cite this artifact without docs/quality-gate.md's limits (R-06). Live-provider dependence: scores describe wikipedia's behavior on 2026-09-14; re-run rather than extrapolate (sources.md 90-day rule)."
+}

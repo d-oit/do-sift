@@ -198,6 +198,35 @@ describe("redirects", () => {
     expect(res.redirects).toBe(1);
   });
 
+  it("sends configured headers on the initial request and every redirect hop", async () => {
+    const inits: RequestInit[] = [];
+    const fetchImpl = makeFetch((url, init) => {
+      inits.push(init ?? {});
+      return url.endsWith("/one")
+        ? htmlResponse("", 302, { location: "/two" })
+        : htmlResponse("final");
+    });
+    const res = await safeFetch(
+      "https://a.test/one",
+      makeOptions({ fetchImpl, headers: { "user-agent": "do-sift/0.1 (contact)" } }),
+    );
+    expect(res.redirects).toBe(1);
+    expect(inits).toHaveLength(2);
+    for (const init of inits) {
+      expect((init.headers as Record<string, string>)["user-agent"]).toBe("do-sift/0.1 (contact)");
+    }
+  });
+
+  it("sends no headers when none are configured", async () => {
+    const inits: RequestInit[] = [];
+    const fetchImpl = makeFetch((_url, init) => {
+      inits.push(init ?? {});
+      return htmlResponse("ok");
+    });
+    await safeFetch("https://a.test/one", makeOptions({ fetchImpl }));
+    expect(inits[0]?.headers).toBeUndefined();
+  });
+
   it("refuses a redirect to a private IP literal", async () => {
     const fetchImpl = makeFetch(() =>
       htmlResponse("", 302, { location: "http://127.0.0.1/admin" }),

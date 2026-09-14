@@ -226,11 +226,20 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
       ],
     },
   };
-  const PAGE_HTML =
-    "<html><body><h1>SQLite</h1>" +
-    "<p>SQLite embeds the whole database in a single portable file.</p>" +
-    "<p>The FTS5 extension ranks keyword matches with bm25 scoring.</p>" +
-    "</body></html>";
+  /** Shape recorded from the live plain-text extract endpoint (SRC-07). */
+  const RECORDED_EXTRACT = {
+    query: {
+      pages: {
+        1: {
+          pageid: 1,
+          ns: 0,
+          title: "SQLite",
+          extract:
+            "SQLite embeds the whole database in a single portable file.\n\nThe FTS5 extension ranks keyword matches with bm25 scoring.",
+        },
+      },
+    },
+  };
 
   it("runs research through the live adapter + safe-fetch path and answers from stored evidence", async () => {
     const config: AppConfig = parseEnvConfig({
@@ -242,18 +251,20 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
       DO_SIFT_FETCH_ALLOWLIST: "en.wikipedia.org",
     });
     let searchCalls = 0;
-    const fetchImpl: FetchLike = async (url) => {
-      if (url.includes("w/api.php")) {
-        searchCalls++;
-        return new Response(JSON.stringify(RECORDED_SEARCH), {
+    let extractInit: RequestInit | undefined;
+    const fetchImpl: FetchLike = async (url, init) => {
+      if (url.includes("prop=extracts")) {
+        extractInit = init;
+        return new Response(JSON.stringify(RECORDED_EXTRACT), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       }
-      if (url.includes("/wiki/")) {
-        return new Response(PAGE_HTML, {
+      if (url.includes("list=search")) {
+        searchCalls++;
+        return new Response(JSON.stringify(RECORDED_SEARCH), {
           status: 200,
-          headers: { "content-type": "text/html; charset=utf-8" },
+          headers: { "content-type": "application/json" },
         });
       }
       throw new Error(`stub fetch got an unexpected url: ${url}`);
@@ -274,6 +285,11 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
       expect(sse).toContain("event: done");
       expect(sse).toContain('"documentsStored":1');
       expect(searchCalls).toBe(1);
+      // Wikimedia UA policy (2026-09-14 research): the content fetch must
+      // carry the descriptive adapter User-Agent, never a generic default.
+      expect(extractInit?.headers).toMatchObject({
+        "user-agent": expect.stringContaining("do-sift"),
+      });
 
       const answer = await fetch(`${base}/api/answer`, {
         method: "POST",
@@ -308,7 +324,7 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
     const fetchedHosts: string[] = [];
     const fetchImpl: FetchLike = async (url) => {
       fetchedHosts.push(new URL(url).hostname);
-      if (url.includes("w/api.php")) {
+      if (url.includes("list=search")) {
         return new Response(JSON.stringify(RECORDED_SEARCH), {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -354,7 +370,7 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
     const fetchedHosts: string[] = [];
     const fetchImpl: FetchLike = async (url) => {
       fetchedHosts.push(new URL(url).hostname);
-      if (url.includes("w/api.php")) {
+      if (url.includes("list=search")) {
         return new Response(JSON.stringify(RECORDED_SEARCH), {
           status: 200,
           headers: { "content-type": "application/json" },

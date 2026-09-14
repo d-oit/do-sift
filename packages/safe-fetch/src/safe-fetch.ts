@@ -35,6 +35,13 @@ export interface SafeFetchOptions {
    * host to one a site policy denies — the hook closes that gap.
    */
   checkHost?: ((host: string) => void) | undefined;
+  /**
+   * Extra request headers sent on EVERY hop (initial + redirects) — e.g.
+   * the descriptive User-Agent that provider etiquette (Wikimedia UA
+   * policy, 2026) requires. Transport metadata only: no guard decision
+   * ever depends on these.
+   */
+  headers?: Record<string, string>;
 }
 
 export const DEFAULT_MIME_PREFIXES: readonly string[] = Object.freeze([
@@ -152,11 +159,10 @@ export async function safeFetch(
       await resolveAndValidate(current, options.dns);
 
       let res: Response;
+      const init: RequestInit = { signal: abort.signal, redirect: "manual" };
+      if (options.headers !== undefined) init.headers = options.headers;
       try {
-        res = await options.fetchImpl(current.toString(), {
-          signal: abort.signal,
-          redirect: "manual",
-        });
+        res = await options.fetchImpl(current.toString(), init);
       } catch (e) {
         if (abort.signal.aborted) {
           throw new SafeFetchError("timeout", `deadline ${timeoutMs}ms exceeded`);

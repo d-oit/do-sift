@@ -37,7 +37,11 @@ re-verify before relying on an entry older than 90 days.
   `Retry-After` when present and back off on 429, never retry hot.
 - **Companion fetch**: `https://en.wikipedia.org/api/rest_v1/page/html/<Title>`
   returns clean HTML (`text/html; charset=utf-8; profile=…HTML/2.8.0`;
-  274 KB observed) — the sanctioned page-content path.
+  274 KB observed) — the sanctioned page-content path. **Addendum
+  2026-09-14 (SRC-07):** live page content now uses the same action API's
+  plain-text extract endpoint (`prop=extracts&explaintext=1`) — same
+  host, same terms, no HTML-stripping pipeline (QUAL run-001 finding F1
+  showed template JSON leaking through HTML stripping).
 - **Activation**: approved for SRC-06 (free, keyless, terms recorded).
   Model/search providers below remain the template for any future entry.
 
