@@ -37,12 +37,12 @@ Exit: replay test passes; bypass test fails closed.
 
 ### OPS task table
 
-| ID     | Task                                                                                                | Status  |
-| ------ | --------------------------------------------------------------------------------------------------- | ------- |
-| OPS-01 | Backup/restore rehearsal: local libSQL snapshot + verify (Turso procedure documented, not executed) | done    |
-| OPS-02 | Deployment documentation: env config, local file vs Turso, reverse proxy, backup cadence            | done    |
-| OPS-03 | Container image: Dockerfile, non-root, healthcheck, offline checks inside                           | done    |
-| OPS-04 | Release candidate 0.1.0 via prepare-release skill (validate only; never publish)                    | blocked |
+| ID     | Task                                                                                                | Status |
+| ------ | --------------------------------------------------------------------------------------------------- | ------ |
+| OPS-01 | Backup/restore rehearsal: local libSQL snapshot + verify (Turso procedure documented, not executed) | done   |
+| OPS-02 | Deployment documentation: env config, local file vs Turso, reverse proxy, backup cadence            | done   |
+| OPS-03 | Container image: Dockerfile, non-root, healthcheck, offline checks inside                           | done   |
+| OPS-04 | Release candidate 0.1.0 via prepare-release skill (validate only; never publish)                    | done   |
 
 ### BRW-01 evidence (2026-09-11)
 
@@ -531,3 +531,55 @@ source archive, checksums, SBOM) → `npm run check` on the exact SHA →
 
 **Publishing was NOT performed and the tag was NOT created** (approval
 boundary; the check itself confirms the tag is still free).
+
+### OPS-04 evidence (2026-09-14, follow-up agent) — candidate assembled and validated, not published
+
+**Unblock performed:** the session was committed to main — HEAD is now
+`485ed75d99338cb8cea830f24b6758754807d820` ("Session 2026-09-13/14:
+plans 008-011 + OPS 01-03"), tree clean. The same commit carries the
+plan-010 DSH-07/DSH-08 row corrections (correction note recorded there).
+Before committing, the full verification set was re-run on the tree
+(`npm run signals -- verify --set verification` → 7/7 green; pre-commit
+feedback set passed inside the hook).
+
+**prepare-release skill, step by step:**
+
+1. `npm run release:check` → `PASS — candidate v0.1.0 @ 485ed75d9933
+(branch main)`. The SHA stamp is now truthful.
+2. Artifacts assembled without publishing credentials, in
+   `dist/release/v0.1.0/` (gitignored): container image `do-sift:v0.1.0`
+   = `sha256:4f709352009e7ed767e4760ac0fb59fa01e8e3a6215666ac7bdfc5b4b4d149b7`
+   (image ID; registry digest materializes at push), built at the
+   committed SHA with `npm run eval:offline` executing **inside** the
+   image at build time (passed — the deterministic suite is the image
+   payload, INV-006); source archive `do-sift-v0.1.0-src.tar.gz`
+   (`git archive HEAD`); CycloneDX 1.5 SBOM (`npm sbom`,
+   `sbom-cdx-0.1.0.json`); `sha256sums.txt` over archive + SBOM.
+   Provenance attestations are produced at the publish push, not locally —
+   recorded as such. The pre-commit-era image `do-sift:0.1.0-rc`
+   (`2608fa09c9f7`) is superseded and marked as such in `docs/release.md`.
+3. `npm run check` on the exact SHA → PASS all 7 steps.
+4. `docs/release.md` written: candidate identity (version, SHA,
+   digests), artifact table, migration notes (0001–0005 forward-only,
+   all additive), rollback (first release: no previous image digest;
+   restore-from-backup path via the OPS-01 procedure — no downgrade
+   scripts exist), open risks (R-06 citation-confidence limits, R-08
+   no independent security review, packaging caveat: image CMD still
+   runs the offline suite pending the `apps/` server entrypoint).
+5. **Stopped before publishing.** No tag created (`git tag -l` empty),
+   no GHCR push, no package publish, no deployment — all remain the
+   separate approval-gated step.
+
+**Files:** `docs/release.md` (new), this plan (row flip + this entry).
+`dist/release/v0.1.0/` artifacts are gitignored by design.
+
+**Risks / open questions:** the candidate is a verification image, not a
+deployable service image (server entrypoint pending under `apps/` —
+documented in the Dockerfile header and `docs/release.md`); SBOM is
+lockfile-level (npm), not image-filesystem-level (syft unavailable —
+noted, not blocking); publishing decision sits with the owner.
+
+**Next suggested task:** the publish gate (tag v0.1.0 + GHCR push) is the
+owner's approval-gated call; development-wise nothing remains open in
+plans 001–011 — the next feature work is the live-provider activation
+gates (SRC-02/ANS-02 live adapters), which are also ask-first.
