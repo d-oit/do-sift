@@ -25,3 +25,22 @@ export { JobQueue, JobQueueError } from "./jobs.js";
 export type { JobQueueOptions, JobRecord, JobStatus } from "./jobs.js";
 export { buildMatchQuery, extractQueryTokens, searchPassages } from "./retrieval.js";
 export type { PassageHit } from "./retrieval.js";
+export {
+  backfillPassageEmbeddings,
+  blobToVector,
+  cosineSimilarity,
+  hybridSearch,
+  rrfFuse,
+  searchByEmbedding,
+  storePassageEmbeddings,
+  vectorToBlob,
+} from "./embeddings.js";
+export type { TextEmbedder, VectorHit } from "./embeddings.js";
+export { createFastEmbedEmbedder, EMBEDDING_MODEL_ID } from "./fastembed-embedder.js";
+export {
+  BackupError,
+  assertLocalLibsqlUrl,
+  backupToFile,
+  openRestore,
+  verifyRestore,
+} from "./backup.js";

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "dataset": "retrieval.json",
+  "datasetVersion": 1,
+  "baselineVersion": 2,
+  "recordedAtUtc": "2026-09-13T20:55:00Z",
+  "retrieval": "bm25 = FTS5/bm25 (packages/storage/src/retrieval.ts); hybrid = bm25 + fastembed bge-small-en-v1.5 cosine ranks fused by RRF (packages/storage/src/embeddings.ts), both over in-memory libSQL",
+  "note": "RET-02 promotion (plans/011, ADR 0009 accepted): hybrid fusion beats the bm25 v1 baseline on all three metrics. Authorial labels over a synthetic corpus measure lexical/semantic retrieval behavior only — NOT factual answer quality (evaluate-retrieval skill). Regression gate: the evals sensor fails when actual metrics drop below either block; improvements are promoted by a reviewed baseline update that preserves this version in git history. v1 (bm25-only) remains in git history.",
+  "metrics": {
+    "bm25": {
+      "meanRecallAtK": 0.75,
+      "meanMRR": 0.8035714285714286,
+      "meanHitRate": 0.8571428571428571
+    },
+    "hybrid": {
+      "meanRecallAtK": 0.8214285714285714,
+      "meanMRR": 0.8333333333333333,
+      "meanHitRate": 0.9285714285714286
+    }
+  }
+}

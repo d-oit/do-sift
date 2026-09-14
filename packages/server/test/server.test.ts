@@ -142,6 +142,18 @@ beforeAll(async () => {
   server = createResearchServer({
     auth: makeAuth(true), // dev bypass ON: loopback requests act as owner-alice
     runResearch,
+    answer: async (ownerId, question) => {
+      if (question === "boom") throw new Error("model exploded");
+      ownerSeen = ownerId;
+      return {
+        requestId: "req-ans-1",
+        answerId: "ans-1",
+        cached: false,
+        degraded: false,
+        evidenceOnly: false,
+        blocks: [{ kind: "paragraph", text: "Grounded claim.", citations: ["ev-1"] }],
+      };
+    },
   });
   port = await listen(server);
 });
@@ -223,6 +235,9 @@ describe("other routes", () => {
     const html = await res.text();
     expect(html).toContain('id="question"');
     expect(html).toContain("/api/research");
+    expect(html).toContain('id="do-answer"'); // ANS-06: answer mode in the UI
+    expect(html).toContain("/api/answer");
+    expect(html).toContain('id="answer"');
   });
 
   it("returns 405 for GET /api/research and 404 elsewhere", async () => {
@@ -236,5 +251,62 @@ describe("auth typing sanity", () => {
     const auth = makeAuth(false);
     const owner: AuthenticatedOwner = await auth.authenticateOwner({ token: "token-alice" });
     expect(owner).toEqual({ ownerId: "owner-alice", via: "oidc" });
+  });
+});
+
+describe("answer surface (ANS-05)", () => {
+  it("answers an authenticated question with the composed payload (200)", async () => {
+    ownerSeen = undefined;
+    const res = await post("/api/answer", { question: "what is alpha?" });
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      requestId?: string;
+      answerId: string;
+      cached: boolean;
+      degraded: boolean;
+      evidenceOnly: boolean;
+      blocks: Array<{ kind: string; text: string; citations: string[] }>;
+    };
+    expect(payload).toMatchObject({
+      requestId: "req-ans-1",
+      answerId: "ans-1",
+      cached: false,
+      degraded: false,
+      evidenceOnly: false,
+    });
+    expect(payload.blocks[0]?.citations).toEqual(["ev-1"]);
+    expect(ownerSeen).toBe("owner-alice"); // auth attribution reached the callback
+  });
+
+  it("refuses forged tokens (401) and malformed bodies (400)", async () => {
+    expect(
+      (await post("/api/answer", { question: "q" }, { authorization: "Bearer forged" })).status,
+    ).toBe(401);
+    expect((await post("/api/answer", {})).status).toBe(400);
+    expect((await post("/api/answer", { question: "" })).status).toBe(400);
+    expect((await post("/api/answer", { question: "x".repeat(600) })).status).toBe(400);
+  });
+
+  it("returns 405 for GET /api/answer and 500 when the answer path throws", async () => {
+    expect((await fetch(`${baseUrl()}/api/answer`)).status).toBe(405);
+    const failed = await post("/api/answer", { question: "boom" });
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toMatchObject({ error: "model exploded" });
+  });
+
+  it("answers 501 when the answer surface is not configured (authed caller informed)", async () => {
+    const unconfigured = createResearchServer({ auth: makeAuth(true), runResearch });
+    const unconfiguredPort = await listen(unconfigured);
+    try {
+      const res = await fetch(`http://127.0.0.1:${unconfiguredPort}/api/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "q" }),
+      });
+      expect(res.status).toBe(501);
+      expect(await res.json()).toMatchObject({ error: "answer surface not configured" });
+    } finally {
+      unconfigured.close();
+    }
   });
 });

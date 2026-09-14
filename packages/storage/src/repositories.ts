@@ -250,6 +250,11 @@ function jobFromRow(row: Row): JobRow {
 export class Repositories {
   constructor(private readonly client: Client) {}
 
+  /** Raw client for storage-adjacent tooling (e.g. embedding backfill, RET-02). */
+  get db(): Client {
+    return this.client;
+  }
+
   readonly owners = {
     ensure: async (id: string, displayName: string): Promise<void> => {
       await this.client.execute({

@@ -12,3 +12,4 @@ playwright-report/
 *.log
 .DS_Store
 .do-harness/
+.spikes/

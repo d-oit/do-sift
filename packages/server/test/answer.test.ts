@@ -1,7 +1,14 @@
 import { createClient, type Client } from "@libsql/client";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeModelProvider } from "@do-sift/fake-providers";
-import { BudgetService, Repositories, applyMigrations, loadMigrations } from "@do-sift/storage";
+import {
+  BudgetService,
+  Repositories,
+  applyMigrations,
+  backfillPassageEmbeddings,
+  loadMigrations,
+  type TextEmbedder,
+} from "@do-sift/storage";
 import { createAnswerService, AnswerCancelledError, type AnswerServiceDeps } from "../src/index.js";
 
 const QUESTION = "how does fts5 ranking work?";
@@ -47,12 +54,17 @@ async function seedEvidence(ownerId = "owner-a"): Promise<void> {
   });
 }
 
-function makeDeps(model: FakeModelProvider, withBudget = true): AnswerServiceDeps {
+function makeDeps(
+  model: FakeModelProvider,
+  withBudget = true,
+  embedder?: TextEmbedder,
+): AnswerServiceDeps {
   return {
     client,
     repositories: repos,
     model,
     budget: withBudget ? budgets : undefined,
+    ...(embedder === undefined ? {} : { embedder }),
   };
 }
 
@@ -156,6 +168,30 @@ describe("answer service (ANS-03)", () => {
     });
     expect(model.calls[0]?.passageIds.length).toBeLessThan(3); // packed down
     expect(model.calls[0]?.passageIds.length).toBeGreaterThanOrEqual(1); // never empty
+  });
+
+  it("packing reserves the output budget from the input ceiling (ANS-02)", async () => {
+    await seedEvidence();
+    // Seeded prompt estimates to ~55 tokens (estimator: ceil(chars/3)).
+    // Small reserve: 55 + 24 fits the 400-token ceiling → both passages go.
+    const roomy = new FakeModelProvider();
+    await createAnswerService(makeDeps(roomy), { maxInputTokens: 400, maxOutputTokens: 24 }).answer(
+      { ownerId: "owner-a", question: QUESTION },
+    );
+    expect(roomy.calls[0]?.passageIds).toHaveLength(2);
+
+    // Full ~700-class reserve: prompt + 390 exceeds 400 → packed down to the
+    // floor of one passage; the reserved output budget is never eaten by
+    // prompt text. Different question than the roomy run: otherwise ANS-04's
+    // exact-answer cache serves run A's answer with zero model calls.
+    const QUESTION_B = "how does the bm25 function rank?";
+    const tight = new FakeModelProvider();
+    await createAnswerService(makeDeps(tight), {
+      maxInputTokens: 400,
+      maxOutputTokens: 390,
+    }).answer({ ownerId: "owner-a", question: QUESTION_B });
+    expect(tight.calls[0]?.passageIds).toHaveLength(1);
+    expect(tight.calls[0]?.maxOutputTokens).toBe(390); // ceiling passed through
   });
 
   it("keeps answers owner-scoped (cross-owner negative)", async () => {
@@ -301,5 +337,65 @@ describe("usage reconciliation (ANS-04)", () => {
       question: QUESTION,
     });
     expect(outcome.reconciliation?.overrun).toBe(false);
+  });
+});
+
+describe("answer service (RET-02 hybrid retrieval)", () => {
+  it("surfaces a paraphrase passage when an embedder is provided", async () => {
+    await seedEvidence();
+    const paraphrase = "Saturation effects cap the benefit of repeating words in scored text.";
+    const docId = await repos.documents.insert({
+      ownerId: "owner-a",
+      canonicalUrl: "https://docs.test/paraphrase",
+      originalUrl: "https://docs.test/paraphrase",
+      contentHash: "hash-paraphrase-00001",
+      fetchedAt: "2026-09-13T00:00:00Z",
+      rawText: paraphrase,
+    });
+    const paraphraseId = await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: docId,
+      excerpt: paraphrase,
+      extractionStatus: "ok",
+    });
+    // Question vector [1,0]; the paraphrase passage is semantically closest
+    // while sharing no query tokens with "how does fts5 ranking work?".
+    const vectors: Record<string, number[]> = {
+      [QUESTION]: [1, 0],
+      "FTS5 ranks keyword matches with bm25, where lower scores are better.": [0.6, 0.4],
+      "The bm25 function weighs rarer terms more heavily in the ranking.": [0.55, 0.45],
+      [paraphrase]: [0.99, 0.01],
+    };
+    const embedder: TextEmbedder = {
+      modelId: "fake-embed-1",
+      async embedPassages(texts) {
+        return texts.map((t) => vectors[t] ?? [0, 0, 1]);
+      },
+      async embedQuery(text) {
+        return vectors[text] ?? [0, 0, 1];
+      },
+    };
+    await backfillPassageEmbeddings(client, "owner-a", embedder);
+
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model, true, embedder)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    expect(outcome.evidenceOnly).toBe(false);
+    expect(outcome.degraded).toBe(false);
+    const packedIds = model.calls[0]?.passageIds ?? [];
+    expect(packedIds).toContain(paraphraseId); // the vector list contributed it
+  });
+
+  it("stays on plain bm25 when no embedder is provided", async () => {
+    await seedEvidence();
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    expect(outcome.evidenceOnly).toBe(false);
+    expect(model.calls[0]?.passageIds).toHaveLength(2); // seeded passages only
   });
 });

@@ -20,7 +20,7 @@ import {
   sensorNamesForSet,
   sha256Hex,
   type SensorDef,
-} from "../src/index.js";
+} from "../index.js";
 
 const ROOT = process.cwd();
 

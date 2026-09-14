@@ -5,12 +5,7 @@
  * clear` (named or all) lifts it; `sensor_halted` leaves it unchanged.
  */
 import { describe, expect, it } from "vitest";
-import {
-  HALT_THRESHOLD,
-  strikeState,
-  type SensorStatus,
-  type WorkflowEvent,
-} from "../src/index.js";
+import { HALT_THRESHOLD, strikeState, type SensorStatus, type WorkflowEvent } from "../index.js";
 
 const ISO = "2026-01-01T00:00:00.000Z";
 const CHAIN = "a".repeat(64);

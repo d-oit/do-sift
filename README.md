@@ -61,9 +61,18 @@ npm run signals -- status                 # last recorded state per sensor
 npm run hooks:install                     # activate pre-commit/pre-push hooks
 ```
 
+## Deployment
+
+Single-owner pre-alpha deployment: libSQL storage (local file by default,
+Turso behind env config), owner-allowlist auth, HTTP server intended for
+loopback or a TLS-terminating reverse proxy. See
+[docs/deployment.md](docs/deployment.md) for configuration, auth, backup
+cadence, and known limits.
+
 ## Status
 
-Pre-alpha. Foundation milestone (FND) in progress; see `plans/001-agent-foundation.md`.
+Pre-alpha. FND, CORE, SRC, ANS, BRW, and CMP milestones are complete (see
+`plans/`); OPS in progress (`plans/005-007-brw-cmp-later.md`).
 
 ## License
 

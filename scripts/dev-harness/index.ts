@@ -7,5 +7,6 @@
 export * from "./schemas.js";
 export * from "./store.js";
 export * from "./strike.js";
+export * from "./stale.js";
 export * from "./sensors.js";
 export * from "./verify.js";

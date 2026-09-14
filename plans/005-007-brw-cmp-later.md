@@ -35,6 +35,15 @@ Exit: replay test passes; bypass test fails closed.
 - OPS: container, deploy docs, backup/restore rehearsal, release candidate.
 - QUAL: held-out manual evaluation, abuse/isolation/accessibility, retention.
 
+### OPS task table
+
+| ID     | Task                                                                                                | Status  |
+| ------ | --------------------------------------------------------------------------------------------------- | ------- |
+| OPS-01 | Backup/restore rehearsal: local libSQL snapshot + verify (Turso procedure documented, not executed) | done    |
+| OPS-02 | Deployment documentation: env config, local file vs Turso, reverse proxy, backup cadence            | done    |
+| OPS-03 | Container image: Dockerfile, non-root, healthcheck, offline checks inside                           | done    |
+| OPS-04 | Release candidate 0.1.0 via prepare-release skill (validate only; never publish)                    | blocked |
+
 ### BRW-01 evidence (2026-09-11)
 
 **Files:** `packages/plugins/plugin-harness-browser/` (new plugin:
@@ -367,3 +376,158 @@ processes remains per-run by design.
 
 **CMP MILESTONE: COMPLETE (CMP-01..03). Exit gates met: replay test
 passes (CMP-02); bypass tests fail closed (CMP-03).**
+
+### OPS-01 evidence (2026-09-13)
+
+**Files:** `packages/storage/src/backup.ts` (new: `backupToFile` via
+`VACUUM INTO`, `openRestore`, `verifyRestore`,
+`assertLocalLibsqlUrl`); `packages/storage/src/index.ts` (+exports);
+`packages/storage/test/backup.test.ts` (new).
+
+**Design:** backup = a consistent SQLite snapshot via `VACUUM INTO` (one
+statement; the destination must not exist — the engine's own
+never-overwrite refusal is the backup safety). Restore = opening the
+snapshot (`openRestore`); `verifyRestore` compares the table set,
+per-table row counts, and the full owners registry. Remote Turso URLs are
+refused with the documented remote procedure (`turso db dump` /
+platform snapshots) — `VACUUM INTO <path>` is server-side and meaningless
+remotely. The rehearsal test is the real thing: seed a file DB, snapshot,
+simulate total loss of the original, then prove the snapshot alone
+contains all owners/documents/passages AND a working FTS index.
+
+**Commands:** `npx vitest run packages/storage/test/backup.test.ts` → 5/5
+pass (snapshot verifies against live DB; post-backup mutations do NOT
+leak into the snapshot and verification catches the divergence; overwrite
+refused; remote URL refused with Turso guidance; total-loss rehearsal
+survives with FTS working). `npm run check` → PASS all 7 steps.
+Dev-signal verification set: green (one RED intermediate caught an
+unformatted plan — cause fixed first, then green; receipt
+`.do-harness/evidence.verification.json`).
+
+**Backup/restore implication (migrate-storage skill):** what to back up —
+the whole DB file (all milestones' tables; one file). When — before any
+destructive change and on a cadence (OPS-02 documents the cadence); the
+snapshot is a single portable file. What breaks on rollback — nothing:
+restore IS opening a snapshot; the rollback story for any future
+migration remains "restore from backup" (CORE-01 evidence). Size delta —
+snapshot ≈ original (VACUUM-compact). Turso production: procedure
+documented, NOT executed (needs the live DB; sources.md gate).
+
+**Risks / open questions:** `VACUUM INTO` blocks writers briefly on the
+local engine (single-user pre-alpha: fine); Windows may hold the original
+file handle briefly past close (EPERM on deletion — the rehearsal treats
+the original as abandoned; logical-loss semantics are identical);
+FTS-index snapshots verified working (porter/unicode61 tokenizer carried
+in the snapshot).
+
+**Next suggested task:** OPS-02 (deployment documentation) or OPS-03
+(container image) — OPS-04 (release candidate) last.
+
+**Row-status correction (2026-09-13, follow-up agent):** the task row above
+was still `proposed` while the evidence below was already complete
+(recorded by the OPS-01 owner alongside OPS-02). Verified before flipping:
+the backup/restore suite has run green in every full-check this session
+(`packages/storage/test/backup.test.ts` 5/5, most recently in today's
+verification-set receipt). Row flipped to `done` on the strength of the
+recorded evidence; no content of the evidence was altered.
+
+### OPS-02 evidence (2026-09-13)
+
+**Files:** `docs/deployment.md` (new), `README.md` (deployment section +
+status update).
+
+**Design:** deployment documentation accurate to the code as it exists:
+env config table (`DO_SIFT_DB_URL` / `DO_SIFT_DB_AUTH_TOKEN_SECRET` /
+`DO_SIFT_DB_MIGRATIONS_DIR` via `storageConfigFromEnv`); the fail-closed
+remote rules (networkHosts allowlist + kernel-resolved token secret +
+sources.md gate); auth configuration (allowlist, OIDC stub caveat, dev
+bypass loopback-only with strict-boolean default-off); network exposure
+(no TLS, no rate limiting in the server → loopback-only or a TLS-
+terminating, rate-limiting reverse proxy; nosniff must survive); backups
+(cadence: before deploys/migrations + daily; `VACUUM INTO` local,
+`turso db dump` remote — documented, not executed); verification via
+`npm run check` + dev-signal receipts. Known-limits section states the
+honest gaps: single owner, no container yet (OPS-03), no app entry under
+`apps/`, remote Turso parity untested until the sources.md gate.
+
+**Commands:** `npm run check` → PASS all 7 steps. Dev-signal verification
+set: green, receipt `.do-harness/evidence.verification.json`.
+
+**Risks / open questions:** docs drift is the standing risk — the
+known-limits section is the contract to revisit at each OPS/QUAL step;
+the packaged app entry (apps/) remains pending and is called out in the
+doc rather than papered over.
+
+**Next suggested task:** OPS-03 (container image: Dockerfile, non-root,
+healthcheck) — note Dockerfile authoring is code, not a workflow change,
+so no approval boundary is crossed; running/publishing it would be.
+
+### OPS-03 evidence (2026-09-13, follow-up agent)
+
+**Files:** `Dockerfile` (new), `.dockerignore` (new).
+
+**Design:** the image carries the runtime and runs the **offline checks
+inside** — the task's literal ask — because no packaged server entrypoint
+exists yet (OPS-02's doc records the `apps/` entry as pending; inventing
+one here would have been unmeasured scope). `node:22-slim` (Debian glibc,
+not alpine: `@libsql` and `onnxruntime-node` ship glibc prebuilds);
+`npm ci --include=dev` (the repo runs through tsx, a devDep — an initial
+`ENV NODE_ENV=production` pruned it and the build failed `tsx: not found`,
+fixed by dropping the env and making the include explicit); build-time
+`RUN npm run eval:offline` proves the deterministic suite in-container and
+warms `.fastembed_cache` into the layer so runtime checks stay offline;
+non-root via the image's `node` user; `HEALTHCHECK` + `CMD` both run the
+offline suite (honest liveness for a check image — when the packaged
+server entrypoint lands, they switch to the service probe).
+
+**Commands (with the environment story, recorded honestly):** two build
+attempts crashed the daemon mid-`npm ci` (EOF, engine pipe gone) — cause
+found: Docker Desktop was self-updating under the builds (29.4.0 →
+29.7.2); the third build on the stabilized daemon went green. Runtime
+verification: `docker run --rm do-sift:0.1.0-rc id -un` → `node`
+(non-root ✓); fresh `docker run --rm do-sift:0.1.0-rc` → `eval: PASS (31
+deterministic cases, 0 network calls, 0 model calls)` ✓; healthcheck
+present (CMD = eval runner, 120s interval); image size 1.18 GB.
+
+**Risks / open questions:** 1.18 GB image — it carries the dev toolchain
+plus ONNX runtime and model; a slimmed runtime image belongs to the
+packaged-entrypoint work; the model cache is baked at build, so a model
+bump means a rebuild; fastembed's dependency tree emits deprecation
+warnings (`boolean@3.2.0`, `tar@6.2.1`, `@anush008/tokenizers` archived) —
+recorded as a supply-chain signal against ADR 0009, not blocking.
+Publishing the image was NOT done (approval boundary).
+
+**Next suggested task:** OPS-04 (release candidate 0.1.0 via the
+prepare-release skill — validate only, never publish), now that OPS-01
+through OPS-03 are done.
+
+### OPS-04 evidence (2026-09-13, follow-up agent) — blocked on commit
+
+**Status: blocked — the candidate has no immutable SHA to build against.**
+`npm run release:check` → PASS for candidate v0.1.0 on branch main, and it
+validated (working-tree): package.json version 0.1.0 well-formed;
+CHANGELOG.md contains `## [0.1.0]`; migrations monotonic (0001–0005, now
+including the RET-02 embeddings migration); tag `v0.1.0` does not exist
+yet. But the check stamps the candidate with HEAD — and HEAD (3acb20e) is
+the repo's initial commit, while the working tree carries the entire
+uncommitted session (~65 entries: plans 008–011, the dev-harness CLI,
+hybrid retrieval, OPS work). Building artifacts from the dirty tree and
+stamping them `3acb20e` would be a false receipt (skill rule: never bypass
+a missing check — here, the missing state is a commit).
+
+**What is already true and will carry over once committed:**
+`npm run check` PASS 7/7 on this tree today; the offline verification
+image `do-sift:0.1.0-rc` exists but was built pre-commit — the release
+image must be rebuilt at the committed SHA for the immutable digest and
+the rollback note (previous digest: none — first release).
+
+**Unblock (owner decision, one step):** commit the working tree to main.
+Then the prepare-release skill finishes mechanically at that SHA:
+release:check re-run (SHA now truthful) → artifacts (image rebuild,
+source archive, checksums, SBOM) → `npm run check` on the exact SHA →
+`docs/release.md` checklist (version, SHA, digests, migration notes:
+0001–0005 forward-only, none destructive; rollback: no previous release)
+→ **stop** before any publishing (separate approval-gated step).
+
+**Publishing was NOT performed and the tag was NOT created** (approval
+boundary; the check itself confirms the tag is still free).

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@do-sift/contracts": "*",
-    "@libsql/client": "^0.18.0"
+    "@libsql/client": "^0.18.0",
+    "fastembed": "^2.1.0"
   }
 }

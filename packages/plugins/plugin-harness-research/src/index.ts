@@ -14,7 +14,8 @@
 import { createHash } from "node:crypto";
 import { SearchLimits, SearchQuery, isSiteDenied, type SearchProvider } from "@do-sift/contracts";
 import type { PluginContext, PluginInstance } from "@do-sift/kernel";
-import type { BudgetService, Repositories } from "@do-sift/storage";
+import { backfillPassageEmbeddings } from "@do-sift/storage";
+import type { BudgetService, Repositories, TextEmbedder } from "@do-sift/storage";
 
 export interface ResearchHarnessConfig {
   maxHits?: unknown;
@@ -42,6 +43,15 @@ export interface ResearchHarnessDeps {
   onSource?:
     | ((source: { url: string; title?: string | undefined; passageCount: number }) => void)
     | undefined;
+  /**
+   * When present, newly stored passages are embedded for hybrid retrieval
+   * (RET-03, ADR 0009): a backfill runs after storage and `embedded` counts
+   * the newly indexed passages. Local ONNX inference — no external calls, no
+   * ledger activity. An embedder failure never fails the run: it emits
+   * "research.embeddings-failed" and leaves `embedded` undefined (the
+   * passages stay retrievable via bm25).
+   */
+  embedder?: TextEmbedder | undefined;
 }
 
 export interface ResearchRunSummary {
@@ -55,6 +65,8 @@ export interface ResearchRunSummary {
   documentsStored: number;
   passagesStored: number;
   budgetReservationId?: string | undefined;
+  /** Newly embedded passages (RET-03); undefined with no embedder or on failure. */
+  embedded?: number | undefined;
 }
 
 export interface ResearchHarnessInstance extends PluginInstance {
@@ -206,6 +218,23 @@ export function createResearchHarness(
             reservationId: summary.budgetReservationId,
             actual: { inputTokens: 0, outputTokens: 0, searchCalls: 1, fetches: summary.fetches },
             nowMs: Date.now(),
+          });
+        }
+      }
+
+      // Index what we stored for hybrid retrieval (RET-03). Local ONNX
+      // inference: no external calls, no ledger activity. Failure degrades
+      // honestly — the passages remain bm25-retrievable.
+      if (deps.embedder !== undefined) {
+        try {
+          summary.embedded = await backfillPassageEmbeddings(
+            deps.repositories.db,
+            task.ownerId,
+            deps.embedder,
+          );
+        } catch (error) {
+          ctx.events.emit("research.embeddings-failed", {
+            message: error instanceof Error ? error.message : String(error),
           });
         }
       }

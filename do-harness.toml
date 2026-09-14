@@ -1,0 +1,47 @@
+# do-harness (upstream Rust CLI, ADR 0008) sensor config for do-sift.
+# Mirrors the first-party registry in scripts/dev-harness/sensors.ts and
+# scripts/check.ts. The enforced hook/CI path remains `npm run signals`
+# (first-party TS CLI); this file serves `do-harness verify` / `status` /
+# `doctor` for agents with the Rust toolchain installed. See plans/009.
+language = "generic"
+
+[hooks]
+pre-commit = []
+pre-push = []
+
+[signal-sets]
+feedback = ["format", "lint", "typecheck", "policy", "skills"]
+verification = ["format", "lint", "typecheck", "policy", "skills", "tests", "evals"]
+release = ["format", "lint", "typecheck", "policy", "skills", "tests", "evals", "release"]
+
+[[sensors]]
+name = "format"
+argv = ["node", "node_modules/prettier/bin/prettier.cjs", "--check", "."]
+
+[[sensors]]
+name = "lint"
+argv = ["node", "node_modules/eslint/bin/eslint.js", "."]
+
+[[sensors]]
+name = "typecheck"
+argv = ["node", "node_modules/typescript/bin/tsc", "-p", "tsconfig.json", "--noEmit"]
+
+[[sensors]]
+name = "policy"
+argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/policy.ts"]
+
+[[sensors]]
+name = "skills"
+argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/skills-check.ts"]
+
+[[sensors]]
+name = "tests"
+argv = ["node", "node_modules/vitest/vitest.mjs", "run"]
+
+[[sensors]]
+name = "evals"
+argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/eval.ts"]
+
+[[sensors]]
+name = "release"
+argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/release-check.ts"]

@@ -2,7 +2,14 @@ import { createClient, type Client } from "@libsql/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import { FakeSearchProvider } from "@do-sift/fake-providers";
 import { Kernel } from "@do-sift/kernel";
-import { BudgetService, Repositories, applyMigrations, loadMigrations } from "@do-sift/storage";
+import {
+  BudgetService,
+  Repositories,
+  applyMigrations,
+  loadMigrations,
+  searchByEmbedding,
+  type TextEmbedder,
+} from "@do-sift/storage";
 import harnessJson from "../plugin.json" with { type: "json" };
 import {
   createResearchHarness,
@@ -48,6 +55,8 @@ function makeDeps(
     maxHits?: number;
     budget?: BudgetService;
     extract?: (text: string) => Array<{ text: string; status: "ok" | "partial" }>;
+    embedder?: TextEmbedder;
+    onEvent?: (name: string, payload?: unknown) => void;
   } = {},
 ) {
   const fetchLog: string[] = [];
@@ -74,7 +83,9 @@ function makeDeps(
     });
   const harness = createResearchHarness(
     {
-      events: { emit: () => {} },
+      events: {
+        emit: (name: string, payload?: unknown) => overrides.onEvent?.(name, payload),
+      },
       config: { maxHits: overrides.maxHits ?? 6, maxFetches: 2 },
     } as unknown as Parameters<typeof createResearchHarness>[0],
     {
@@ -83,6 +94,7 @@ function makeDeps(
       repositories: repos,
       budget: overrides.budget,
       extract: overrides.extract,
+      ...(overrides.embedder === undefined ? {} : { embedder: overrides.embedder }),
     },
   );
   return { harness, fetchLog };
@@ -238,5 +250,67 @@ describe("kernel round-trip", () => {
 describe("deterministic clock sanity", () => {
   it("keeps T0 fixed for reproducible fixtures", () => {
     expect(T0).toBe(Date.parse("2026-09-09T12:00:00.000Z"));
+  });
+});
+
+describe("embedding indexing (RET-03)", () => {
+  const ACTIVATE = {
+    events: { emit: () => {} },
+    config: { maxHits: 6, maxFetches: 2 },
+  } as unknown as Parameters<typeof createResearchHarness>[0];
+
+  async function ensureOwner(id: string): Promise<void> {
+    await client.execute({
+      sql: "INSERT INTO owners (id, display_name, created_at) VALUES (?, ?, '2026-09-09T00:00:00Z') ON CONFLICT(id) DO NOTHING",
+      args: [id, id],
+    });
+  }
+
+  it("indexes newly stored passages when an embedder is provided", async () => {
+    await ensureOwner("owner-emb");
+    const embedder: TextEmbedder = {
+      modelId: "fake-embed-1",
+      async embedPassages(texts) {
+        return texts.map((t) => [t.includes("Alpha") ? 1 : 0, t.includes("Alpha") ? 0 : 1, 0.5]);
+      },
+      async embedQuery() {
+        return [1, 0, 0.5];
+      },
+    };
+    const { harness } = makeDeps({ embedder });
+    await harness.activate(ACTIVATE);
+
+    const summary = await harness.run({ ownerId: "owner-emb", question: "what is alpha?" });
+    expect(summary.passagesStored).toBe(3);
+    expect(summary.embedded).toBe(3); // all new passages indexed
+
+    // the stored passages are retrievable through the vector path, best-match first
+    const hits = await searchByEmbedding(client, "owner-emb", "fake-embed-1", [1, 0, 0.5], 10);
+    expect(hits).toHaveLength(3);
+    expect(hits[0]?.excerpt).toContain("Alpha");
+  });
+
+  it("an embedder failure never fails the run (honest degradation)", async () => {
+    const events: string[] = [];
+    const embedder: TextEmbedder = {
+      modelId: "boom-1",
+      async embedPassages() {
+        throw new Error("onnx hiccup");
+      },
+      async embedQuery() {
+        throw new Error("onnx hiccup");
+      },
+    };
+    const { harness } = makeDeps({
+      embedder,
+      onEvent: (name) => events.push(name),
+    });
+    await harness.activate(ACTIVATE);
+
+    const summary = await harness.run({ ownerId: "owner-a", question: "what is alpha?" });
+    expect(summary.fetches).toBe(2);
+    expect(summary.documentsStored).toBe(2);
+    expect(summary.embedded).toBeUndefined(); // degraded, not failed
+    expect(events).toContain("research.embeddings-failed");
   });
 });

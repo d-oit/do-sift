@@ -19,7 +19,7 @@ import {
   type EvidenceReport,
   type SensorDef,
   type WorkflowEventBody,
-} from "../src/index.js";
+} from "../index.js";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 const clock = (): string => NOW;
@@ -237,5 +237,50 @@ describe("runSignalSet", () => {
       }),
     );
     expect(err.kind).toBe("state-corruption");
+  });
+
+  it("stamps the workspace fingerprint on events and the receipt (DSH-07)", async () => {
+    const root = await makeDir();
+    const fingerprint = sha256Hex("workspace-under-test");
+    const res = await runSignalSet({
+      repoRoot: root,
+      set: "feedback",
+      actor: "cli",
+      nowUtc: clock,
+      sensorOverrides: [okDef("alpha")],
+      workspaceSha256: fingerprint,
+    });
+    expect(res.events[0]?.workspaceSha256).toBe(fingerprint);
+    expect(res.report.workspaceSha256).toBe(fingerprint);
+    const receipt = JSON.parse(
+      await readFile(join(root, DEFAULT_STATE_DIR, "evidence.feedback.json"), "utf8"),
+    ) as EvidenceReport;
+    expect(receipt.workspaceSha256).toBe(fingerprint);
+  });
+
+  it("runs a single set member with only, and refuses non-members (DSH-08)", async () => {
+    const root = await makeDir();
+    const res = await runSignalSet({
+      repoRoot: root,
+      set: "feedback",
+      actor: "cli",
+      nowUtc: clock,
+      sensorOverrides: [okDef("alpha"), okDef("beta")],
+      only: "beta",
+    });
+    expect(res.report.sensors.map((s) => s.name)).toEqual(["beta"]);
+    expect(res.report.verdict).toBe("green");
+    expect(res.exitCode).toBe(0);
+    const err = await usageOf(
+      runSignalSet({
+        repoRoot: root,
+        set: "feedback",
+        actor: "cli",
+        nowUtc: clock,
+        sensorOverrides: [okDef("alpha"), okDef("beta")],
+        only: "gamma", // valid sensor name, but not in the feedback set
+      }),
+    );
+    expect(err.kind).toBe("usage");
   });
 });

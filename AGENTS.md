@@ -25,6 +25,30 @@ task pass.
 5. **One owner per writable task.** Parallel agents may read anything but must
    not concurrently edit the same contracts, migrations, or plan file.
 
+## Coding workflow (do-harness engineering model)
+
+Development follows do-harness's engineering model (plan 009, ADR 0008):
+feedforward guides steer work before it starts; computational sensors judge
+it after. LLM self-assessment never substitutes for a sensor exit code.
+
+1. **Feedforward.** Before coding, read the task's plan row, the invariants
+   it names, and any skill covering the work. Decompose into ordered
+   subtasks with preconditions (`htn-planner` skill); decide at planning
+   time whether an uncertain third-party/API/performance question needs a
+   spike first (`spike-runner` skill — throwaway scratch in the gitignored
+   `.spikes/` directory, never production code).
+2. **Red before green.** Define "done" with a failing test before or with
+   the implementation; implement the smallest slice (`implement-slice`).
+3. **Feedback.** A subtask is complete only when verified by automated exit
+   codes: `npm run signals -- verify --set feedback` in the edit loop, the
+   `verification` set before handoff.
+4. **Self-correction.** On failure: classify it, apply the minimal fix,
+   re-run the specific sensor. One sensor failing 3 consecutive runs is
+   halted — fix the cause, then clear the strikes.
+5. **Steering loop.** When the same sensor or confusion fires 2+ times,
+   update the guide, not the symptom (`skill-distiller` skill): sensors
+   fire → guides update → sensors fire less.
+
 ## Approved commands
 
 ```bash
@@ -35,11 +59,17 @@ npm run policy        # repo policy checks alone
 npx vitest run <file> # single test file
 npm run signals -- verify --set feedback  # dev-signal feedback loop before handoff
 npm run signals -- status                 # dev-signal receipt state
+do-harness verify --set feedback  # optional Rust harness in WSL Ubuntu (prebuilt v0.1.0, ADR 0008)
+do-harness status                 # upstream evidence freshness (WSL; needs full-set --record)
 ```
 
 Dev signals are computational receipts for the development loop (plan 008,
-ADR 0007): run the feedback set before claiming a task done. If a sensor is
-halted after 3 consecutive failures, fix the cause first, then clear it with
+ADR 0007; CLI home `scripts/dev-harness/` since plan 009 — workflow tooling,
+not a package): run the feedback set before claiming a task done. The
+upstream Rust `do-harness` CLI (ADR 0008, configured in `do-harness.toml`)
+drives the same sensors for agents with the toolchain; `npm run signals`
+stays the enforced hook/CI path. If a sensor is halted after 3 consecutive
+failures, fix the cause first, then clear it with
 `npm run signals -- errors clear --sensor <name>` — never clear a strike
 before the fix, and never weaken a sensor or edit its argv to make it pass.
 

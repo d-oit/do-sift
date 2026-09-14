@@ -37,6 +37,10 @@ export type RunSignalSetOptions = {
   nowUtc?: () => string;
   /** Sensor registry override (tests); replaces SENSOR_DEFS entirely. */
   sensorOverrides?: readonly SensorDef[];
+  /** Workspace fingerprint stamped on events and the receipt (DSH-07). */
+  workspaceSha256?: string;
+  /** Run a single sensor that must be a member of the set (DSH-08). */
+  only?: string;
 };
 
 export type RunSignalSetResult = {
@@ -59,6 +63,8 @@ export async function runSignalSet(options: RunSignalSetOptions): Promise<RunSig
     eventsDir,
     nowUtc = defaultNowUtc,
     sensorOverrides,
+    workspaceSha256,
+    only,
   } = options;
 
   const registry = sensorOverrides ?? SENSOR_DEFS;
@@ -72,6 +78,18 @@ export async function runSignalSet(options: RunSignalSetOptions): Promise<RunSig
   }
   const names = sensorNamesForSet(set, registry); // usage error on unknown/empty (INV-006)
   const setName = SignalSetName.parse(set); // cannot fail once names resolved
+  let selected = names;
+  if (only !== undefined) {
+    // --only narrows the run to one member of the set (DSH-08); a non-member
+    // is a usage error so receipts can never contain sensors outside their set.
+    if (!names.includes(only)) {
+      throw new DevHarnessError(
+        "usage",
+        `only: sensor "${only}" is not in set "${set}" (${names.join(", ")})`,
+      );
+    }
+    selected = [only];
+  }
 
   const prior = await readEvents(dir); // state-corruption propagates to the caller
   const strikes = strikeState(prior);
@@ -80,7 +98,7 @@ export async function runSignalSet(options: RunSignalSetOptions): Promise<RunSig
   const results: SensorResult[] = [];
   const appended: WorkflowEvent[] = [];
 
-  for (const name of names) {
+  for (const name of selected) {
     if (strikes.get(name)?.halted === true) {
       const detail = `halted after ${HALT_THRESHOLD} consecutive failures — clear with: npm run signals -- errors clear --sensor ${name}`;
       // exitCode 2: the harness state (halt), not a sensor exit.
@@ -121,6 +139,7 @@ export async function runSignalSet(options: RunSignalSetOptions): Promise<RunSig
         outputSha256: run.outputSha256,
         outputTail: run.outputTail,
         ...(run.detail === undefined ? {} : { detail: run.detail }),
+        ...(workspaceSha256 === undefined ? {} : { workspaceSha256 }),
       }),
     );
     if (failFast && !run.ok) break;
@@ -138,6 +157,7 @@ export async function runSignalSet(options: RunSignalSetOptions): Promise<RunSig
     sensors: results,
     failed,
     verdict,
+    ...(workspaceSha256 === undefined ? {} : { workspaceSha256 }),
   };
   await writeFile(
     join(dir, `evidence.${setName}.json`),

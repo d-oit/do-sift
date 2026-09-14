@@ -8,8 +8,9 @@
  * unhandled crash. All failures print `dev-harness: …` to stderr; stdout is
  * reserved for reports/results. Frozen interface: plans/008-dev-signal-harness.md.
  */
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -23,6 +24,7 @@ import {
   resolveSensor,
   runSignalSet,
   sensorNamesForSet,
+  statusVerdict,
   strikeState,
   type SensorStatus,
 } from "./index.js";
@@ -34,12 +36,18 @@ import {
 type Flags = Map<string, string | true>;
 
 /** Flags that take a value when not written as `--flag=value`. */
-const VALUE_FLAGS: ReadonlySet<string> = new Set(["--state-dir", "--set", "--actor", "--sensor"]);
+const VALUE_FLAGS: ReadonlySet<string> = new Set([
+  "--state-dir",
+  "--set",
+  "--actor",
+  "--sensor",
+  "--only",
+]);
 
 /** Per-command accepted flags, on top of the global --state-dir. */
 const COMMAND_FLAGS: Record<string, readonly string[]> = {
   init: ["--actor"],
-  verify: ["--set", "--fail-fast", "--json", "--actor"],
+  verify: ["--set", "--fail-fast", "--json", "--actor", "--only"],
   status: ["--set"],
   list: [],
   "errors list": [],
@@ -52,7 +60,7 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
 /** One-line usage, printed for no args / unknown command / unknown flag combos. */
 const USAGE =
   "usage: dev-harness [--state-dir DIR] <command> — commands: init | verify [--set S] " +
-  "[--fail-fast] [--json] [--actor A] | status [--set S] | list | errors list | " +
+  "[--only NAME] [--fail-fast] [--json] [--actor A] | status [--set S] | list | errors list | " +
   "errors clear [--sensor NAME | --all] | hook install | hook uninstall | hook status";
 
 /** Per-status report tags; "skipped" is the halt-skip marker (frozen: HALTED). */
@@ -139,19 +147,51 @@ async function cmdInit(stateDir: string, actor: string): Promise<number> {
 
 // ---- verify ----------------------------------------------------------------
 
+/**
+ * Workspace fingerprint (DSH-07): content-based — sha-256 over the sorted
+ * (path, content hash) pairs of every tracked and untracked non-ignored
+ * file. A first porcelain-based design (git status text) was live-verified
+ * ineffective: the status output does not change when an already-modified or
+ * already-untracked file is edited again, so iterative edits kept stale
+ * receipts green. Undefined outside a git repo — staleness is then
+ * unjudgeable and stays green (backward compat).
+ */
+function computeWorkspaceFingerprint(): string | undefined {
+  const tracked = runGit(["ls-files", "-z"]);
+  const others = runGit(["ls-files", "--others", "--exclude-standard", "-z"]);
+  if (!tracked.ok || !others.ok) return undefined;
+  const paths = [...tracked.output.split("\0"), ...others.output.split("\0")]
+    .filter((p) => p.length > 0)
+    .sort();
+  const hash = createHash("sha256");
+  for (const path of paths) {
+    hash.update(`${path}\0`);
+    try {
+      hash.update(readFileSync(join(process.cwd(), path)));
+    } catch {
+      hash.update("missing"); // tracked file deleted from the worktree
+    }
+  }
+  return hash.digest("hex");
+}
+
 async function cmdVerify(
   stateDir: string,
   set: string,
   actor: string,
   failFast: boolean,
   json: boolean,
+  only: string | undefined,
 ): Promise<number> {
+  const workspaceSha256 = computeWorkspaceFingerprint();
   const { report, exitCode } = await runSignalSet({
     repoRoot: process.cwd(),
     set,
     actor,
     failFast,
     eventsDir: stateDir,
+    ...(only === undefined ? {} : { only }),
+    ...(workspaceSha256 === undefined ? {} : { workspaceSha256 }),
   });
   if (json) {
     // --json prints ONLY the EvidenceReport JSON on stdout (frozen interface).
@@ -174,23 +214,46 @@ async function cmdVerify(
 async function cmdStatus(stateDir: string, set: string): Promise<number> {
   const names = sensorNamesForSet(set); // unknown set → usage error (exit 2)
   const events = await readEvents(stateDir); // state-corruption → exit 2
-  const last = new Map<string, { status: SensorStatus; atUtc: string }>();
+  const last = new Map<
+    string,
+    { status: SensorStatus; atUtc: string; workspaceSha256?: string | undefined }
+  >();
   for (const event of events) {
     if (
       event.kind === "sensor_result" &&
       event.status !== undefined &&
       event.sensor !== undefined
     ) {
-      last.set(event.sensor, { status: event.status, atUtc: event.atUtc });
+      last.set(event.sensor, {
+        status: event.status,
+        atUtc: event.atUtc,
+        ...(event.workspaceSha256 === undefined ? {} : { workspaceSha256: event.workspaceSha256 }),
+      });
     }
   }
+  const current = computeWorkspaceFingerprint();
   console.log(`status (set ${set}, state dir ${stateDir}):`);
+  const verdicts: string[] = [];
   for (const name of names) {
     const entry = last.get(name);
+    const verdict = statusVerdict(
+      entry === undefined
+        ? undefined
+        : {
+            status: entry.status,
+            ...(entry.workspaceSha256 === undefined
+              ? {}
+              : { workspaceSha256: entry.workspaceSha256 }),
+          },
+      current,
+    );
+    verdicts.push(verdict);
     if (entry === undefined) {
-      console.log(`MISSING  ${name}`);
+      console.log("MISSING  " + name);
     } else {
-      console.log(`${STATUS_TAGS[entry.status]}  ${name}  ${entry.atUtc}`);
+      // green keeps the precise PASS tag; red keeps FAIL/ERROR/HALTED
+      const tag = verdict === "stale" ? "STALE" : STATUS_TAGS[entry.status];
+      console.log(`${tag}  ${name}  ${entry.atUtc}`);
     }
   }
   const halted = [...strikeState(events)].filter(([, strike]) => strike.halted);
@@ -199,8 +262,18 @@ async function cmdStatus(stateDir: string, set: string): Promise<number> {
       ? "halted: none"
       : `halted: ${halted.map(([name, strike]) => `${name} (streak ${strike.consecutive})`).join(", ")}`,
   );
-  const allGreen = names.every((name) => last.get(name)?.status === "pass");
-  console.log(`status: ${allGreen ? "green" : "red"}`);
+  const allGreen = verdicts.every((v) => v === "green");
+  const anyRed = verdicts.some((v) => v === "red");
+  const anyStale = verdicts.some((v) => v === "stale");
+  console.log(
+    allGreen
+      ? "status: green"
+      : anyRed
+        ? "status: red"
+        : anyStale
+          ? "status: stale — the working tree changed since the last receipt; rerun: npm run signals -- verify"
+          : "status: red", // nothing verified yet (frozen all-missing semantics)
+  );
   return allGreen ? 0 : 1;
 }
 
@@ -348,6 +421,7 @@ async function main(argv: readonly string[]): Promise<number> {
       actor,
       flagBool(flags, "--fail-fast"),
       flagBool(flags, "--json"),
+      flagString(flags, "--only"),
     );
   }
   if (head === "status") {

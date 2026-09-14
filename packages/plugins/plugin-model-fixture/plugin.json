@@ -1,0 +1,16 @@
+{
+  "name": "model-fixture",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "model",
+  "description": "Deterministic offline model adapter (ANS-02). Extractive synthesis over the request's packed evidence: one paragraph block per passage citing exactly that passage's id, trimmed to the request's output budget, estimated usage reported. Single bounded call (ADR 0006). Zero capabilities: no network, no secrets; a live paid provider is a separate plugin behind the sources.md gate (INV-003).",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "modelId": "fixture-extractive-1"
+  },
+  "entry": "createModelFixture"
+}

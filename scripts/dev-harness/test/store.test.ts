@@ -16,7 +16,7 @@ import {
   sha256Hex,
   type WorkflowEvent,
   type WorkflowEventBody,
-} from "../src/index.js";
+} from "../index.js";
 
 const ISO = "2026-01-01T00:00:00.000Z";
 

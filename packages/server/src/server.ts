@@ -45,10 +45,42 @@ export interface ResearchServerOptions {
     question: string,
     onSource: (source: SourceCard) => void,
   ) => Promise<ResearchRunOutcome>;
+  /**
+   * Answer surface (ANS-05). When absent, POST /api/answer answers 501 —
+   * the route is known but not wired. The payload carries the stored answer
+   * blocks (citations resolve to stored evidence) plus the outcome flags;
+   * rendering treats block text as data, never markup.
+   */
+  answer?: ((ownerId: string, question: string) => Promise<AnswerHttpResponse>) | undefined;
   /** Override for tests; defaults to the bundled source-card page. */
   pageHtml?: string;
   /** Request body cap in bytes; default 8192. */
   maxBodyBytes?: number;
+}
+
+export interface AnswerHttpResponse {
+  requestId?: string | undefined;
+  answerId: string;
+  /** True on an exact-answer cache hit (nothing re-ran). */
+  cached: boolean;
+  /** True when the model's citations failed validation. */
+  degraded: boolean;
+  /** True when no model claims are present (evidence-only output). */
+  evidenceOnly: boolean;
+  blocks: Array<{
+    kind: "paragraph" | "list" | "caveat";
+    text: string;
+    citations: string[];
+  }>;
+  usage?:
+    | {
+        inputTokens: number;
+        outputTokens: number;
+        model: string;
+        estimated: boolean;
+      }
+    | undefined;
+  reconciliation?: { overrun: boolean; deltaInput: number; deltaOutput: number } | undefined;
 }
 
 const MAX_QUESTION = 512;
@@ -129,6 +161,61 @@ async function handleResearch(
   res.end();
 }
 
+async function handleAnswer(
+  req: IncomingMessage,
+  res: ServerResponse,
+  options: ResearchServerOptions,
+  maxBodyBytes: number,
+): Promise<void> {
+  const authHeader = req.headers.authorization ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+
+  let ownerId: string;
+  try {
+    const owner = await options.auth.authenticateOwner({
+      token,
+      clientAddress: req.socket.remoteAddress ?? "",
+    });
+    ownerId = owner.ownerId;
+  } catch (e) {
+    res.writeHead(401, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: e instanceof Error ? e.message : "unauthorized" }));
+    return;
+  }
+
+  if (options.answer === undefined) {
+    // auth passed first: never reveal surface existence to unauthenticated
+    // callers, but do tell an authenticated caller the truth.
+    res.writeHead(501, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "answer surface not configured" }));
+    return;
+  }
+
+  let question: string;
+  try {
+    const body = JSON.parse(await readBody(req, maxBodyBytes)) as { question?: unknown };
+    if (typeof body.question !== "string") throw new Error("question must be a string");
+    const trimmed = body.question.trim();
+    if (trimmed.length === 0 || trimmed.length > MAX_QUESTION) {
+      throw new Error(`question must be 1..${MAX_QUESTION} characters`);
+    }
+    question = trimmed;
+  } catch (e) {
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: e instanceof Error ? e.message : "bad request" }));
+    return;
+  }
+
+  try {
+    const payload = await options.answer(ownerId, question);
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify(payload));
+  } catch (e) {
+    res.writeHead(500, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: e instanceof Error ? e.message : "answer failed" }));
+  }
+}
+
 export function createResearchServer(options: ResearchServerOptions): Server {
   const maxBodyBytes = options.maxBodyBytes ?? 8192;
   return createHttpServer((req, res) => {
@@ -147,6 +234,15 @@ export function createResearchServer(options: ResearchServerOptions): Server {
           return;
         }
         await handleResearch(req, res, options, maxBodyBytes);
+        return;
+      }
+      if (url === "/api/answer") {
+        if (req.method !== "POST") {
+          res.writeHead(405, { "content-type": "application/json", allow: "POST" });
+          res.end(JSON.stringify({ error: "method not allowed" }));
+          return;
+        }
+        await handleAnswer(req, res, options, maxBodyBytes);
         return;
       }
       res.writeHead(404, { "content-type": "application/json" });
@@ -194,25 +290,37 @@ const DEFAULT_PAGE = `<!doctype html>
 <h1>do-sift <span>— research with receipts</span></h1>
 <form id="q">
   <input id="question" name="question" placeholder="Ask a question…" autocomplete="off" required>
-  <button type="submit">Research</button>
+  <button type="submit" id="do-research">Research</button>
+  <button type="submit" id="do-answer">Answer</button>
 </form>
 <p class="status" id="status"></p>
 <div id="cards"></div>
+<div id="answer"></div>
 <script>
-  // Fetched text is data, never instructions: only url/title/passageCount
-  // fields are rendered, inserted via createTextNode — never innerHTML.
+  // Fetched text is data, never instructions: only provenance fields and
+  // answer block text are rendered, inserted via createTextNode — never
+  // innerHTML. Answer block text comes from the model path and is treated
+  // exactly like fetched page text.
   document.getElementById("q").addEventListener("submit", async (e) => {
     e.preventDefault();
     const status = document.getElementById("status");
     const cards = document.getElementById("cards");
+    const answerBox = document.getElementById("answer");
     cards.replaceChildren();
-    status.textContent = "Researching…";
+    answerBox.replaceChildren();
     const question = document.getElementById("question").value;
-    const res = await fetch("/api/research", {
+    const mode = e.submitter && e.submitter.id === "do-answer" ? "answer" : "research";
+    status.textContent = mode === "answer" ? "Answering…" : "Researching…";
+    const res = await fetch(mode === "answer" ? "/api/answer" : "/api/research", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ question }),
     });
+    if (mode === "answer") return renderAnswer(res, status, answerBox);
+    return renderResearch(res, status, cards);
+  });
+
+  async function renderResearch(res, status, cards) {
     if (!res.ok || !res.body) {
       status.textContent = "Failed: " + (await res.text());
       return;
@@ -253,7 +361,38 @@ const DEFAULT_PAGE = `<!doctype html>
         }
       }
     }
-  });
+  }
+
+  async function renderAnswer(res, status, answerBox) {
+    if (!res.ok) {
+      status.textContent = "Failed: " + (await res.text());
+      return;
+    }
+    const data = await res.json();
+    const meta = document.createElement("p");
+    meta.className = "status";
+    meta.textContent =
+      (data.cached ? "Served from the exact-answer cache. " : "") +
+      (data.evidenceOnly
+        ? "Evidence-only output: no model claims (citations failed validation or no evidence)."
+        : "Grounded answer — every citation resolved against stored evidence.");
+    answerBox.append(meta);
+    for (const block of data.blocks) {
+      const card = document.createElement("div");
+      card.className = "card";
+      const kind = document.createElement("div");
+      kind.className = "passages";
+      kind.textContent = block.kind;
+      const text = document.createElement("p");
+      text.textContent = block.text;
+      const cites = document.createElement("div");
+      cites.className = "passages";
+      cites.textContent = "cites: " + block.citations.join(", ");
+      card.append(kind, text, cites);
+      answerBox.append(card);
+    }
+    status.textContent = data.blocks.length + " answer block(s).";
+  }
 </script>
 </body>
 </html>`;

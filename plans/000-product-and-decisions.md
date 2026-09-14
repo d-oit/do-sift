@@ -19,18 +19,18 @@ warranted or available. Tagline: "research with receipts."
 
 ## Core decisions
 
-| #   | Decision                                                                                                                                               | Record       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
-| D1  | TypeScript/Node only; no authored Python, no Python runtime                                                                                            | ADR 0001     |
-| D2  | Everything-is-a-plugin architecture, own minimal kernel; deepseek-harness adopted as concept, not dependency (spike gate: FND-08)                      | ADR 0004     |
-| D3  | Turso libSQL for durable storage; local libSQL file for dev/tests                                                                                      | ADR 0002     |
-| D4  | Evidence contract with per-source provenance stored **before** any merge/aggregation                                                                   | ADR 0003     |
-| D5  | Search mode = 0 LLM calls; answer mode = 1 bounded call (~4k in / ~700 out)                                                                            | Plan 003/004 |
-| D6  | Browser automation is policy-gated, human-paced, non-stealth; bot-prohibiting sites (LinkedIn) default-deny                                            | ADR 0005     |
-| D7  | Computer automation local-only, consent-gated, default-off                                                                                             | ADR 0005     |
-| D8  | No autonomous agent loop: model gets evidence only, no tools                                                                                           | ADR 0006     |
-| D9  | Free-first: paid calls require opt-in + verified price metadata in `sources.md`                                                                        | `sources.md` |
-| D10 | d-o-hub / d-o-it repos (do-harness, rust-self-learning-memory, chaotic_semantic_memory, do-web-doc-resolver) and LadybugDB are concept references only | risks.md     |
+| #   | Decision                                                                                                                                               | Record                                          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| D1  | TypeScript/Node only; no authored Python, no Python runtime                                                                                            | ADR 0001                                        |
+| D2  | Everything-is-a-plugin architecture, own minimal kernel; deepseek-harness adopted as concept, not dependency (spike gate: FND-10)                      | ADR 0004                                        |
+| D3  | Turso libSQL for durable storage; local libSQL file for dev/tests                                                                                      | ADR 0002                                        |
+| D4  | Evidence contract with per-source provenance stored **before** any merge/aggregation                                                                   | ADR 0003                                        |
+| D5  | Search mode = 0 LLM calls; answer mode = 1 bounded call (~4k in / ~700 out)                                                                            | Plan 003/004                                    |
+| D6  | Browser automation is policy-gated, human-paced, non-stealth; bot-prohibiting sites (LinkedIn) default-deny                                            | ADR 0005                                        |
+| D7  | Computer automation local-only, consent-gated, default-off                                                                                             | ADR 0005                                        |
+| D8  | No autonomous agent loop: model gets evidence only, no tools                                                                                           | ADR 0006                                        |
+| D9  | Free-first: paid calls require opt-in + verified price metadata in `sources.md`                                                                        | `sources.md`                                    |
+| D10 | d-o-hub / d-o-it repos (do-harness, rust-self-learning-memory, chaotic_semantic_memory, do-web-doc-resolver) and LadybugDB are concept references only | risks.md (dev-loop tooling exception: ADR 0008) |
 
 ## Token/cost policy
 

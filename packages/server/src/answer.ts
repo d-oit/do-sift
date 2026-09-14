@@ -6,14 +6,16 @@
  *   retrieve (FTS5 baseline, owner-scoped) → exact-answer cache lookup
  *   (owner + normalized question + mode + source versions + revisions;
  *   hit = zero model calls, zero budget) → pack passages under the input
- *   ceiling → budget reserve → one model call (cancellation-aware) →
- *   validate every citation against the passages ACTUALLY SENT → on any
- *   invalid citation degrade to evidence-only, no repair loop → store with
- *   cache key + revisions → settle the budget and reconcile actual usage
- *   against the reservation (overruns reported, never hidden).
+ *   ceiling minus the reserved output budget → budget reserve → one model
+ *   call (cancellation-aware) → validate every citation against the
+ *   passages ACTUALLY SENT → on any invalid citation degrade to
+ *   evidence-only, no repair loop → store with cache key + revisions →
+ *   settle the budget and reconcile actual usage against the reservation
+ *   (overruns reported, never hidden).
  *
- * Passing validation is existence, not entailment (ADR 0003/R-06). Prompt
- * packing is minimal (ANS-02's adapter refines it).
+ * Passing validation is existence, not entailment (ADR 0003/R-06). Packing
+ * reserves the full output budget from the input ceiling (ANS-02), so a
+ * packed prompt plus its completion never overflows a shared window.
  */
 import {
   buildCacheKey,
@@ -25,7 +27,13 @@ import {
   type SynthesisRequest,
 } from "@do-sift/contracts";
 import type { Client } from "@libsql/client";
-import { searchPassages, type BudgetService, type Repositories } from "@do-sift/storage";
+import {
+  hybridSearch,
+  searchPassages,
+  type BudgetService,
+  type Repositories,
+  type TextEmbedder,
+} from "@do-sift/storage";
 
 export interface AnswerRevisions {
   policyRevision?: string;
@@ -47,6 +55,11 @@ export interface AnswerServiceDeps {
   /** The model path (ANS-01 router satisfies this structurally). */
   model: ModelProvider;
   budget?: BudgetService | undefined;
+  /**
+   * When provided, retrieval fuses bm25 ranks with cosine ranks over stored
+   * embeddings (RET-02, ADR 0009); without it, plain bm25 (unchanged).
+   */
+  embedder?: TextEmbedder | undefined;
 }
 
 export interface AnswerTask {
@@ -75,7 +88,6 @@ export interface AnswerOutcome {
 }
 
 const DEFAULTS = { maxInputTokens: 4000, maxOutputTokens: 700, maxPassages: 6 };
-const OUTPUT_HEADROOM_TOKENS = 24;
 
 export class AnswerCancelledError extends Error {
   constructor() {
@@ -84,15 +96,19 @@ export class AnswerCancelledError extends Error {
   }
 }
 
+/** Pack passages so prompt + reserved completion fit the input ceiling
+ * (~4k in / 700 out, ANS-02). At least one passage always survives: an
+ * over-budget single passage degrades honestly instead of vanishing. */
 function packPassages(
   question: string,
   passages: Array<{ id: string; text: string }>,
   maxInputTokens: number,
+  maxOutputTokens: number,
 ): Array<{ id: string; text: string }> {
   const packed = [...passages];
   while (
     packed.length > 1 &&
-    estimateTokens([question, ...packed.map((p) => p.text)].join(" ")) + OUTPUT_HEADROOM_TOKENS >
+    estimateTokens([question, ...packed.map((p) => p.text)].join(" ")) + maxOutputTokens >
       maxInputTokens
   ) {
     packed.pop();
@@ -123,7 +139,9 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
   const maxPassages = options.maxPassages ?? DEFAULTS.maxPassages;
   const revisions = {
     policyRevision: options.revisions?.policyRevision ?? "p0",
-    promptRevision: options.revisions?.promptRevision ?? "pr0",
+    // pr1: packing semantics changed in ANS-02 (output budget reserved from
+    // the input ceiling) — revision bump invalidates pre-ANS-02 cache rows.
+    promptRevision: options.revisions?.promptRevision ?? "pr1",
     modelRevision: options.revisions?.modelRevision ?? "m0",
   };
 
@@ -146,7 +164,16 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
     async answer(task: AnswerTask, signal?: AbortSignal): Promise<AnswerOutcome> {
       if (signal?.aborted) throw new AnswerCancelledError();
 
-      const retrieved = await searchPassages(deps.client, task.ownerId, task.question, maxPassages);
+      const retrieved =
+        deps.embedder === undefined
+          ? await searchPassages(deps.client, task.ownerId, task.question, maxPassages)
+          : await hybridSearch(
+              deps.client,
+              task.ownerId,
+              task.question,
+              maxPassages,
+              deps.embedder,
+            );
       const sourceVersions = [...new Set(retrieved.map((p) => p.contentHash))].sort();
       const cacheKey = cacheKeyFor(task.ownerId, task.question, sourceVersions);
 
@@ -187,6 +214,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         task.question,
         retrieved.map((p) => ({ id: p.passageId, text: p.excerpt })),
         maxInputTokens,
+        maxOutputTokens,
       );
       const request: SynthesisRequest = {
         question: task.question,

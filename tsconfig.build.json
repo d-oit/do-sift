@@ -7,7 +7,6 @@
     { "path": "packages/fake-providers" },
     { "path": "packages/storage" },
     { "path": "packages/auth" },
-    { "path": "packages/server" },
-    { "path": "packages/dev-harness" }
+    { "path": "packages/server" }
   ]
 }

@@ -36,6 +36,8 @@ export const WorkflowEvent = z.object({
   outputSha256: Hex64.optional(),
   outputTail: z.string().max(2000).optional(),
   detail: z.string().max(512).optional(),
+  /** Workspace fingerprint at run time (DSH-07, plan 010); drives stale status. */
+  workspaceSha256: Hex64.optional(),
   chainHash: Hex64,
 });
 export type WorkflowEvent = z.infer<typeof WorkflowEvent>;
@@ -69,5 +71,7 @@ export const EvidenceReport = z.object({
   sensors: z.array(SensorResult),
   failed: z.array(z.string().min(1).max(64)),
   verdict: z.enum(["green", "red"]),
+  /** Workspace fingerprint at run time (DSH-07, plan 010); drives stale status. */
+  workspaceSha256: Hex64.optional(),
 });
 export type EvidenceReport = z.infer<typeof EvidenceReport>;

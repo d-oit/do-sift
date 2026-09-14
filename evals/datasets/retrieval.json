@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "description": "Held-out retrieval judgments over a fixed synthetic corpus. Labels are authorial intent for measuring the FTS5/bm25 baseline; they are not user feedback and not factual-quality ground truth (evaluate-retrieval skill).",
+  "corpus": [
+    {
+      "id": "p01",
+      "text": "The bm25 ranking function scores a match by term frequency, inverse document frequency, and a length normalization factor that keeps long documents from dominating the result list."
+    },
+    {
+      "id": "p02",
+      "text": "In bm25, term frequency saturates: the tenth occurrence of a query term adds far less score than the first, so stuffing a passage with keywords does not linearly improve its rank."
+    },
+    {
+      "id": "p03",
+      "text": "FTS5 is the SQLite virtual table module used for full-text search; it maintains an inverted index and exposes the bm25 function for ordering matches, where lower scores are better."
+    },
+    {
+      "id": "p04",
+      "text": "The retrieval layer queries the FTS5 mirror and joins back to the passages table with an owner filter on both sides, so one owner can never retrieve another owner's stored text."
+    },
+    {
+      "id": "p05",
+      "text": "Hybrid retrieval would combine vector similarity with the keyword baseline, but per the ranking gate the vector half only lands after the keyword baseline is measured on the held-out set."
+    },
+    {
+      "id": "p06",
+      "text": "Stopwords are dropped and remaining query words are OR-joined as quoted plain tokens, so MATCH operators typed by a user can never widen the search or crash the query."
+    },
+    {
+      "id": "p07",
+      "text": "The web console renders source cards with url, title, and passage count only; fetched page text is data and is never inserted into the page as markup."
+    },
+    {
+      "id": "p08",
+      "text": "Server-sent events stream one source event per stored evidence card, then a done event with the run summary; the pipeline keeps running even if the client disconnects."
+    },
+    {
+      "id": "p09",
+      "text": "Every HTTP route except the bundled index page requires an authenticated owner; bearer tokens are verified through the OIDC verifier and unauthenticated requests get 401."
+    },
+    {
+      "id": "p10",
+      "text": "The dev bypass authenticates loopback requests without a token, and it is disabled by default so a deployed server never accepts anonymous callers."
+    },
+    {
+      "id": "p11",
+      "text": "Turso is managed libSQL: the free tier advertises 500 million row reads per month, 10 million row writes, and 5 gigabytes of total storage across databases."
+    },
+    {
+      "id": "p12",
+      "text": "The local libSQL file database backs tests and development, so the whole storage layer runs offline with the same SQL the managed service speaks."
+    },
+    {
+      "id": "p13",
+      "text": "Row reads and writes are metered per month on the managed plan, so the usage ledger meters search calls, fetches, and model tokens before any external call happens."
+    },
+    {
+      "id": "p14",
+      "text": "Migrations are forward-only SQL files applied in lexicographic order; the runner records which files a database has already applied and skips them on later starts."
+    },
+    {
+      "id": "p15",
+      "text": "A citation is valid only when the cited evidence identifier was among the passages actually sent to the model; anything else fails validation and the answer degrades."
+    },
+    {
+      "id": "p16",
+      "text": "On citation failure the answer path degrades to evidence-only output with no repair loop: the stored passages become the answer blocks, each self-citing its own identifier."
+    },
+    {
+      "id": "p17",
+      "text": "Citation validation is existence checking, not entailment: the system proves the model saw the evidence, never that the model stated the truth about it."
+    },
+    {
+      "id": "p18",
+      "text": "Evidence rows are written before any aggregation or merging happens, so every downstream claim can point at provenance that existed before the claim did."
+    },
+    {
+      "id": "p19",
+      "text": "The exact-answer cache key hashes the owner, the normalized question, the mode, the language, the sorted content hashes of retrieved documents, and the policy, prompt, and model revisions."
+    },
+    {
+      "id": "p20",
+      "text": "A cache hit returns the stored answer with zero model calls and zero ledger activity; a new document in the retrieved set changes the content hashes and forces a miss."
+    },
+    {
+      "id": "p21",
+      "text": "Whitespace differences in a question normalize away, so asking the same thing twice with different spacing still hits the exact-answer cache."
+    },
+    {
+      "id": "p22",
+      "text": "Prompt revisions are part of the cache key, so changing how prompts are packed invalidates every previously stored answer in one move."
+    },
+    {
+      "id": "p23",
+      "text": "Budgets are reserved atomically in the usage ledger before any external call, reserving worst-case input tokens, output tokens, search calls, and fetches for the request."
+    },
+    {
+      "id": "p24",
+      "text": "After the call settles, the ledger reconciles actual usage against the reservation; overruns are reported honestly, never hidden or silently absorbed."
+    },
+    {
+      "id": "p25",
+      "text": "Token ceilings are estimated conservatively from character counts, so the reservation is an upper bound rather than an optimistic guess."
+    },
+    {
+      "id": "p26",
+      "text": "When a provider call fails mid-run, the reservation settles at zero actual usage and the request row is marked failed, leaving no open budget."
+    },
+    {
+      "id": "p27",
+      "text": "The site-access deny list marks bot-prohibiting sites such as linkedin.com as denied before any fetch is attempted, per the browser ethics boundary."
+    },
+    {
+      "id": "p28",
+      "text": "Browser automation is human-paced and policy-gated: no stealth, no CAPTCHA solving, and no default-enabled automation of sites that forbid robots."
+    },
+    {
+      "id": "p29",
+      "text": "The fetch path enforces an allowlist of http and https schemes, a response size cap, a timeout, and content-type checks before any page text is stored."
+    },
+    {
+      "id": "p30",
+      "text": "Fetch targets on private network ranges and cloud metadata endpoints are refused, which prevents a crafted page URL from turning the server into an SSRF proxy."
+    },
+    {
+      "id": "p31",
+      "text": "The plugin kernel validates each manifest before any code loads: name, version, kind, capabilities, permissions, and entry point must all match the contract."
+    },
+    {
+      "id": "p32",
+      "text": "Capabilities that cost money or control a computer require an explicit recorded grant, and plugins carrying them stay disabled in continuous integration."
+    },
+    {
+      "id": "p33",
+      "text": "Plugins never receive raw filesystem or network modules; they call capability-checked services that the kernel injects into the activation context."
+    },
+    {
+      "id": "p34",
+      "text": "Offline evaluation datasets are deterministic and non-empty: budget arithmetic, cache-key identity, and citation integrity are asserted without network or model calls."
+    },
+    {
+      "id": "p35",
+      "text": "Search mode runs with zero model calls by design; only the answer mode performs exactly one bounded synthesis call with a packed prompt and a hard output ceiling."
+    },
+    {
+      "id": "p36",
+      "text": "The release checklist verifies version consistency, checksums, and the software bill of materials, and it never publishes anything by itself."
+    }
+  ],
+  "queries": [
+    {
+      "name": "bm25 scoring",
+      "question": "how does the bm25 ranking function score results?",
+      "relevant": ["p01", "p02"],
+      "k": 5
+    },
+    {
+      "name": "fts5 module",
+      "question": "what is the fts5 virtual table and how does it order matches?",
+      "relevant": ["p03", "p06"],
+      "k": 5
+    },
+    {
+      "name": "owner-scoped retrieval",
+      "question": "how does retrieval keep one owner from reading another owner's passages?",
+      "relevant": ["p04"],
+      "k": 5
+    },
+    {
+      "name": "turso free tier",
+      "question": "what limits apply to the turso free tier?",
+      "relevant": ["p11"],
+      "k": 5
+    },
+    {
+      "name": "citation validation",
+      "question": "how are citations validated before an answer is shown?",
+      "relevant": ["p15", "p17"],
+      "k": 5
+    },
+    {
+      "name": "citation failure degradation",
+      "question": "what happens when the model cites evidence it never saw?",
+      "relevant": ["p16"],
+      "k": 5
+    },
+    {
+      "name": "cache key contents",
+      "question": "what goes into the exact-answer cache key?",
+      "relevant": ["p19", "p22"],
+      "k": 5
+    },
+    {
+      "name": "budget reservation",
+      "question": "how are budgets reserved before an external call?",
+      "relevant": ["p23", "p25"],
+      "k": 5
+    },
+    {
+      "name": "ssrf refusal",
+      "question": "how does the fetch path refuse private network and metadata targets?",
+      "relevant": ["p30"],
+      "k": 5
+    },
+    {
+      "name": "kernel grant gate",
+      "question": "what does the kernel require before a paid or computer plugin can activate?",
+      "relevant": ["p31", "p32"],
+      "k": 5
+    },
+    {
+      "name": "paraphrase: internal addresses",
+      "question": "what stops a page fetch from reaching internal network addresses?",
+      "relevant": ["p30"],
+      "k": 5
+    },
+    {
+      "name": "paraphrase: wrong citation blame",
+      "question": "who is accountable when a stored citation turns out to be misleading?",
+      "relevant": ["p17", "p18"],
+      "k": 5
+    },
+    {
+      "name": "ambiguous term: ranking",
+      "question": "explain ranking",
+      "relevant": ["p01", "p03"],
+      "k": 5
+    },
+    { "name": "tokenless question", "question": "what is it?", "relevant": ["p01"], "k": 5 }
+  ]
+}
