@@ -203,7 +203,20 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       if (typeof extract !== "string" || extract === "") {
         throw new Error(`no plain-text extract returned for ${fetchUrl}`);
       }
-      return { text: extract, contentType: "text/plain" };
+      // SRC-08: explaintext keeps wikitext-style heading markers
+      // ("== Early life and education ==" — observed verbatim in the
+      // QUAL run-002/003 captures). Drop standalone heading-marker
+      // lines — a bare heading fragment is itself the noise class the
+      // QUAL scorecard penalizes — and collapse the runs they leave.
+      // Prose never starts a line with '==', so a single '=' in text
+      // survives.
+      const prose = extract
+        .split("\n")
+        .filter((line) => !/^={2,}\s*[^=].*={2,}$/u.test(line.trim()))
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      return { text: prose, contentType: "text/plain" };
     };
   }
 

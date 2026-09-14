@@ -313,6 +313,76 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
     }
   });
 
+  it("strips MediaWiki heading-marker lines from extract text before storage (SRC-08)", async () => {
+    const config: AppConfig = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_SEARCH_PROVIDER: "wikipedia",
+      DO_SIFT_MODEL_PROVIDER: "fixture",
+      DO_SIFT_DEV_BYPASS: "1",
+      DO_SIFT_DEV_OWNER: "owner-a",
+      DO_SIFT_FETCH_ALLOWLIST: "en.wikipedia.org",
+    });
+    // Shape recorded from live captures (QUAL run-002/003): explaintext
+    // keeps wikitext-style heading markers as standalone lines.
+    const EXTRACT_WITH_HEADINGS = {
+      query: {
+        pages: {
+          1: {
+            pageid: 1,
+            ns: 0,
+            title: "SQLite",
+            extract:
+              "== History ==\n\nSQLite was originally written in 2000 by D. Richard Hipp.\n\n=== Design ===\n\nSQLite embeds the whole database in a single portable file.\n\nA single = sign in SQLite prose must survive the pre-pass filter.",
+          },
+        },
+      },
+    };
+    const fetchImpl: FetchLike = async (url) => {
+      if (url.includes("prop=extracts")) {
+        return new Response(JSON.stringify(EXTRACT_WITH_HEADINGS), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("list=search")) {
+        return new Response(JSON.stringify(RECORDED_SEARCH), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`stub fetch got an unexpected url: ${url}`);
+    };
+    const dns: DnsResolver = { lookup: async () => ["93.184.216.34"] };
+    const app = await composeApp(config, { dbUrl: ":memory:", port: 0, fetchImpl, dns });
+    try {
+      const base = `http://127.0.0.1:${app.port}`;
+      const research = await fetch(`${base}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "how does sqlite work?" }),
+      });
+      expect(research.status).toBe(200);
+      const answer = await fetch(`${base}/api/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "how does sqlite work?" }),
+      });
+      expect(answer.status).toBe(200);
+      const payload = (await answer.json()) as { blocks: Array<{ text: string }> };
+      expect(payload.blocks.length).toBeGreaterThan(0);
+      for (const block of payload.blocks) {
+        // No wikitext heading markers may reach the evidence store.
+        expect(block.text).not.toContain("==");
+        expect(block.text).not.toMatch(/^=+[^=]*=+$/m);
+      }
+      const joined = payload.blocks.map((b) => b.text).join("\n");
+      expect(joined).toContain("portable file"); // real prose stored
+      expect(joined).toContain("single = sign"); // single '=' in prose survives
+    } finally {
+      await app.close();
+    }
+  });
+
   it("refuses a redirect to a host outside the exhaustive allowlist (security review fixture)", async () => {
     const config: AppConfig = parseEnvConfig({
       ...BASE_ENV,

@@ -47,10 +47,10 @@ Exit: replay test passes; bypass test fails closed.
 
 ### QUAL task table
 
-| ID      | Task                                                                                                                                                                                          | Status      |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| QUAL-01 | Manual quality gate v1: repeatable protocol + first recorded run over the live research path (evidence quality, NOT model quality — only the fixture model exists)                            | done        |
-| QUAL-02 | Hybrid retrieval on the live path (RET-04 flip): re-run the 8-question protocol with `DO_SIFT_EMBEDDER=fastembed` (run-003) and compare against run-002, focused on the F3 doppelganger cases | in-progress |
+| ID      | Task                                                                                                                                                                                          | Status |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| QUAL-01 | Manual quality gate v1: repeatable protocol + first recorded run over the live research path (evidence quality, NOT model quality — only the fixture model exists)                            | done   |
+| QUAL-02 | Hybrid retrieval on the live path (RET-04 flip): re-run the 8-question protocol with `DO_SIFT_EMBEDDER=fastembed` (run-003) and compare against run-002, focused on the F3 doppelganger cases | done   |
 
 ### QUAL-01 decomposition (2026-09-14, htn-planner workflow per plan 009)
 
@@ -158,6 +158,66 @@ fastembed model cache is warm. Ordered subtasks:
 
 Acceptance: run-003 recorded with the comparison; no claim beyond the
 recorded authorial scores and their limits; still no live tests in CI.
+
+### QUAL-02 evidence (2026-09-14, background quality agent) — hybrid live flip measured, F3 unchanged
+
+**Files:** `evals/quality/run-003-2026-09-14.json` (8 cases, schema
+mirrors run-002 + `comparison` object: per-dimension deltas,
+`doppelgangerCases`, explicit `f3` verdict; raw captures + incident
+files under gitignored `.do-harness/qual-run-003/`).
+
+**Result:** aggregates identical to run-002 — retrieval 0.6875,
+extraction 0.5625, citation/honesty/injection 1.0, meanAll 0.85.
+Hybrid mechanism verified end-to-end on the live path: `embedded ==
+passagesStored` (317/317) in all 8 research runs, local ONNX only, zero
+external calls; startup log labels `embedder: fastembed`.
+
+**F3 verdict: unchanged** — with the honest mechanics spelled out:
+doppelganger SOURCES are provider-side (search-hit selection): 3 of 4
+byte-identical to run-002's lists (02 Mike Berners-Lee, 03 singer +
+album, 08 The Wall — Live in Berlin), the 4th changed by provider
+variance (04: NRW state → Westphalia region — closer but still not the
+treaty). Hybrid RRF DID re-rank stored passages in the answer (dominant
+blocks on-topic: 02:4/5, 03:5/6, 04:6/6, 08:4/5; direct-answer passages
+lead 04 and 08), but re-ranking cannot unstore what the provider
+returns — union retrieval stays 0.6875 with the 0.5s in exactly the
+four doppelganger cases. The lever that would move F3 is source
+selection (provider-side), not answer-side ranking.
+
+**First live validation of the SRC-07 politeness fixes:** case-07's
+research hit a real 429 — the adapter surfaced an SSE error event,
+honored `Retry-After` (no hot retry), and one bounded retry after a
+60 s pause succeeded. Incident artifacts preserved
+(`case-07-research-429-attempt1.txt`, `case-07-answer-attempt1-empty-store.json`).
+Case-06 hit the rate-limit window: 5 of 6 fetches failed and the run
+stayed honestly degraded (2 passages stored, answer still on-topic,
+R=1).
+
+**New finding F9 (honesty gap, outlives the run):** the empty-store
+answer (case-07 attempt 1) still claimed `degraded:false` while
+composing 6 cross-question blocks — when a research run produces
+nothing, the answer path draws on the owner corpus's older evidence
+(owner-scoped, cross-question by design) with no signal that nothing
+case-relevant exists. Recorded as R-15; the natural remedy is
+per-question evidence linkage in the answer outcome (e.g. an
+`evidenceFromRun` flag or run-scoped retrieval scoping) before a live
+model ever lands — ANS-scope.
+
+**Limits (repeated per protocol):** single-annotator authorial labels;
+fixture model — answer fluency/completeness not scored; provider
+behavior on 2026-09-14 — re-run rather than extrapolate (R-06).
+
+**Commands:** service run per `docs/deployment.md` + `DO_SIFT_EMBEDDER=fastembed`
+(port 18113, `:memory:` db, default fetch posture — identical to run-002
+except the embedder); 8× (research + answer) sequential, each asked
+once; zero template-JSON and zero instruction-shaped content across all
+18 files (F1 fix holds under embed-on-store).
+
+**Next suggested task:** SRC-08 (heading-marker pre-pass, unblocked —
+run-003 is the comparison baseline for its run-004); then the F9/ANS
+honesty slice; source-selection quality (F3) is provider-side and needs
+a search-layer design pass (e.g. more hits + local re-rank) before any
+claim.
 
 ### OPS-05 decomposition (2026-09-14, htn-planner workflow per plan 009)
 
