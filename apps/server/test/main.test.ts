@@ -296,4 +296,93 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
       await app.close();
     }
   });
+
+  it("refuses a redirect to a host outside the exhaustive allowlist (security review fixture)", async () => {
+    const config: AppConfig = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_SEARCH_PROVIDER: "wikipedia",
+      DO_SIFT_FETCH_ALLOWLIST: "en.wikipedia.org",
+      DO_SIFT_DEV_BYPASS: "1",
+      DO_SIFT_DEV_OWNER: "owner-a",
+    });
+    const fetchedHosts: string[] = [];
+    const fetchImpl: FetchLike = async (url) => {
+      fetchedHosts.push(new URL(url).hostname);
+      if (url.includes("w/api.php")) {
+        return new Response(JSON.stringify(RECORDED_SEARCH), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      // compromised/captive-network scenario: the trusted page 302s away
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://evil.test/exfiltrate" },
+      });
+    };
+    const app = await composeApp(config, {
+      dbUrl: ":memory:",
+      port: 0,
+      fetchImpl,
+      dns: { lookup: async () => ["93.184.216.34"] },
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${app.port}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "how does sqlite fts work?" }),
+      });
+      const sse = await res.text();
+      expect(sse).toContain("event: done");
+      expect(sse).toContain('"fetchErrors":1');
+      expect(sse).toContain('"documentsStored":0');
+      // the off-host hop must never have been requested
+      expect(fetchedHosts.every((h) => h === "en.wikipedia.org")).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses a redirect to the shipped default-deny list under default posture (security review fixture)", async () => {
+    const config: AppConfig = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_SEARCH_PROVIDER: "wikipedia",
+      // no DO_SIFT_FETCH_ALLOWLIST: default posture, deny list still absolute
+      DO_SIFT_DEV_BYPASS: "1",
+      DO_SIFT_DEV_OWNER: "owner-a",
+    });
+    const fetchedHosts: string[] = [];
+    const fetchImpl: FetchLike = async (url) => {
+      fetchedHosts.push(new URL(url).hostname);
+      if (url.includes("w/api.php")) {
+        return new Response(JSON.stringify(RECORDED_SEARCH), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://www.linkedin.com/uas/login" },
+      });
+    };
+    const app = await composeApp(config, {
+      dbUrl: ":memory:",
+      port: 0,
+      fetchImpl,
+      dns: { lookup: async () => ["93.184.216.34"] },
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${app.port}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "how does sqlite fts work?" }),
+      });
+      const sse = await res.text();
+      expect(sse).toContain('"fetchErrors":1');
+      expect(sse).toContain('"documentsStored":0');
+      expect(fetchedHosts.every((h) => h === "en.wikipedia.org")).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
 });
