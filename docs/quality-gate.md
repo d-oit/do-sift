@@ -41,7 +41,13 @@ note. `n/a` is allowed only where the dimension genuinely cannot occur
 ## Procedure
 
 1. Start the service with the live search provider and a scratch
-   in-memory database (`docs/deployment.md` "Running").
+   in-memory database (`docs/deployment.md` "Running"). Port/process
+   hygiene (distilled after runs 002-004 hit this three times): verify
+   the port is FREE before starting — a stale do-sift process from an
+   earlier session must be terminated first; after the run, kill the
+   whole process tree (`taskkill /F /T` on the tree root catches the
+   bash→npx→cmd→tsx→node chain), verify no orphan node child survived
+   and the port is clear, and record the exit.
 2. For each question in the run's fixed list, `POST /api/research` and
    then `POST /api/answer` (same question); save both raw responses.
 3. Score each case against the scorecard; write the run artifact with:

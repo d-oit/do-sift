@@ -195,10 +195,15 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         fetchImpl,
         checkHost: (host) => siteAccess.assertAllowed(host),
       });
+      // formatversion=2 (SRC-09): query.pages is an ARRAY. The v1 map
+      // shape is tolerated for robustness, but the expected shape is v2.
       const body = JSON.parse(result.text) as {
-        query?: { pages?: Record<string, { extract?: unknown }> };
+        query?: {
+          pages?: Record<string, { extract?: unknown }> | Array<{ extract?: unknown }>;
+        };
       };
-      const page = Object.values(body.query?.pages ?? {})[0];
+      const pages = body.query?.pages;
+      const page = Array.isArray(pages) ? pages[0] : Object.values(pages ?? {})[0];
       const extract = page?.extract;
       if (typeof extract !== "string" || extract === "") {
         throw new Error(`no plain-text extract returned for ${fetchUrl}`);

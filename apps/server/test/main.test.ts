@@ -226,18 +226,18 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
       ],
     },
   };
-  /** Shape recorded from the live plain-text extract endpoint (SRC-07). */
+  /** v2 shape (SRC-09): formatversion=2 makes query.pages an ARRAY. */
   const RECORDED_EXTRACT = {
     query: {
-      pages: {
-        1: {
+      pages: [
+        {
           pageid: 1,
           ns: 0,
           title: "SQLite",
           extract:
             "SQLite embeds the whole database in a single portable file.\n\nThe FTS5 extension ranks keyword matches with bm25 scoring.",
         },
-      },
+      ],
     },
   };
 
@@ -252,9 +252,11 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
     });
     let searchCalls = 0;
     let extractInit: RequestInit | undefined;
+    let extractUrl = "";
     const fetchImpl: FetchLike = async (url, init) => {
       if (url.includes("prop=extracts")) {
         extractInit = init;
+        extractUrl = url;
         return new Response(JSON.stringify(RECORDED_EXTRACT), {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -290,6 +292,8 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
       expect(extractInit?.headers).toMatchObject({
         "user-agent": expect.stringContaining("do-sift"),
       });
+      // SRC-09: officially recommended formatversion=2 on API calls.
+      expect(extractUrl).toContain("formatversion=2");
 
       const answer = await fetch(`${base}/api/answer`, {
         method: "POST",

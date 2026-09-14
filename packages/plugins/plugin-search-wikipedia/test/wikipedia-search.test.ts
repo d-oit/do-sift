@@ -164,6 +164,7 @@ describe("search mapping (recorded fixtures)", () => {
     await wiki.search({ text: "q", ownerId: "owner-a" }, { maxHits: 1, timeoutMs: 10_000 });
     expect(log[0]?.url).toContain("srlimit=1");
     expect(log[0]?.url).toContain("action=query");
+    expect(log[0]?.url).toContain("formatversion=2");
     expect(log[0]?.init?.headers).toMatchObject({
       "user-agent": expect.stringContaining("do-sift"),
     });
@@ -247,20 +248,20 @@ describe("error mapping (bounded, polite)", () => {
 describe("wikipediaExtractUrl (SRC-07: plain-text content path)", () => {
   it("maps a wiki page URL to the extracts API URL with an encoded title", () => {
     expect(wikipediaExtractUrl("https://en.wikipedia.org/wiki/SQLite")).toBe(
-      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&redirects=1&titles=SQLite",
+      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&formatversion=2&redirects=1&titles=SQLite",
     );
     expect(wikipediaExtractUrl("https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall")).toBe(
-      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&redirects=1&titles=Fall_of_the_Berlin_Wall",
+      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&formatversion=2&redirects=1&titles=Fall_of_the_Berlin_Wall",
     );
   });
 
   it("decodes percent-encoded slugs and re-encodes the title parameter", () => {
     expect(wikipediaExtractUrl("https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F")).toBe(
-      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&redirects=1&titles=What_Happened_to_the_Heart%3F",
+      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&formatversion=2&redirects=1&titles=What_Happened_to_the_Heart%3F",
     );
     // %20 → space → back to %20: the API accepts either form
     expect(wikipediaExtractUrl("https://en.wikipedia.org/wiki/A%20B")).toBe(
-      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&redirects=1&titles=A%20B",
+      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&formatversion=2&redirects=1&titles=A%20B",
     );
   });
 
@@ -268,7 +269,7 @@ describe("wikipediaExtractUrl (SRC-07: plain-text content path)", () => {
     // A crafted /wiki/ slug whose decoded title contains & and = must come
     // out as one literal titles= value, not extra api.php parameters.
     expect(wikipediaExtractUrl("https://en.wikipedia.org/wiki/A%26action%3Draw%26evil%3D1")).toBe(
-      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&redirects=1&titles=A%26action%3Draw%26evil%3D1",
+      "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&formatversion=2&redirects=1&titles=A%26action%3Draw%26evil%3D1",
     );
   });
 

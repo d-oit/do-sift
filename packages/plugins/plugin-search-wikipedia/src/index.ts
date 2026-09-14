@@ -115,7 +115,7 @@ export function wikipediaExtractUrl(wikiUrl: string): string | undefined {
   } catch {
     return undefined;
   }
-  return `https://${HOST}/w/api.php?action=query&prop=extracts&explaintext=1&format=json&redirects=1&titles=${encodeURIComponent(title)}`;
+  return `https://${HOST}/w/api.php?action=query&prop=extracts&explaintext=1&format=json&formatversion=2&redirects=1&titles=${encodeURIComponent(title)}`;
 }
 
 /**
@@ -198,7 +198,8 @@ export function createWikipediaSearch(deps: WikipediaSearchDeps = {}): Wikipedia
 
       const url =
         `https://${HOST}/w/api.php?action=query&list=search&format=json` +
-        `&srsearch=${encodeURIComponent(q.text)}&srlimit=${limits.maxHits}`;
+        `&formatversion=2&srsearch=${encodeURIComponent(q.text)}` +
+        `&srlimit=${limits.maxHits}`;
       const effectiveSignal =
         signal === undefined
           ? AbortSignal.timeout(limits.timeoutMs)
