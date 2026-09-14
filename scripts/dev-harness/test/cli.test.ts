@@ -11,8 +11,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { appendEvent, readEvents, SENSOR_DEFS, sha256Hex } from "../index.js";
+
+// The CLI tests spawn real node+tsx processes; under full-suite parallel
+// load on Windows a cold spawn can exceed the 5s default (observed once:
+// `list` timed out at 5000ms in a verification-set run). 30s headroom —
+// every assertion stays unchanged.
+vi.setConfig({ testTimeout: 30_000 });
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const TSX_CLI = join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
