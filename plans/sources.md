@@ -41,7 +41,14 @@ re-verify before relying on an entry older than 90 days.
   2026-09-14 (SRC-07):** live page content now uses the same action API's
   plain-text extract endpoint (`prop=extracts&explaintext=1`) — same
   host, same terms, no HTML-stripping pipeline (QUAL run-001 finding F1
-  showed template JSON leaking through HTML stripping).
+  showed template JSON leaking through HTML stripping). **Addendum
+  2026-09-14 (SRC-08, official extension source + live checks):**
+  `explaintext` full-page extracts render every h1–h6 as a standalone
+  `== Title ==` line (host pre-pass strips these); raw TeX arrives as
+  whitespace-indented `{\displaystyle…}` lines; citation markers do not
+  occur on enwiki (T197266 was eswiki); T208132/T201946 newline quirks
+  remain open with no planned fix. `formatversion=2` is officially
+  recommended (JSON shape only — array `query.pages`) — pending adoption.
 - **Activation**: approved for SRC-06 (free, keyless, terms recorded).
   Model/search providers below remain the template for any future entry.
 

@@ -332,7 +332,7 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
             ns: 0,
             title: "SQLite",
             extract:
-              "== History ==\n\nSQLite was originally written in 2000 by D. Richard Hipp.\n\n=== Design ===\n\nSQLite embeds the whole database in a single portable file.\n\nA single = sign in SQLite prose must survive the pre-pass filter.",
+              "== History ==\n\nSQLite was originally written in 2000 by D. Richard Hipp.\n\n=== Design ===\n\nSQLite embeds the whole database in a single portable file.\n\nA single = sign in SQLite prose must survive the pre-pass filter.\n\n    {\\displaystyle a^{2}+b^{2}=c^{2}} appears in SQLite documentation examples.",
           },
         },
       },
@@ -378,6 +378,10 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
       const joined = payload.blocks.map((b) => b.text).join("\n");
       expect(joined).toContain("portable file"); // real prose stored
       expect(joined).toContain("single = sign"); // single '=' in prose survives
+      // TextExtracts quirk (official extension source, 2026-09-14): raw
+      // TeX arrives as whitespace-INDENTED {\displaystyle…} lines — the
+      // line-start-anchored heading filter must never touch them.
+      expect(joined).toContain("displaystyle");
     } finally {
       await app.close();
     }

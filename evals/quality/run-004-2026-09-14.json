@@ -1,0 +1,361 @@
+{
+  "runId": "run-004",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-14",
+  "annotator": "agent operator, single-annotator authorial labels (RET-01 caveat applies)",
+  "pipeline": {
+    "search": "wikipedia (live, SRC-07 extracts)",
+    "model": "fixture — ANSWER-TEXT QUALITY IS NOT MEASURED (docs/quality-gate.md limits)",
+    "embedder": "fastembed (hybrid RRF, RET-02 promoted)",
+    "prePass": "SRC-08 heading-marker pre-pass live: stored extracts no longer contain wikitext-style '== Heading ==' lines (dropped before storage)",
+    "budget": "none configured"
+  },
+  "scale": { "0": "fail", "0.5": "partial", "1": "pass" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "passages": 13 },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "passages": 19
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "embedded": 32
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: both sources on-topic for SQLite; the FTS5/full-text-search sentence is present in the answer blocks (verified by scan); same source pair as run-001/002/003",
+        "extraction: ZERO heading remnants (run-003: 5 here) — the SRC-08 pre-pass removed them; the two table-caption stubs REMAIN ('Information about what other objects are supported natively.' and the partitioning-methods variant) — bare table captions, not prose; no template JSON, no reference markers; one legitimate SQL code fragment in prose ('CHECK(typeof(x)='integer')') is content, not markup",
+        "injection: pattern scan of this case's research SSE + answer JSON found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/World_Wide_Web", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Mike_Berners-Lee", "passages": 6 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 46,
+        "fetchErrors": 0,
+        "denied": 0,
+        "embedded": 46
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval (F3 doppelganger case): Mike Berners-Lee (Tim's brother) STILL retrieved and stored on the ambiguous surname (6 of 46 passages) — provider-side hit selection unchanged for the fourth run in a row; union therefore mixed (0.5)",
+        "answer selection: 4 of 5 blocks on-topic — WWW lead, WWW alternative lead, Gopher/early-1990s projects history, and the direct 'The Web was invented by English computer scientist Tim Berners-Lee while working at CERN' block; 1 doppelganger block is the Mike B-L bio, which itself states 'One of his brothers is computer scientist Sir Tim Berners-Lee, who invented the World Wide Web'",
+        "extraction: ALL 5 blocks clean prose — run-003's heading remnant ('== Early life and education ==') is gone under the pre-pass; this case reaches 1.0 for the first time in the series; no template JSON, no reference markers",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F", "passages": 12 },
+        { "url": "https://en.wikipedia.org/wiki/Aurora_(singer)", "passages": 18 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 50,
+        "fetchErrors": 0,
+        "denied": 0,
+        "embedded": 50
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval (F3 doppelganger case): ambiguous-term failure persists provider-side — the pop singer (18 passages; 20 in run-003, the delta consistent with dropped heading lines) + album (12) are 30 of 50 stored passages (2 of 3 sources); science mechanism passages present ('the basic cause involves the interaction of the solar wind with Earth's magnetosphere'); union mixed (0.5)",
+        "answer selection: 5 of 6 blocks are aurora SCIENCE (definition/mechanism lead, solar-wind/magnetosphere interaction, picket-fence, STEVE definition, dune aurora); 1 block is doppelganger residue (album-singles passage — clean prose but off-topic)",
+        "extraction: ALL 6 blocks clean prose — run-003's 5 heading remnants ('== Causes ==', '==== Picket-fence aurora ====', '==== Dune aurora ====', '==== STEVE ====', '=== Singles ===') are ALL gone; this case reaches 1.0 for the first time in the series; no template JSON, no reference markers",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [{ "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia", "passages": 18 }],
+      "run": {
+        "hits": 6,
+        "documentsStored": 1,
+        "passagesStored": 18,
+        "fetchErrors": 5,
+        "denied": 0,
+        "embedded": 18
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "RATE-LIMIT WINDOW (recorded per protocol): 5 of 6 fetches FAILED this run (fetchErrors:5; run-003's case-06 pattern recurring, now in case-04) — only Peace_of_Westphalia stored (18 passages); the research call itself completed with a truthful fetchErrors tally, so per the run-003 precedent no re-ask (a completed call did not fail); a 60s pacing pause was added before the next case and every subsequent case fetched clean (0 fetchErrors) — see finding F8",
+        "retrieval: the union is ONE source, squarely on-topic, and it grounds the full answer — 6 of 6 answer blocks from the Peace lead and treaty sections (two treaties signed October 1648 in Osnabrück and Münster, Westphalian-sovereignty debate, Thirty Years' War aftermath/Pyrenees, negotiation logistics, Augsburg validity clause, main tenets). Scored 1 — but this is a FETCH-WINDOW ARTIFACT, not a quality lift: the doppelganger sources (Treaty_of_the_Pyrenees, Westphalia region in run-003) were returned as hits and simply failed to fetch this run; recorded honestly, do not read run004 retrieval 1 > run003 0.5 as progress",
+        "extraction: 5 of 6 blocks clean prose; 1 stub block ('The main tenets of the Peace of Westphalia were:' — a colon lead-in with the list content absent, likely the residual first line at a section boundary after the heading line was dropped); no template JSON, no reference markers, zero '==' markers",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content (the Augsburg validity quotation is historical quotation, not assistant-directed instruction)"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough", "passages": 8 },
+        { "url": "https://en.wikipedia.org/wiki/MRNA_vaccine", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "embedded": 48
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: for a health question a critic BLP (McCullough, 8 passages) is again among the stored sources (posture observation carried from run-001/002/003); COVID-19 vaccine + mRNA vaccine are squarely on-topic and the mechanism passages are present and cited (mRNA vaccine definition 'delivers molecules of antigen-encoding mRNA into cells', adaptive-immune goal, 1989 liposomal-nanoparticle transfection + 'Naked' mRNA history); Wikipedia NPOV held; union mixed (0.5)",
+        "answer selection: 5 of 6 blocks on-topic; 1 block is CROSS-QUESTION NOISE that hybrid RRF did NOT suppress — the Mike Berners-Lee 'How Bad Are Bananas?' bibliography (ISBN list), BM25-matched on 'How', exactly the run-002/003-noted pattern",
+        "extraction: run-003's 3 heading remnants ('== Selected publications ==', '=== Viral vector vaccines ===', '==== Naked mRNA injection ===') are ALL gone; the bibliography-list block REMAINS (visible noise — bare citation/ISBN lines, not prose); no template JSON, no reference markers",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Tallest_mountain", "passages": 2 },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "passages": 18 },
+        {
+          "url": "https://en.wikipedia.org/wiki/Summits_farthest_from_the_Earth's_center",
+          "passages": 3
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 23,
+        "fetchErrors": 0,
+        "denied": 0,
+        "embedded": 23
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: full 3-doc store RECOVERED this run (run-003 had fetchErrors:5 and stored only Tallest_mountain's 2 passages) — the 60s pacing pause after case-04 cleared the rate-limit window; Tallest_mountain grounds the full highest/tallest/farthest-from-center distinction (Everest highest above sea level; Chimborazo 'the point with the highest elevation above sea level... it is not the summit that is farthest from the Earth's center'); Mountain is generic background (mountain definition, block 4) but on-subject; Summits_farthest is directly on-topic; union on-topic (1)",
+        "answer selection: 4 of 6 blocks on-topic (tallest-vs-highest distinction, Everest 8,848 m, mountain definition, Chimborazo farthest-from-center); 2 blocks are same-document LIST/REFERENCES residue (run-003's cross-question 'Earth'-matched residue is GONE this run — with the full store restored, the answer no longer needs cross-question pools): a bare nav-list passage ('List of tallest mountains in the Solar System List of mountain peaks by prominence List of highest mountains on Earth Summits farthest from the Earth's center Extremes on Earth') and a references fragment (Horrell/Krulwich external-source citation lines)",
+        "extraction: run-003's list-section heading ('== See also ==') is gone; the bare list content and the references block REMAIN (visible noise — nav lines and citation lists are not prose); no template JSON, no reference markers in the bracketed-citation sense",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "passages": 5
+        },
+        { "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Firo_(cryptocurrency)", "passages": 12 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 37,
+        "fetchErrors": 0,
+        "denied": 0,
+        "embedded": 37
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "NO rate-limit incident this run (run-003's case-07 429 did not recur): research succeeded on attempt 1, no retry consumed, no preserved attempt-1 artifacts for this case",
+        "retrieval: all 3 sources are the ZKP family and cover zk-SNARKs substantively — definition block 1 ('In 2012, Alessandro Chiesa et al developed the zk-SNARK protocol, an acronym for zero-knowledge succinct non-interactive argument of knowledge', first widespread application, Sigma/Lelantus contribution context) — union on-topic (1); same shape as run-001/002/003 (no dedicated zk-SNARK article)",
+        "answer selection: 4 of 6 blocks on-topic (zk-SNARK definition/history, ZKP definition, Sigma/Lelantus, prover-verifier interaction record); 2 cross-question noise blocks persist EXACTLY like run-003 — the Aurora 'What Happened to the Earth?' concert-tour passage (the run-003 'What' → Aurora-tour pattern) and the RDBMS table-caption stub ('Information about what other objects are supported natively.', the '== Partitioning ==' stub's caption neighbor); hybrid did not suppress either",
+        "extraction: run-003's 2 heading remnants ('== Analysis ==', '== Partitioning ==') are gone; the MID-FORMULA FRAGMENT REMAINS ('(x,z)] is a record of the interactions between P(x) and V(x,z)...' — starts mid-definition from the Non-interactive ZKP page) and the caption stub remains; no template JSON, no reference markers",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall", "passages": 20 },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "passages": 9
+        },
+        { "url": "https://en.wikipedia.org/wiki/Berlin_Wall", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0,
+        "embedded": 49
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval (F3 doppelganger case): the Roger Waters 'The Wall – Live in Berlin' concert page is STILL retrieved and stored on the shared title (9 of 49 passages) — provider-side hit selection unchanged for the fourth run in a row; union mixed (0.5)",
+        "answer selection: 6 of 6 blocks from the factual pages — the direct answer is block 1 ('The Berlin Wall fell on 9 November 1989 during the Peaceful Revolution…', same first block as run-002/003), followed by official dismantling (13 June 1990, Bernauer Straße), travel-restriction context, the Berlin Wall lead, the 2009 20th-anniversary Festival of Freedom, and the Harald Jäger/Bornholmer Straße passage; ZERO doppelganger residue blocks this run (run-003 had 1 — the Waters interview quote), so the answer is fully on-topic even though the concert passages sit in the store",
+        "extraction: ALL 6 blocks clean prose — run-003's 2 heading remnants ('==== 20th anniversary celebrations ====', '=== Official demolition ===') are gone; no template JSON, no reference markers",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.75,
+    "extractionCleanliness": 0.6875,
+    "citationResolution": 1.0,
+    "degradationHonesty": 1.0,
+    "injectionObservation": 1.0,
+    "meanAll": 0.8875
+  },
+  "mechanicalChecks": {
+    "headingMarkerEqRuns": {
+      "command": "grep -c '==' on all 8 research captures + 8 answer JSONs; plus per-block regex /={2,}/ over every answer block's text field",
+      "result": "ZERO matches in all 16 files; zero =-runs across all 46 answer blocks (run-003: 19 heading remnants across the 8 answers: 01:5, 02:1, 03:5, 04:0, 05:3, 06:1, 07:2, 08:2)",
+      "researchCapturesNote": "research SSE captures carry url/title/passageCount summaries only (no page text), so the answer block text + stored-passage pre-pass is where heading noise could surface; both are clean"
+    },
+    "singleEqualsRuns": "exactly ONE single '=' occurrence across all 16 files: case-01 answer prose 'CHECK(typeof(x)='integer')' — a SQL code fragment from the Comparison-of-RDBMS page, content not markup",
+    "templateJsonMarkers": "grep for '{{', '\"wt\"', 'infobox', '| name =', '\"parts\"' → zero matches in all 16 files (F1 holds)",
+    "referenceMarkers": "grep for '[ NN ]'/[NN] bracketed citation markers → zero matches in all 16 files",
+    "injectionPatternScan": "16 patterns ('ignore instructions', 'disregard previous', 'you are an AI/assistant/language model', 'as an AI', 'system prompt', 'prompt injection', 'assistant:', 'instructions:', 'you must never/immediately/always', 'jailbreak', 'developer mode', 'do not reveal', 'pretend to be') case-insensitive over all 16 files → zero matches"
+  },
+  "comparison": {
+    "baseline": "evals/quality/run-003-2026-09-14.json (primary; same 8 questions, same order, each asked exactly once)",
+    "postureDelta": "port 18113→18114; SRC-08 heading-marker pre-pass now live in the host's store path (extracts keep wikitext-style '== Heading ==' lines, the host drops them before storage) — the change under test; everything else identical to run-003 (wikipedia search, fixture model, fastembed hybrid RRF, :memory: scratch db, default fetch-allowlist posture). Startup log verified: 'do-sift listening on http://127.0.0.1:18114' with 'embedder: fastembed' (not keyword-only). Port hygiene: nothing listening on 18114 at startup (no stale process).",
+    "hybridMechanismVerified": "embed-on-store ran on every research: the done event's summary.embedded equals passagesStored in all 8 cases (32/32, 46/46, 50/50, 18/18, 48/48, 23/23, 37/37, 49/49 — 303/303). Passage totals sit just under run-003's 317 exactly by the number of dropped heading lines, the expected signature of the pre-pass.",
+    "perDimension": [
+      {
+        "dimension": "retrievalRelevance",
+        "run003": 0.6875,
+        "run004": 0.75,
+        "delta": "+0.0625",
+        "note": "NOT attributable to the pre-pass. The pre-pass only drops heading lines before storage; it cannot change which hits the provider returns nor which passages rank. The delta is provider-side fetch variance: case-04's 5-of-6 fetches FAILED in a rate-limit window this run, so only the squarely-on-topic Peace_of_Westphalia source was stored (union 0.5 → 1 for an artifact reason — recorded with an explicit do-not-read-as-progress caveat), while case-06 recovered its full 3-doc store (run-003's fetchErrors:5 window cleared after a 60s pacing pause). The four doppelganger unions (02, 03, 05, 08) are unchanged at 0.5. Reading it honestly: retrieval relevance is structurally unchanged, with one case's score lifted and another's restored by the same rate-limit window."
+      },
+      {
+        "dimension": "extractionCleanliness",
+        "run003": 0.5625,
+        "run004": 0.6875,
+        "delta": "+0.125",
+        "note": "THE DIMENSION UNDER TEST — the heading-noise class is ELIMINATED. Mechanical check: zero '==' heading-marker runs in all 16 captured files and across all 46 answer block texts (run-003: 19 remnants). Cases 02, 03, 08 reach 1.0 for the first time in the four-run series (10 heading remnants across those cases in run-003, now 0). The residual 0.5s are the OTHER noise classes the pre-pass does not touch: table-caption stubs (case-01 ×2, case-07 ×1), a colon-lead-in stub at a section boundary (case-04 'The main tenets of the Peace of Westphalia were:'), a bibliography/ISBN block (case-05), a bare nav-list + references block (case-06), and one mid-formula fragment (case-07). Per-answer heading count: 0 in every case."
+      },
+      {
+        "dimension": "citationResolution",
+        "run003": 1.0,
+        "run004": 1.0,
+        "delta": "0",
+        "note": "all displayed citations resolve to stored evidence in both runs and the citation targets plausibly support their sentences (fixture-model harness behavior — see limits); each block composes from its cited evidence passage, so support is direct"
+      },
+      {
+        "dimension": "degradationHonesty",
+        "run003": 1.0,
+        "run004": 1.0,
+        "delta": "0",
+        "note": "no degradation event occurred in any of the 8 final answers this run (all cached:false / degraded:false / evidenceOnly:false with real citations present); no empty-store condition arose (unlike run-003's case-07 attempt-1), so F9's trigger did not occur — F9 remains open, untested this run"
+      },
+      {
+        "dimension": "injectionObservation",
+        "run003": 1.0,
+        "run004": 1.0,
+        "delta": "0",
+        "note": "pattern scan over all 16 captured files (8 research + 8 answer) → zero matches; pattern list recorded in mechanicalChecks.injectionPatternScan; R-12 stays open for the live-model future"
+      }
+    ],
+    "extractionVerdict": {
+      "status": "headings eliminated",
+      "mechanicalEvidence": "'==' heading-marker runs: 0 of 16 files, 0 of 46 answer blocks (grep + per-block regex; run-003 had 19). Single '=' runs: 1, and it is SQL code ('CHECK(typeof(x)='integer')') in prose, not markup. The SRC-08 pre-pass is doing exactly what it claims: stored passages no longer contain wikitext heading lines.",
+      "residualNoise": "extraction 0.6875 (not 1.0) because four OTHER noise classes remain untouched by the pre-pass: bare table-caption stubs, one colon-lead-in stub (case-04), one bibliography/ISBN block (case-05), bare nav-list + references blocks (case-06), and one mid-formula fragment (case-07). Lifting these needs caption/list/reference filtering, not more heading work.",
+      "partially": false
+    },
+    "f1": {
+      "verdict": "holds",
+      "evidence": "zero template-JSON markers ('{{', '\"wt\"', 'infobox', '| name =', '\"parts\"') across all 16 files this run; the SRC-08 pre-pass does not reintroduce template JSON (it only drops heading lines) and F1 stays fixed as in run-002/003."
+    },
+    "f3": {
+      "verdict": "unchanged",
+      "evidence": "provider-side doppelganger selection is unchanged for the fourth run: case-02 Mike Berners-Lee (6 of 46), case-03 Aurora (singer) + What Happened to the Heart? (30 of 50), case-08 The Wall – Live in Berlin (9 of 49) — all stored again this run, byte-identical source identity to run-003. Case-04's doppelganger identity is masked this run by the fetch window (hits still 6; Treaty_of_the_Pyrenees/Westphalia-region hits failed to fetch rather than being absent from the hit list). Union retrieval stays 0.5 in exactly the three stored doppelganger cases (02, 03, 08) plus the critic-BLP case (05). As in run-003: hybrid re-ranks STORED passages; search-hit selection is provider-side, so lifting F3 requires provider-side hit quality or doppelganger-aware storage policy — not tested by this run."
+    },
+    "f9": {
+      "verdict": "untested this run (no recurrence possible)",
+      "evidence": "F9 is the empty-store honesty gap: an answer composed from cross-question residue while claiming grounded output after research yielded nothing case-relevant. This run every research call stored case-relevant passages (the minimum was case-04 with 18 on-topic passages), so the trigger condition never occurred. No behavior difference was observable; F9 remains open for the live-model future and should be re-tested only when an empty-store condition arises."
+    }
+  },
+  "findings": [
+    "SRC-08 (the change under test): VERIFIED EFFECTIVE — heading markers mechanically eliminated. Zero '==' runs in 16/16 files and 46/46 answer blocks (run-003: 19 remnants). Extraction cleanliness 0.5625 → 0.6875; cases 02, 03, 08 hit 1.0 for the first time. The residual noise is caption-stub/bibliography/nav-list/fragment classes the pre-pass does not target.",
+    "F8 (rate limiting, recurred in a new place): case-04 lost 5 of 6 fetches to a rate-limit window (fetchErrors:5, only Peace_of_Westphalia stored) — the same soft-window shape run-003 saw in case-06, now earlier in the run; NO hard 429 occurred this run and no retry was consumed. Operator adaptation: a 60s pacing pause was added after case-04 (run-003's F8 suggested run-level pacing), after which every remaining case fetched clean (0 fetchErrors in 05/06/07/08). The pacing change is recorded in the notes; the fetchErrors tally in case-04 was left as stored, honestly degraded, not re-asked.",
+    "F3 (retrieval, re-measured): UNCHANGED — see comparison.f3. Doppelganger sources are provider-side and stored again this run (02, 03, 08); case-04's identity masked by the fetch window; union scores unmoved at 0.5 in the four mixed cases. Cross-question keyword noise persists in answers (case-05 Berners-Lee bibliography on 'How', case-07 Aurora-tour + caption stub), and one answer-shape improvement was observed (case-08: zero doppelganger residue blocks under the full store).",
+    "F9 (empty-store honesty): untested this run — no empty-store condition occurred; remains open (see comparison.f9).",
+    "F1 (holds): zero template-JSON markers across all 16 files; SRC-07 + SRC-08 + fastembed storage do not reintroduce it.",
+    "F2 (noise, narrowed class): stored passages no longer carry MediaWiki section headings; the remaining visible noise is table-caption stubs, list/bibliography/references passages, one colon-lead-in stub, and one mid-formula fragment — a smaller, separately-addressable class; these need a caption/list/reference-filtering pass, not more heading work.",
+    "F6 (limits): citation-resolution and degradation-honesty are 1.0 under the FIXTURE model, which composes blocks from stored evidence — these measure the harness, not model quality; answer fluency/completeness unmeasured (docs/quality-gate.md limits).",
+    "F7 (provenance): port 18114 free at startup; shutdown: listener PID 7180 killed via taskkill /F /T at tree root 8600 (bash→npx 3864→cmd 25936→tsx 2628→node 7180, grandchild 19648 included) — the whole chain died together this time (no orphan survivors, unlike run-002's 18112); the background wrapper then reported exit code 1 because the server was killed, which is the expected taskkill signature; port clear afterward (only client TIME_WAIT sockets, which self-clear); the :memory: scratch db was discarded with the processes (no persisted artifacts from the db).",
+    "F5 (clean): no instruction-shaped (prompt-injection) content observed in any captured passage, answer, or SSE event; the scan pattern list is recorded in mechanicalChecks.injectionPatternScan; R-12 stays open for the live-model future."
+  ],
+  "limits": "Single-annotator, authorial labels — one operator's run, not inter-rater reliability. NOT model quality: /api/answer is produced by the fixture model; only citation-resolution and honesty behavior of the harness are measured; answer-text fluency, completeness, and reasoning are unmeasured. No quality claims may cite this artifact without repeating docs/quality-gate.md's limits (R-06). Live-provider dependence: scores describe wikipedia's behavior on 2026-09-14 (including this run's case-04 fetch-error window) — re-run rather than extrapolate (sources.md 90-day rule)."
+}
