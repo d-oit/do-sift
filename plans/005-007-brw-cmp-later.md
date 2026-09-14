@@ -47,9 +47,10 @@ Exit: replay test passes; bypass test fails closed.
 
 ### QUAL task table
 
-| ID      | Task                                                                                                                                                               | Status |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| QUAL-01 | Manual quality gate v1: repeatable protocol + first recorded run over the live research path (evidence quality, NOT model quality — only the fixture model exists) | done   |
+| ID      | Task                                                                                                                                                                                          | Status      |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| QUAL-01 | Manual quality gate v1: repeatable protocol + first recorded run over the live research path (evidence quality, NOT model quality — only the fixture model exists)                            | done        |
+| QUAL-02 | Hybrid retrieval on the live path (RET-04 flip): re-run the 8-question protocol with `DO_SIFT_EMBEDDER=fastembed` (run-003) and compare against run-002, focused on the F3 doppelganger cases | in-progress |
 
 ### QUAL-01 decomposition (2026-09-14, htn-planner workflow per plan 009)
 
@@ -129,6 +130,34 @@ record-only and feeds no regression gate.
 live page content to the MediaWiki plain-text extract endpoint
 (free/keyless, same terms entry), then re-run the QUAL protocol
 (run-002) to measure the improvement against run-001.
+
+### QUAL-02 decomposition (2026-09-14, htn-planner workflow per plan 009)
+
+Preconditions met: hybrid retrieval is measured and promoted (RET-02 —
+beats bm25 on all three held-out metrics), the host seam and entrypoint
+wiring exist (`DO_SIFT_EMBEDDER=fastembed` flips research embed-on-store
+and answer-side hybrid, RET-04), run-002 is recorded as the comparison
+baseline (F3: entity doppelgangers in cases 02/03/04/08), and the
+fastembed model cache is warm. Ordered subtasks:
+
+1. Start the service with `DO_SIFT_EMBEDDER=fastembed` (live wikipedia,
+   fixture model, scratch `:memory:` db, port 18113); confirm the startup
+   log labels `embedder: fastembed`.
+2. Same 8 questions, same order, each asked exactly once; POST
+   /api/research then /api/answer; raw captures to gitignored
+   `.do-harness/qual-run-003/`.
+3. Score per `docs/quality-gate.md`; re-judge fresh — especially the F3
+   cases. Honest framing for the comparison: hybrid affects which STORED
+   passages feed the answer prompt (RRF) — search-hit selection stays
+   provider-side and cannot improve here; scores reflect the union.
+4. Record `evals/quality/run-003-2026-09-14.json` mirroring the run
+   schema + a `comparison` object against run-002 (run-001 for context):
+   per-dimension deltas, per-case doppelganger notes, and an explicit F3
+   verdict (lifted / partially / unchanged) with evidence.
+5. Evidence; risks; verify; commit.
+
+Acceptance: run-003 recorded with the comparison; no claim beyond the
+recorded authorial scores and their limits; still no live tests in CI.
 
 ### OPS-05 decomposition (2026-09-14, htn-planner workflow per plan 009)
 

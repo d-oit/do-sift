@@ -49,6 +49,16 @@ it after. LLM self-assessment never substitutes for a sensor exit code.
    update the guide, not the symptom (`skill-distiller` skill): sensors
    fire → guides update → sensors fire less.
 
+### TypeScript gotchas (recurring)
+
+- `exactOptionalPropertyTypes` is on: never pass a possibly-`undefined`
+  value into an optional property through an object literal. Build the
+  literal first, then assign conditionally
+  (`const init: Req = {...}; if (x !== undefined) init.field = x;`) or
+  spread conditionally (`...(x === undefined ? {} : { field: x })`).
+  This class has fired in four slices (RET-04, SRC-06, SRC-07 ×2) —
+  expect it before the typecheck sensor does.
+
 ## Approved commands
 
 ```bash
