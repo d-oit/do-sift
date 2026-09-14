@@ -67,6 +67,8 @@ export interface ResearchRunSummary {
   budgetReservationId?: string | undefined;
   /** Newly embedded passages (RET-03); undefined with no embedder or on failure. */
   embedded?: number | undefined;
+  /** The run's request row (ANS-07): documents link to it; failed runs fail it. */
+  requestId?: string | undefined;
 }
 
 export interface ResearchHarnessInstance extends PluginInstance {
@@ -138,114 +140,133 @@ export function createResearchHarness(
 
       // budgets are reserved atomically BEFORE any external call (AGENTS.md);
       // search mode makes zero model calls, so token ceilings are nominal.
-      if (deps.budget !== undefined) {
-        const { id } = await deps.budget.reserve({
-          ownerId: task.ownerId,
-          request: {
-            maxInputTokens: 1,
-            maxOutputTokens: 1,
-            maxSearchCalls: 1,
-            maxFetches: maxFetches,
-            deadlineMs: 30_000,
-          },
-          estimatedInputTokens: 0,
-          nowMs: Date.now(),
-        });
-        summary.budgetReservationId = id;
-      }
-
+      // ANS-07: the run gets its own request row; stored documents link to
+      // it so the answer path can report an honest evidence basis.
+      const requestId = await deps.repositories.requests.create(
+        task.ownerId,
+        "search",
+        task.question,
+      );
+      summary.requestId = requestId;
       try {
-        const hits = await deps.search.search(query, limits);
-        summary.hits = hits.length;
-
-        for (const hit of hits) {
-          if (summary.fetches >= maxFetches) {
-            summary.skippedBudget++;
-            continue;
-          }
-          let host: string;
-          try {
-            host = hostOf(hit.url);
-          } catch {
-            summary.fetchErrors++;
-            continue;
-          }
-          if (isSiteDenied(host)) {
-            summary.denied++;
-            continue; // never fetched
-          }
-          try {
-            const page = await deps.fetchPage(hit.url);
-            const docId = await deps.repositories.documents.insert({
-              ownerId: task.ownerId,
-              canonicalUrl: hit.url, // canonicalization is later work (SRC-03+)
-              originalUrl: hit.url,
-              contentHash: createHash("sha256").update(page.text, "utf8").digest("hex"),
-              fetchedAt: new Date().toISOString(),
-              publishedAt: hit.publishedAt?.at,
-              publishedOrigin: hit.publishedAt?.origin,
-              title: hit.title,
-              rawMime: page.contentType,
-              rawText: page.text,
-            });
-            summary.fetches++;
-            summary.documentsStored++;
-            const extracted = deps.extract
-              ? deps.extract(page.text)
-              : extractPassages(page.text).map((text) => ({ text, status: "ok" as const }));
-            for (const passage of extracted) {
-              await deps.repositories.passages.insert({
-                ownerId: task.ownerId,
-                documentId: docId,
-                excerpt: passage.text,
-                extractionStatus: passage.status,
-              });
-              summary.passagesStored++;
-            }
-            deps.onSource?.({
-              url: hit.url,
-              title: hit.title ?? undefined,
-              passageCount: extracted.length,
-            });
-          } catch {
-            summary.fetchErrors++;
-          }
-        }
-      } finally {
-        if (deps.budget !== undefined && summary.budgetReservationId !== undefined) {
-          await deps.budget.settle({
+        if (deps.budget !== undefined) {
+          const { id } = await deps.budget.reserve({
             ownerId: task.ownerId,
-            reservationId: summary.budgetReservationId,
-            actual: { inputTokens: 0, outputTokens: 0, searchCalls: 1, fetches: summary.fetches },
+            requestId,
+            request: {
+              maxInputTokens: 1,
+              maxOutputTokens: 1,
+              maxSearchCalls: 1,
+              maxFetches: maxFetches,
+              deadlineMs: 30_000,
+            },
+            estimatedInputTokens: 0,
             nowMs: Date.now(),
           });
+          summary.budgetReservationId = id;
         }
-      }
 
-      // Index what we stored for hybrid retrieval (RET-03). Local ONNX
-      // inference: no external calls, no ledger activity. Failure degrades
-      // honestly — the passages remain bm25-retrievable.
-      if (deps.embedder !== undefined) {
         try {
-          summary.embedded = await backfillPassageEmbeddings(
-            deps.repositories.db,
-            task.ownerId,
-            deps.embedder,
-          );
-        } catch (error) {
-          ctx.events.emit("research.embeddings-failed", {
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
+          const hits = await deps.search.search(query, limits);
+          summary.hits = hits.length;
 
-      ctx.events.emit("research.completed", {
-        ownerId: summary.ownerId,
-        hits: summary.hits,
-        documentsStored: summary.documentsStored,
-        passagesStored: summary.passagesStored,
-      });
-      return summary;
+          for (const hit of hits) {
+            if (summary.fetches >= maxFetches) {
+              summary.skippedBudget++;
+              continue;
+            }
+            let host: string;
+            try {
+              host = hostOf(hit.url);
+            } catch {
+              summary.fetchErrors++;
+              continue;
+            }
+            if (isSiteDenied(host)) {
+              summary.denied++;
+              continue; // never fetched
+            }
+            try {
+              const page = await deps.fetchPage(hit.url);
+              const docId = await deps.repositories.documents.insert({
+                ownerId: task.ownerId,
+                canonicalUrl: hit.url, // canonicalization is later work (SRC-03+)
+                originalUrl: hit.url,
+                contentHash: createHash("sha256").update(page.text, "utf8").digest("hex"),
+                fetchedAt: new Date().toISOString(),
+                publishedAt: hit.publishedAt?.at,
+                publishedOrigin: hit.publishedAt?.origin,
+                title: hit.title,
+                rawMime: page.contentType,
+                rawText: page.text,
+                requestId,
+              });
+              summary.fetches++;
+              summary.documentsStored++;
+              const extracted = deps.extract
+                ? deps.extract(page.text)
+                : extractPassages(page.text).map((text) => ({ text, status: "ok" as const }));
+              for (const passage of extracted) {
+                await deps.repositories.passages.insert({
+                  ownerId: task.ownerId,
+                  documentId: docId,
+                  excerpt: passage.text,
+                  extractionStatus: passage.status,
+                });
+                summary.passagesStored++;
+              }
+              deps.onSource?.({
+                url: hit.url,
+                title: hit.title ?? undefined,
+                passageCount: extracted.length,
+              });
+            } catch {
+              summary.fetchErrors++;
+            }
+          }
+        } finally {
+          if (deps.budget !== undefined && summary.budgetReservationId !== undefined) {
+            await deps.budget.settle({
+              ownerId: task.ownerId,
+              reservationId: summary.budgetReservationId,
+              actual: { inputTokens: 0, outputTokens: 0, searchCalls: 1, fetches: summary.fetches },
+              nowMs: Date.now(),
+            });
+          }
+        }
+
+        // Index what we stored for hybrid retrieval (RET-03). Local ONNX
+        // inference: no external calls, no ledger activity. Failure degrades
+        // honestly — the passages remain bm25-retrievable.
+        if (deps.embedder !== undefined) {
+          try {
+            summary.embedded = await backfillPassageEmbeddings(
+              deps.repositories.db,
+              task.ownerId,
+              deps.embedder,
+            );
+          } catch (error) {
+            ctx.events.emit("research.embeddings-failed", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        ctx.events.emit("research.completed", {
+          ownerId: summary.ownerId,
+          requestId: summary.requestId,
+          hits: summary.hits,
+          documentsStored: summary.documentsStored,
+          passagesStored: summary.passagesStored,
+        });
+        await deps.repositories.requests.complete(task.ownerId, requestId);
+        return summary;
+      } catch (error) {
+        // ANS-07: a failed run fails its request row — no phantom
+        // "completed" run the answer basis could ever trust.
+        await deps.repositories.requests.fail(task.ownerId, requestId).catch(() => {});
+        throw error;
+      }
     },
   };
 }

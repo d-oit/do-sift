@@ -314,3 +314,64 @@ describe("embedding indexing (RET-03)", () => {
     expect(events).toContain("research.embeddings-failed");
   });
 });
+
+describe("evidence linkage (ANS-07, R-15/F9)", () => {
+  it("records a completed search request row and stamps stored documents with its id", async () => {
+    await repos.owners.ensure("owner-link", "Link Owner");
+    const { harness } = makeDeps();
+    await harness.activate({
+      events: { emit: () => {} },
+      config: { maxHits: 6, maxFetches: 2 },
+    } as unknown as Parameters<typeof createResearchHarness>[0]);
+
+    const summary = await harness.run({ ownerId: "owner-link", question: "what is alpha?" });
+    expect(summary.requestId).toEqual(expect.any(String));
+
+    const req = await repos.requests.get("owner-link", summary.requestId ?? "");
+    expect(req).toMatchObject({
+      mode: "search",
+      status: "completed",
+      question: "what is alpha?",
+    });
+
+    const docs = await repos.documents.list("owner-link");
+    expect(docs.length).toBeGreaterThan(0);
+    for (const doc of docs) expect(doc.requestId).toBe(summary.requestId);
+  });
+
+  it("fails the request row when the search fails and stores nothing", async () => {
+    await repos.owners.ensure("owner-fail", "Fail Owner");
+    const harness = createResearchHarness(
+      { events: { emit: () => {} }, config: {} } as unknown as Parameters<
+        typeof createResearchHarness
+      >[0],
+      {
+        search: {
+          name: "throwing",
+          search: async () => {
+            throw new Error("rate limited");
+          },
+        } as never,
+        fetchPage: async () => {
+          throw new Error("unreachable");
+        },
+        repositories: repos,
+      },
+    );
+    await harness.activate({
+      events: { emit: () => {} },
+      config: {},
+    } as unknown as Parameters<typeof createResearchHarness>[0]);
+
+    await expect(
+      harness.run({ ownerId: "owner-fail", question: "doomed question?" }),
+    ).rejects.toThrow(/rate limited/);
+
+    // No completed search run for this question; the row exists and is failed.
+    const rows = await client.execute({
+      sql: "SELECT status FROM requests WHERE owner_id = ? AND question = ?",
+      args: ["owner-fail", "doomed question?"],
+    });
+    expect(rows.rows.map((r) => String(r.status))).toEqual(["failed"]);
+  });
+});

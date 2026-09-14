@@ -18,7 +18,7 @@ beforeEach(async () => {
   await repos.owners.ensure("owner-b", "Owner B");
 });
 
-async function insertDocFor(ownerId: string): Promise<string> {
+async function insertDocFor(ownerId: string, requestId?: string): Promise<string> {
   return repos.documents.insert({
     ownerId,
     canonicalUrl: "https://example.org/doc",
@@ -27,6 +27,7 @@ async function insertDocFor(ownerId: string): Promise<string> {
     fetchedAt: "2026-09-07T00:00:00Z",
     title: "Doc",
     rawText: "body text",
+    ...(requestId === undefined ? {} : { requestId }),
   });
 }
 
@@ -236,5 +237,34 @@ describe("migration chain over existing data (migrate-storage rule)", () => {
     await applyMigrations(fresh, migrations); // 0002 lands on top
     const res = await fresh.execute("SELECT display_name FROM owners WHERE id = 'keep-me'");
     expect(res.rows.map((r) => String(r.display_name))).toEqual(["Old Owner"]);
+  });
+});
+
+describe("evidence run linkage (ANS-07)", () => {
+  it("documents store and expose their research-run linkage; unlinked stays null", async () => {
+    const reqId = await repos.requests.create("owner-a", "search", "linked question?");
+    const linkedDoc = await insertDocFor("owner-a", reqId);
+    const plainDoc = await insertDocFor("owner-b");
+
+    const linked = (await repos.documents.list("owner-a")).find((d) => d.id === linkedDoc);
+    expect(linked?.requestId).toBe(reqId);
+    const plain = (await repos.documents.list("owner-b")).find((d) => d.id === plainDoc);
+    expect(plain?.requestId).toBeUndefined();
+
+    const links = await repos.documents.linkByDocumentId("owner-a", [linkedDoc]);
+    expect(links[linkedDoc]).toBe(reqId);
+  });
+
+  it("completedSearches lists only completed search-mode requests", async () => {
+    const done = await repos.requests.create("owner-a", "search", "done question?");
+    await repos.requests.complete("owner-a", done);
+    await repos.requests.create("owner-a", "answer", "an answer call");
+    const pending = await repos.requests.create("owner-a", "search", "pending question?");
+
+    const runs = await repos.requests.completedSearches("owner-a");
+    const ids = runs.map((r) => r.id);
+    expect(ids).toContain(done);
+    expect(ids).not.toContain(pending);
+    for (const row of runs) expect(row.mode).toBe("search");
   });
 });

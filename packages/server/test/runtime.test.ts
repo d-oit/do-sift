@@ -127,6 +127,8 @@ describe("runtime.answerResponse (ANS-05)", () => {
     const first = await runtime.answerResponse("owner-a", QUESTION);
     expect(first.cached).toBe(false);
     expect(first.evidenceOnly).toBe(false);
+    // ANS-07: the research run's evidence is linked and reported as such.
+    expect(first.evidenceFromRun).toBe("run");
     expect(first.blocks.length).toBeGreaterThanOrEqual(1);
     for (const block of first.blocks) {
       expect(block.kind).toBe("paragraph");
@@ -136,6 +138,7 @@ describe("runtime.answerResponse (ANS-05)", () => {
     const second = await runtime.answerResponse("owner-a", QUESTION);
     expect(second.cached).toBe(true); // exact-answer cache: nothing re-ran
     expect(second.answerId).toBe(first.answerId);
+    expect(second.evidenceFromRun).toBe("run"); // basis persisted with the answer
   });
 });
 

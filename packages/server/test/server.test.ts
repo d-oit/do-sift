@@ -238,6 +238,8 @@ describe("other routes", () => {
     expect(html).toContain('id="do-answer"'); // ANS-06: answer mode in the UI
     expect(html).toContain("/api/answer");
     expect(html).toContain('id="answer"');
+    // ANS-07: the UI states the evidence basis honestly.
+    expect(html).toContain("this question's research run");
   });
 
   it("returns 405 for GET /api/research and 404 elsewhere", async () => {

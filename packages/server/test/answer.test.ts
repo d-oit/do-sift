@@ -31,7 +31,7 @@ beforeEach(async () => {
   await repos.owners.ensure("owner-b", "Owner B");
 });
 
-async function seedEvidence(ownerId = "owner-a"): Promise<void> {
+async function seedEvidence(ownerId = "owner-a", requestId?: string): Promise<void> {
   const docId = await repos.documents.insert({
     ownerId,
     canonicalUrl: "https://docs.test/fts5",
@@ -39,6 +39,7 @@ async function seedEvidence(ownerId = "owner-a"): Promise<void> {
     contentHash: "hash-fts5-ranking-0001",
     fetchedAt: "2026-09-10T00:00:00Z",
     rawText: "FTS5 ranking",
+    ...(requestId === undefined ? {} : { requestId }),
   });
   await repos.passages.insert({
     ownerId,
@@ -397,5 +398,55 @@ describe("answer service (RET-02 hybrid retrieval)", () => {
     });
     expect(outcome.evidenceOnly).toBe(false);
     expect(model.calls[0]?.passageIds).toHaveLength(2); // seeded passages only
+  });
+});
+
+describe("answer evidence basis (ANS-07, R-15/F9)", () => {
+  it("reports 'run' when the evidence came from a completed research run for this question", async () => {
+    const reqId = await repos.requests.create("owner-a", "search", QUESTION);
+    await seedEvidence("owner-a", reqId);
+    await repos.requests.complete("owner-a", reqId);
+    const outcome = await createAnswerService(makeDeps(new FakeModelProvider())).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    expect(outcome.evidenceFromRun).toBe("run");
+  });
+
+  it("reports 'cross-question' when the only evidence belongs to another question's run (F9)", async () => {
+    const reqId = await repos.requests.create("owner-a", "search", "totally unrelated question?");
+    await seedEvidence("owner-a", reqId);
+    await repos.requests.complete("owner-a", reqId);
+    const outcome = await createAnswerService(makeDeps(new FakeModelProvider())).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    // The research run for THIS question stored nothing; the answer drew on
+    // leftovers — the outcome must say so instead of claiming grounded work.
+    expect(outcome.evidenceFromRun).toBe("cross-question");
+  });
+
+  it("reports 'legacy' for evidence with no run linkage", async () => {
+    await seedEvidence("owner-a"); // pre-ANS-07 document: NULL request_id
+    const outcome = await createAnswerService(makeDeps(new FakeModelProvider())).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    expect(outcome.evidenceFromRun).toBe("legacy");
+  });
+
+  it("a cache hit returns the stored basis without recomputing", async () => {
+    const reqId = await repos.requests.create("owner-a", "search", QUESTION);
+    await seedEvidence("owner-a", reqId);
+    await repos.requests.complete("owner-a", reqId);
+    const service = createAnswerService(makeDeps(new FakeModelProvider()));
+    const first = await service.answer({ ownerId: "owner-a", question: QUESTION });
+    expect(first.evidenceFromRun).toBe("run");
+    const second = await service.answer({
+      ownerId: "owner-a",
+      question: `  ${QUESTION.toUpperCase()}  `, // whitespace/case-normalized
+    });
+    expect(second.cached).toBe(true);
+    expect(second.evidenceFromRun).toBe("run");
   });
 });

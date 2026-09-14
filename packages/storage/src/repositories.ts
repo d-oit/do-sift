@@ -34,10 +34,12 @@ export interface DocumentInput {
   contentHash: string;
   fetchedAt: string;
   publishedAt?: string | undefined;
-  publishedOrigin?: "page-metadata" | "provider" | "domain-policy" | "user" | undefined;
+  publishedOrigin?: DocumentOrigin | undefined;
   title?: string | undefined;
   rawMime?: string | undefined;
   rawText?: string | undefined;
+  /** The research request that fetched this document (ANS-07); NULL = legacy. */
+  requestId?: string | undefined;
 }
 
 export type DocumentOrigin = "page-metadata" | "provider" | "domain-policy" | "user";
@@ -55,6 +57,8 @@ export interface DocumentRow {
   rawMime?: string | undefined;
   rawText: string;
   createdAt: string;
+  /** Research-run linkage (ANS-07); undefined when the row predates it. */
+  requestId?: string | undefined;
 }
 
 export interface PassageInput {
@@ -98,6 +102,8 @@ export interface AnswerInput {
   promptRevision?: string | undefined;
   policyRevision?: string | undefined;
   modelRevision?: string | undefined;
+  /** Evidence basis (ANS-07): 'run' | 'legacy' | 'cross-question'. */
+  evidenceFromRun?: "run" | "legacy" | "cross-question" | undefined;
 }
 
 export interface AnswerRow {
@@ -112,6 +118,8 @@ export interface AnswerRow {
   policyRevision: string;
   modelRevision: string;
   createdAt: string;
+  /** Evidence basis (ANS-07); undefined on rows that predate it (= legacy). */
+  evidenceFromRun?: "run" | "legacy" | "cross-question" | undefined;
 }
 
 export interface RequestRow {
@@ -192,6 +200,7 @@ function documentFromRow(row: Row): DocumentRow {
     rawMime: strOrUndefined(row, "raw_mime"),
     rawText: str(row, "raw_text"),
     createdAt: str(row, "created_at"),
+    requestId: strOrUndefined(row, "request_id"),
   };
 }
 
@@ -230,6 +239,7 @@ function answerFromRow(row: Row): AnswerRow {
     policyRevision: str(row, "policy_revision"),
     modelRevision: str(row, "model_revision"),
     createdAt: str(row, "created_at"),
+    evidenceFromRun: strOrUndefined(row, "evidence_from_run") as AnswerRow["evidenceFromRun"],
   };
 }
 
@@ -280,10 +290,18 @@ export class Repositories {
   readonly documents = {
     insert: async (d: DocumentInput): Promise<string> => {
       const id = randomUUID();
+      // ANS-07: if a request linkage is supplied, it must belong to the
+      // same owner (the FK alone does not check ownership).
+      if (d.requestId !== undefined) {
+        const req = await this.requests.get(d.ownerId, d.requestId);
+        if (!req) {
+          throw new Error(`document references request ${d.requestId} not owned by ${d.ownerId}`);
+        }
+      }
       await this.client.execute({
         sql: `INSERT INTO documents (id, owner_id, canonical_url, original_url, content_hash, fetched_at,
-               published_at, published_origin, title, raw_mime, raw_text, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               published_at, published_origin, title, raw_mime, raw_text, request_id, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id,
           d.ownerId,
@@ -296,6 +314,7 @@ export class Repositories {
           d.title ?? null,
           d.rawMime ?? null,
           d.rawText ?? "",
+          d.requestId ?? null,
           now(),
         ],
       });
@@ -315,6 +334,21 @@ export class Repositories {
         args: [ownerId, limit],
       });
       return res.rows.map(documentFromRow);
+    },
+    /** ANS-07: research-run linkage per document id (owner-scoped). */
+    linkByDocumentId: async (
+      ownerId: string,
+      documentIds: string[],
+    ): Promise<Record<string, string | null>> => {
+      if (documentIds.length === 0) return {};
+      const placeholders = documentIds.map(() => "?").join(", ");
+      const res = await this.client.execute({
+        sql: `SELECT id, request_id FROM documents WHERE owner_id = ? AND id IN (${placeholders})`,
+        args: [ownerId, ...documentIds],
+      });
+      const links: Record<string, string | null> = {};
+      for (const row of res.rows) links[String(row.id)] = strOrUndefined(row, "request_id") ?? null;
+      return links;
     },
   };
 
@@ -398,6 +432,27 @@ export class Repositories {
         completedAt,
       };
     },
+    /** ANS-07: completed research (mode search) runs for an owner — the
+     * answer service filters these by normalized question for the
+     * evidence-basis flag. */
+    completedSearches: async (ownerId: string): Promise<RequestRow[]> => {
+      const res = await this.client.execute({
+        sql: "SELECT * FROM requests WHERE owner_id = ? AND mode = 'search' AND status = 'completed'",
+        args: [ownerId],
+      });
+      return res.rows.map((row) => {
+        const completedAt = strOrUndefined(row, "completed_at");
+        return {
+          id: str(row, "id"),
+          ownerId: str(row, "owner_id"),
+          mode: str(row, "mode"),
+          question: str(row, "question"),
+          status: str(row, "status"),
+          createdAt: str(row, "created_at"),
+          completedAt,
+        };
+      });
+    },
     complete: async (ownerId: string, id: string): Promise<void> => {
       await this.client.execute({
         sql: "UPDATE requests SET status = 'completed', completed_at = ? WHERE id = ? AND owner_id = ?",
@@ -423,8 +478,8 @@ export class Repositories {
       await this.client.execute({
         sql: `INSERT INTO answers (id, owner_id, request_id, blocks_json, evidence_only, cache_key,
                usage_input_tokens, usage_output_tokens, usage_model, usage_estimated,
-               prompt_revision, policy_revision, model_revision, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               prompt_revision, policy_revision, model_revision, evidence_from_run, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id,
           a.ownerId,
@@ -439,6 +494,7 @@ export class Repositories {
           a.promptRevision ?? "p0",
           a.policyRevision ?? "p0",
           a.modelRevision ?? "m0",
+          a.evidenceFromRun ?? null,
           now(),
         ],
       });

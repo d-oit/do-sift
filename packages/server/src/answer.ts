@@ -21,6 +21,7 @@ import {
   buildCacheKey,
   CitationError,
   estimateTokens,
+  normalizeQuestion,
   validateCitations,
   type Answer,
   type ModelProvider,
@@ -82,6 +83,15 @@ export interface AnswerOutcome {
   degraded: boolean;
   /** True when no model claims are present (evidence-only output). */
   evidenceOnly: boolean;
+  /**
+   * Evidence basis (ANS-07, R-15/F9): "run" = at least one packed passage
+   * came from a COMPLETED research run for this owner+question;
+   * "cross-question" = the evidence belongs to other questions' runs —
+   * the honest signal that this question's own run stored nothing;
+   * "legacy" = pre-ANS-07 evidence with no run linkage. Undefined on the
+   * empty-evidence path (nothing was retrieved at all).
+   */
+  evidenceFromRun?: "run" | "legacy" | "cross-question" | undefined;
   usage?: Answer["usage"] | undefined;
   /** Settle-time reconciliation of actual usage vs the reservation. */
   reconciliation?: UsageReconciliation | undefined;
@@ -160,6 +170,26 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
     });
   }
 
+  /** ANS-07 evidence basis over the retrieved passages: does ANY of them
+   * belong to a completed research run for this owner+question? Legacy
+   * (unlinked) documents are never counted as from-run. */
+  async function evidenceBasis(
+    ownerId: string,
+    question: string,
+    documentIds: string[],
+  ): Promise<"run" | "legacy" | "cross-question"> {
+    const links = await deps.repositories.documents.linkByDocumentId(ownerId, documentIds);
+    const wanted = new Set(
+      (await deps.repositories.requests.completedSearches(ownerId))
+        .filter((r) => normalizeQuestion(r.question) === normalizeQuestion(question))
+        .map((r) => r.id),
+    );
+    const bases = documentIds.map((id) => links[id] ?? null);
+    if (bases.some((reqId) => reqId !== null && wanted.has(reqId))) return "run";
+    if (bases.some((reqId) => reqId === null)) return "legacy";
+    return "cross-question";
+  }
+
   return {
     async answer(task: AnswerTask, signal?: AbortSignal): Promise<AnswerOutcome> {
       if (signal?.aborted) throw new AnswerCancelledError();
@@ -176,6 +206,14 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
             );
       const sourceVersions = [...new Set(retrieved.map((p) => p.contentHash))].sort();
       const cacheKey = cacheKeyFor(task.ownerId, task.question, sourceVersions);
+      const basis =
+        retrieved.length === 0
+          ? undefined
+          : await evidenceBasis(
+              task.ownerId,
+              task.question,
+              retrieved.map((p) => p.documentId),
+            );
 
       // ---- exact-answer cache: a hit reruns nothing (D5) ----
       const cached = await deps.repositories.answers.findByCacheKey(task.ownerId, cacheKey);
@@ -186,6 +224,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
           cached: true,
           degraded: cached.evidenceOnly,
           evidenceOnly: cached.evidenceOnly,
+          evidenceFromRun: cached.evidenceFromRun ?? "legacy",
           usage: cached.usage,
         };
       }
@@ -207,7 +246,14 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
           cacheKey,
         });
         await deps.repositories.requests.complete(task.ownerId, requestId);
-        return { requestId, answerId, cached: false, degraded: true, evidenceOnly: true };
+        return {
+          requestId,
+          answerId,
+          cached: false,
+          degraded: true,
+          evidenceOnly: true,
+          evidenceFromRun: undefined,
+        };
       }
 
       const packed = packPassages(
@@ -289,6 +335,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         blocks: answer.blocks,
         evidenceOnly: answer.evidenceOnly,
         cacheKey,
+        evidenceFromRun: basis,
         usage: answer.usage
           ? {
               inputTokens: answer.usage.inputTokens,
@@ -323,6 +370,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         cached: false,
         degraded,
         evidenceOnly: answer.evidenceOnly,
+        evidenceFromRun: basis,
         usage: answer.usage,
         reconciliation,
       };

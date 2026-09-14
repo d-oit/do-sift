@@ -67,6 +67,13 @@ export interface AnswerHttpResponse {
   degraded: boolean;
   /** True when no model claims are present (evidence-only output). */
   evidenceOnly: boolean;
+  /**
+   * Evidence basis (ANS-07, R-15/F9): "run" = evidence came from a
+   * completed research run for this question; "cross-question" = the
+   * question's own run stored nothing and older corpus evidence was used;
+   * "legacy" = pre-linkage evidence. Absent on the empty-evidence path.
+   */
+  evidenceFromRun?: "run" | "legacy" | "cross-question" | undefined;
   blocks: Array<{
     kind: "paragraph" | "list" | "caveat";
     text: string;
@@ -380,13 +387,24 @@ const DEFAULT_PAGE = `<!doctype html>
       return;
     }
     const data = await res.json();
+    // ANS-07: the evidence basis is stated honestly — an answer drawn from
+    // other questions' runs never masquerades as this question's work.
+    const basis =
+      data.evidenceFromRun === undefined
+        ? ""
+        : data.evidenceFromRun === "run"
+          ? " Evidence fetched by this question's research run."
+          : data.evidenceFromRun === "cross-question"
+            ? " No stored evidence came from this question's research run — the passages below are from other questions' runs."
+            : " Evidence predates run linkage (legacy).";
     const meta = document.createElement("p");
     meta.className = "status";
     meta.textContent =
       (data.cached ? "Served from the exact-answer cache. " : "") +
       (data.evidenceOnly
         ? "Evidence-only output: no model claims (citations failed validation or no evidence)."
-        : "Grounded answer — every citation resolved against stored evidence.");
+        : "Grounded answer — every citation resolved against stored evidence.") +
+      basis;
     answerBox.append(meta);
     for (const block of data.blocks) {
       const card = document.createElement("div");
