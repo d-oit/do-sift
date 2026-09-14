@@ -110,3 +110,77 @@ describe("searchPassages (FTS5 baseline)", () => {
     expect(await searchPassages(client, "owner-a", "?? -- **", 3)).toEqual([]);
   });
 });
+
+describe("evidence relevance floor (SRC-11)", () => {
+  /** Local scored seeder: keeps the shared helper untouched for the
+   * pre-floor tests (their behavior stays byte-identical). */
+  async function insertScoredPassageFor(
+    ownerId: string,
+    excerpt: string,
+    score?: number,
+  ): Promise<string> {
+    const docId = await repos.documents.insert({
+      ownerId,
+      canonicalUrl: `https://example.test/${encodeURIComponent(excerpt.slice(0, 12))}`,
+      originalUrl: `https://example.test/${encodeURIComponent(excerpt.slice(0, 12))}`,
+      contentHash: `scored-${score ?? "none"}-${excerpt.length}`,
+      fetchedAt: "2026-09-14T00:00:00Z",
+      rawText: excerpt,
+      ...(score === undefined ? {} : { relevanceScore: score }),
+    });
+    return repos.passages.insert({ ownerId, documentId: docId, excerpt, extractionStatus: "ok" });
+  }
+
+  it("excludes documents scored below the floor; at-or-above and NULL stay", async () => {
+    const low = await insertScoredPassageFor(
+      "owner-a",
+      "libSQL supports FTS5 virtual tables for keyword retrieval over stored passages.",
+      0.5,
+    );
+    const high = await insertScoredPassageFor(
+      "owner-a",
+      "FTS5 powers the retrieval baseline; FTS5 ranking uses bm25; FTS5 is deterministic.",
+      0.9,
+    );
+    const legacy = await insertScoredPassageFor(
+      "owner-a",
+      "Vector search arrives only after beating this keyword baseline.",
+      undefined,
+    );
+
+    const hits = await searchPassages(client, "owner-a", "fts5 baseline", 10, undefined, 0.7);
+    const surfaced = hits.map((h) => h.passageId);
+    expect(surfaced).not.toContain(low); // 0.5 < floor 0.70 — advisory-excluded
+    expect(surfaced).toContain(high); // 0.9 >= floor
+    expect(surfaced).toContain(legacy); // NULL = legacy/unmeasured — always included
+  });
+
+  it("stays owner-scoped under the floor: another owner's identical scored doc is invisible", async () => {
+    await insertScoredPassageFor(
+      "owner-a",
+      "FTS5 powers the retrieval baseline; FTS5 ranking uses bm25; FTS5 is deterministic.",
+      0.9,
+    );
+    await insertScoredPassageFor(
+      "owner-b",
+      "FTS5 powers the retrieval baseline; FTS5 ranking uses bm25; FTS5 is deterministic.",
+      0.9,
+    );
+    const a = await searchPassages(client, "owner-a", "fts5 baseline", 10, undefined, 0.7);
+    expect(a).toHaveLength(1);
+    expect((await repos.passages.get("owner-a", a[0]?.passageId ?? ""))?.ownerId).toBe("owner-a");
+    expect(
+      await searchPassages(client, "owner-b", "fts5 baseline", 10, undefined, 0.7),
+    ).toHaveLength(1);
+  });
+
+  it("is byte-identical when no floor is passed (existing callers unchanged)", async () => {
+    const low = await insertScoredPassageFor(
+      "owner-a",
+      "libSQL supports FTS5 virtual tables for keyword retrieval over stored passages.",
+      0.5,
+    );
+    const hits = await searchPassages(client, "owner-a", "fts5 retrieval", 10);
+    expect(hits.map((h) => h.passageId)).toContain(low); // no floor → no filtering
+  });
+});

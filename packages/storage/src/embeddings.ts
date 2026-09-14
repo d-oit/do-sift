@@ -123,6 +123,10 @@ export interface VectorHit {
  * Owner-scoped cosine search over stored embeddings. Candidates come from
  * SQL (owner + model filtered, joined for provenance); similarity and
  * ordering are computed in JS — brute force is honest at dev scale.
+ * `relevanceFloor` (SRC-11, answer-time exclusion) optionally filters
+ * candidates scored below the designed floor — advisory: documents with
+ * NO relevance score (NULL = legacy/unmeasured) are ALWAYS included;
+ * exclusion is read-time and never storage-time.
  */
 export async function searchByEmbedding(
   client: Client,
@@ -131,22 +135,30 @@ export async function searchByEmbedding(
   queryVector: number[],
   limit = 10,
   documentIds?: string[],
+  relevanceFloor?: number,
 ): Promise<VectorHit[]> {
   if (queryVector.length === 0) return [];
   const docFilter =
     documentIds && documentIds.length > 0
       ? ` AND p.document_id IN (${documentIds.map(() => "?").join(", ")})`
       : "";
+  const floorFilter =
+    relevanceFloor === undefined
+      ? ""
+      : " AND (d.relevance_score IS NULL OR d.relevance_score >= ?)";
   const res = await client.execute({
     sql: `SELECT pe.passage_id, p.document_id, d.content_hash, p.excerpt, pe.vector
           FROM passage_embeddings pe
           JOIN passages p ON p.id = pe.passage_id AND p.owner_id = ?
           JOIN documents d ON d.id = p.document_id
-          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}`,
-    args:
-      documentIds && documentIds.length > 0
-        ? [ownerId, ownerId, modelId, ...documentIds]
-        : [ownerId, ownerId, modelId],
+          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}${floorFilter}`,
+    args: [
+      ownerId,
+      ownerId,
+      modelId,
+      ...(documentIds && documentIds.length > 0 ? documentIds : []),
+      ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
+    ],
   });
   return res.rows
     .map((row: Row) => vectorHitFromRow(row, queryVector))
@@ -196,7 +208,8 @@ export function rrfFuse(bm25: PassageHit[], vector: VectorHit[], limit: number):
  * Hybrid retrieval (RET-02): bm25 baseline ranks fused with cosine ranks
  * over stored embeddings. Tokenless or keyword-free questions still retrieve
  * through the vector list; passages without an embedding only surface via
- * the bm25 side.
+ * the bm25 side. `relevanceFloor` (SRC-11) threads the answer-time
+ * exclusion through BOTH halves of the fusion.
  */
 export async function hybridSearch(
   client: Client,
@@ -205,8 +218,9 @@ export async function hybridSearch(
   limit = 10,
   embedder: TextEmbedder,
   documentIds?: string[],
+  relevanceFloor?: number,
 ): Promise<PassageHit[]> {
-  const bm25 = await searchPassages(client, ownerId, question, limit, documentIds);
+  const bm25 = await searchPassages(client, ownerId, question, limit, documentIds, relevanceFloor);
   const queryVector = await embedder.embedQuery(question);
   const vector = await searchByEmbedding(
     client,
@@ -215,6 +229,7 @@ export async function hybridSearch(
     queryVector,
     limit,
     documentIds,
+    relevanceFloor,
   );
   return rrfFuse(bm25, vector, limit);
 }

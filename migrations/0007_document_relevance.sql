@@ -1,0 +1,13 @@
+-- SRC-11 (plan 003): evidence-layer relevance check — per-document
+-- lead-window similarity (cosine of the player question vs the FULL
+-- plain-text extract, computed once per source at storage time). The
+-- score is a receipt, not a verdict: nullable REAL, NULL = legacy /
+-- unmeasured evidence (pre-SRC-11 rows, or rows stored while embedding
+-- was unavailable) and is ALWAYS INCLUDED — the exclusion happens at
+-- answer time (read-time tunable floor, default 0.70), advisory only.
+-- Purely additive (expand): no destructive ops, existing rows keep NULL.
+-- Rollback story: restore from a pre-migration backup (VACUUM INTO
+-- snapshot, as for every applied migration; ALTER TABLE ... ADD COLUMN
+-- has no clean downgrade, nothing else breaks — expected size delta
+-- ~zero, one nullable column, no data rewrite).
+ALTER TABLE documents ADD COLUMN relevance_score REAL;

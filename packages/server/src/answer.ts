@@ -48,6 +48,14 @@ export interface AnswerServiceOptions {
   maxPassages?: number;
   /** Cache-key revision inputs (D5/plan 000: revision change = cache miss). */
   revisions?: AnswerRevisions;
+  /**
+   * SRC-11 answer-time exclusion floor: documents scored below it are
+   * advisory-excluded from the pool; NO score (NULL = legacy/unmeasured)
+   * is ALWAYS included. Read-time tunable — NOT a cache-key input (source
+   * versions are unchanged content hashes, revisions unchanged), so no
+   * policyRevision bump.
+   */
+  relevanceFloor?: number;
 }
 
 export interface AnswerServiceDeps {
@@ -97,7 +105,14 @@ export interface AnswerOutcome {
   reconciliation?: UsageReconciliation | undefined;
 }
 
-const DEFAULTS = { maxInputTokens: 4000, maxOutputTokens: 700, maxPassages: 6 };
+const DEFAULTS = {
+  maxInputTokens: 4000,
+  maxOutputTokens: 700,
+  maxPassages: 6,
+  // SRC-11 designed floor (plans/003-004-src-ans.md: drops exactly the 4
+  // clearly-off-topic dopps with 0/7 correct pages dropped at n=14).
+  relevanceFloor: 0.7,
+};
 
 export class AnswerCancelledError extends Error {
   constructor() {
@@ -147,6 +162,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
   const maxInputTokens = options.maxInputTokens ?? DEFAULTS.maxInputTokens;
   const maxOutputTokens = options.maxOutputTokens ?? DEFAULTS.maxOutputTokens;
   const maxPassages = options.maxPassages ?? DEFAULTS.maxPassages;
+  const relevanceFloor = options.relevanceFloor ?? DEFAULTS.relevanceFloor;
   const revisions = {
     // p1: ANS-08 — retrieval became question-scoped (linkage filter);
     // revision bump invalidates answers cached under unscoped retrieval.
@@ -215,6 +231,9 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
               task.question,
               maxPassages,
               scopedDocIds,
+              // SRC-11: below-floor documents are advisory-excluded from the
+              // pool at answer time (NULL scores always included).
+              relevanceFloor,
             )
           : await hybridSearch(
               deps.client,
@@ -223,6 +242,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
               maxPassages,
               deps.embedder,
               scopedDocIds,
+              relevanceFloor,
             );
 
       const sourceVersions = [...new Set(retrieved.map((p) => p.contentHash))].sort();

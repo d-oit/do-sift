@@ -215,3 +215,92 @@ describe("hybridSearch", () => {
     expect(fused.map((h) => h.passageId)).toContain(p);
   });
 });
+
+describe("evidence relevance floor (SRC-11)", () => {
+  /** Local scored seeder: keeps the shared helper untouched for the
+   * pre-floor tests (their behavior stays byte-identical). */
+  async function seedScoredPassage(
+    ownerId: string,
+    excerpt: string,
+    score?: number,
+  ): Promise<string> {
+    const documentId = await repos.documents.insert({
+      ownerId,
+      canonicalUrl: `https://eval.test/${excerpt.length}-${Math.random().toString(36).slice(2, 8)}`,
+      originalUrl: `https://eval.test/${excerpt.length}`,
+      contentHash: `scored-${score ?? "none"}-${excerpt.slice(0, 12)}`,
+      fetchedAt: "2026-09-14T00:00:00Z",
+      rawText: excerpt,
+      ...(score === undefined ? {} : { relevanceScore: score }),
+    });
+    return repos.passages.insert({
+      ownerId,
+      documentId,
+      excerpt,
+      extractionStatus: "ok",
+    });
+  }
+
+  const QUESTION = "how does bm25 rank matches?";
+  const LOW = "bm25 passage scored below the relevance floor.";
+  const HIGH = "bm25 passage scored at or above the relevance floor.";
+  const LEGACY = "bm25 passage with no relevance score at all.";
+
+  it("searchByEmbedding excludes embeddings of docs scored below the floor; at-or-above and NULL stay", async () => {
+    const low = await seedScoredPassage("owner-a", LOW, 0.5);
+    const high = await seedScoredPassage("owner-a", HIGH, 0.9);
+    const legacy = await seedScoredPassage("owner-a", LEGACY, undefined);
+    await storePassageEmbeddings(client, "fake-embed-1", [
+      { passageId: low, ownerId: "owner-a", vector: [1, 0] },
+      { passageId: high, ownerId: "owner-a", vector: [0.99, 0.01] },
+      { passageId: legacy, ownerId: "owner-a", vector: [0.98, 0.02] },
+    ]);
+
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "fake-embed-1",
+      [1, 0],
+      10,
+      undefined,
+      0.7,
+    );
+    const surfaced = hits.map((h) => h.passageId);
+    expect(surfaced).not.toContain(low); // 0.5 < floor 0.70 — advisory-excluded
+    expect(surfaced).toContain(high); // 0.9 >= floor
+    expect(surfaced).toContain(legacy); // NULL = legacy/unmeasured — always included
+  });
+
+  it("hybridSearch applies the floor to both halves of the fusion", async () => {
+    const low = await seedScoredPassage("owner-a", LOW, 0.5);
+    const high = await seedScoredPassage("owner-a", HIGH, 0.9);
+    const legacy = await seedScoredPassage("owner-a", LEGACY, undefined);
+    const embedder = makeFakeEmbedder({
+      [QUESTION]: [1, 0],
+      [LOW]: [1, 0],
+      [HIGH]: [0.99, 0.01],
+      [LEGACY]: [0.98, 0.02],
+    });
+    await storePassageEmbeddings(client, "fake-embed-1", [
+      { passageId: low, ownerId: "owner-a", vector: [1, 0] },
+      { passageId: high, ownerId: "owner-a", vector: [0.99, 0.01] },
+      { passageId: legacy, ownerId: "owner-a", vector: [0.98, 0.02] },
+    ]);
+
+    const fused = await hybridSearch(client, "owner-a", QUESTION, 10, embedder, undefined, 0.7);
+    const surfaced = fused.map((h) => h.passageId);
+    expect(surfaced).not.toContain(low); // excluded on the bm25 half AND the vector half
+    expect(surfaced).toContain(high);
+    expect(surfaced).toContain(legacy);
+  });
+
+  it("is byte-identical when no floor is passed (existing callers unchanged)", async () => {
+    const low = await seedScoredPassage("owner-a", LOW, 0.5);
+    const embedder = makeFakeEmbedder({ [QUESTION]: [1, 0], [LOW]: [1, 0] });
+    await storePassageEmbeddings(client, "fake-embed-1", [
+      { passageId: low, ownerId: "owner-a", vector: [1, 0] },
+    ]);
+    const fused = await hybridSearch(client, "owner-a", QUESTION, 10, embedder);
+    expect(fused.map((h) => h.passageId)).toContain(low); // no floor → no filtering
+  });
+});

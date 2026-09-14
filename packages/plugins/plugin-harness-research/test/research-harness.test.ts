@@ -375,3 +375,72 @@ describe("evidence linkage (ANS-07, R-15/F9)", () => {
     expect(rows.rows.map((r) => String(r.status))).toEqual(["failed"]);
   });
 });
+
+describe("evidence relevance (SRC-11)", () => {
+  const ACTIVATE = {
+    events: { emit: () => {} },
+    config: { maxHits: 6, maxFetches: 2 },
+  } as unknown as Parameters<typeof createResearchHarness>[0];
+
+  async function ensureOwner(id: string): Promise<void> {
+    await client.execute({
+      sql: "INSERT INTO owners (id, display_name, created_at) VALUES (?, ?, '2026-09-14T00:00:00Z') ON CONFLICT(id) DO NOTHING",
+      args: [id, id],
+    });
+  }
+
+  it("computes and stores the player-question ↔ extract similarity (lead-window by design)", async () => {
+    await ensureOwner("owner-rel");
+    // Deterministic keyed fake: the question pairs at cosine 1 with [1,0,0];
+    // the PAGE_A extract pairs at cosine 0, the PAGE_B extract at 0.9 —
+    // both STORED unconditionally (store-with-flag: exclusion is read-time;
+    // the receipt is the receipt). The extract is passed WHOLE and UNCHUNKED —
+    // lead-window similarity by design (see plans/003-004-src-ans.md SRC-11).
+    const embedder: TextEmbedder = {
+      modelId: "fake-rel-1",
+      async embedPassages(texts) {
+        return texts.map((t) => (t.includes("Alpha") ? [0, 1, 0] : [0.9, 0.43589, 0]));
+      },
+      async embedQuery() {
+        return [1, 0, 0];
+      },
+    };
+    const { harness } = makeDeps({ embedder });
+    await harness.activate(ACTIVATE);
+
+    const summary = await harness.run({ ownerId: "owner-rel", question: "what is alpha?" });
+    expect(summary.fetches).toBe(2); // run succeeds — store-with-flag, receipts kept
+    expect(summary.documentsStored).toBe(2);
+
+    const docs = await repos.documents.list("owner-rel");
+    const docA = docs.find((d) => d.canonicalUrl === "https://a.test/page");
+    const docB = docs.find((d) => d.canonicalUrl === "https://b.test/page");
+    expect(docA?.relevanceScore).toBeCloseTo(0); // below the floor — still stored
+    expect(docB?.relevanceScore).toBeCloseTo(0.9);
+  });
+
+  it("an embedder failure never fails the run or the store (advisory degradation)", async () => {
+    await ensureOwner("owner-rel2");
+    const events: string[] = [];
+    const embedder: TextEmbedder = {
+      modelId: "boom-rel-1",
+      async embedPassages() {
+        throw new Error("onnx hiccup");
+      },
+      async embedQuery() {
+        throw new Error("onnx hiccup");
+      },
+    };
+    const { harness } = makeDeps({
+      embedder,
+      onEvent: (name) => events.push(name),
+    });
+    await harness.activate(ACTIVATE);
+
+    const summary = await harness.run({ ownerId: "owner-rel2", question: "what is alpha?" });
+    expect(summary.documentsStored).toBe(2); // stored WITHOUT a score
+    const docs = await repos.documents.list("owner-rel2");
+    for (const doc of docs) expect(doc.relevanceScore).toBeUndefined();
+    expect(events).toContain("research.relevance-failed"); // emitted, continued
+  });
+});

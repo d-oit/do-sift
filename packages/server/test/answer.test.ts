@@ -566,3 +566,85 @@ describe("answer evidence basis (ANS-07, R-15/F9)", () => {
     expect(second.evidenceFromRun).toBe("run");
   });
 });
+
+describe("relevance floor at answer time (SRC-11)", () => {
+  /** Own-run documents scored below/above the designed floor: the noise
+   * row is lexically overlapping but scored 0.5 — advisory-excluded from
+   * the answer pool at the default floor 0.70; the on-topic row (0.9)
+   * and the legacy row (NULL) stay. */
+  async function seedScoredEvidence(
+    ownerId = "owner-a",
+  ): Promise<{ noiseId: string; topicId: string }> {
+    const ownReq = await repos.requests.create(ownerId, "search", QUESTION);
+    const noiseDoc = await repos.documents.insert({
+      ownerId,
+      canonicalUrl: "https://noise.test/scored",
+      originalUrl: "https://noise.test/scored",
+      contentHash: "hash-scored-noise-001",
+      fetchedAt: "2026-09-14T00:00:00Z",
+      rawText: "scored noise",
+      requestId: ownReq,
+      relevanceScore: 0.5, // below the default floor — lexically overlapping
+    });
+    const topicDoc = await repos.documents.insert({
+      ownerId,
+      canonicalUrl: "https://docs.test/scored",
+      originalUrl: "https://docs.test/scored",
+      contentHash: "hash-scored-topic-001",
+      fetchedAt: "2026-09-14T00:00:00Z",
+      rawText: "scored topic",
+      requestId: ownReq,
+      relevanceScore: 0.9,
+    });
+    await repos.passages.insert({
+      ownerId,
+      documentId: noiseDoc,
+      excerpt: "FTS5 ranks keyword matches with bm25, where lower scores are better.",
+      extractionStatus: "ok",
+    });
+    const topicId = await repos.passages.insert({
+      ownerId,
+      documentId: topicDoc,
+      excerpt: "The bm25 function weighs rarer terms more heavily in the ranking.",
+      extractionStatus: "ok",
+    });
+    await repos.requests.complete(ownerId, ownReq);
+    const rows = await client.execute({
+      sql: "SELECT id FROM passages WHERE document_id = ?",
+      args: [noiseDoc],
+    });
+    const hit = rows.rows[0];
+    if (hit === undefined) throw new Error("noise passage row missing");
+    return { noiseId: String(hit.id), topicId };
+  }
+
+  it("excludes below-floor documents from the answer pool at the default floor 0.70", async () => {
+    const { noiseId, topicId } = await seedScoredEvidence();
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    expect(outcome.evidenceFromRun).toBe("run");
+    // Only the 0.9-scored row's passage reaches the model; the 0.5 row is
+    // advisory-excluded (receipts kept — exclusion is read-time).
+    expect(model.calls).toHaveLength(1);
+    expect(model.calls[0]?.passageIds).toContain(topicId);
+    expect(model.calls[0]?.passageIds).not.toContain(noiseId);
+  });
+
+  it("the floor is read-time tunable — a higher option excludes at-or-above rows too", async () => {
+    await seedScoredEvidence();
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model), {
+      relevanceFloor: 0.95, // both scored rows exclude; NULL rows would stay
+    }).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    // Empty pool at the higher floor → honest empty evidence-only answer,
+    // zero model calls (read-time tuning changes nothing at storage time).
+    expect(outcome.evidenceOnly).toBe(true);
+    expect(model.calls).toHaveLength(0);
+  });
+});

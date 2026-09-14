@@ -14,8 +14,8 @@
 import { createHash } from "node:crypto";
 import { SearchLimits, SearchQuery, isSiteDenied, type SearchProvider } from "@do-sift/contracts";
 import type { PluginContext, PluginInstance } from "@do-sift/kernel";
-import { backfillPassageEmbeddings } from "@do-sift/storage";
-import type { BudgetService, Repositories, TextEmbedder } from "@do-sift/storage";
+import { backfillPassageEmbeddings, cosineSimilarity } from "@do-sift/storage";
+import type { BudgetService, DocumentInput, Repositories, TextEmbedder } from "@do-sift/storage";
 
 export interface ResearchHarnessConfig {
   maxHits?: unknown;
@@ -188,7 +188,32 @@ export function createResearchHarness(
             }
             try {
               const page = await deps.fetchPage(hit.url);
-              const docId = await deps.repositories.documents.insert({
+              // SRC-11 (store-with-flag): per-source evidence relevance —
+              // cosine(question, FULL plain-text extract) computed ONCE per
+              // source, BEFORE passage chunking. The extract is passed WHOLE
+              // and UNCHUNKED (accepted-lead semantics): fastembed silently
+              // truncates to ~512 tokens, so this is LEAD-WINDOW similarity
+              // by design (see plans/003-004-src-ans.md SRC-11). Advisory
+              // only: an embedding failure never blocks the store — the
+              // document stores with an undefined score (mirror of the
+              // RET-03 embed-on-store failure pattern: emit, continue).
+              let relevanceScore: number | undefined;
+              if (deps.embedder !== undefined) {
+                try {
+                  const questionVector = await deps.embedder.embedQuery(task.question);
+                  const extractVector = (await deps.embedder.embedPassages([page.text]))[0];
+                  if (questionVector !== undefined && extractVector !== undefined) {
+                    relevanceScore = cosineSimilarity(questionVector, extractVector);
+                  }
+                } catch (error) {
+                  ctx.events.emit("research.relevance-failed", {
+                    message: error instanceof Error ? error.message : String(error),
+                  });
+                }
+              }
+              // exactOptionalPropertyTypes: build the literal first, assign
+              // conditionally (recurring class RET-04/RET-06/RET-07).
+              const docInit: DocumentInput = {
                 ownerId: task.ownerId,
                 canonicalUrl: hit.url, // canonicalization is later work (SRC-03+)
                 originalUrl: hit.url,
@@ -200,7 +225,9 @@ export function createResearchHarness(
                 rawMime: page.contentType,
                 rawText: page.text,
                 requestId,
-              });
+              };
+              if (relevanceScore !== undefined) docInit.relevanceScore = relevanceScore;
+              const docId = await deps.repositories.documents.insert(docInit);
               summary.fetches++;
               summary.documentsStored++;
               const extracted = deps.extract

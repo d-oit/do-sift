@@ -41,7 +41,13 @@ function fakeEmbedder(): TextEmbedder {
   return {
     modelId: "fake-embed-1",
     async embedPassages(texts) {
-      return texts.map((t) => vectors[t] ?? [0, 0, 1]);
+      // SRC-11: the harness embeds the WHOLE page (accepted-lead semantics —
+      // lead-window similarity by design), and the answer path applies the
+      // default exclusion floor (0.70) to the stored receipt. This synthetic
+      // embedder pairs unknown body text at 0.95 (≥ the floor) so these
+      // composition tests exercise the RET-04 loop (hybrid retrieval over
+      // the just-indexed run) rather than the floor's advisory degradation.
+      return texts.map((t) => vectors[t] ?? [0.95, 0.31225]);
     },
     async embedQuery(text) {
       return vectors[text] ?? [0, 0, 1];

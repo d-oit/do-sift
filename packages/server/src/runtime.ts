@@ -51,6 +51,13 @@ export interface RuntimeOptions {
   maxFetches?: number;
   /** Answer retrieval cap (default 6). */
   maxPassages?: number;
+  /**
+   * SRC-11 answer-time exclusion floor (default 0.70, designed in
+   * plans/003-004-src-ans.md). Storage is unconditional; this tunes the
+   * pool at read time only. Surface kept minimal: options-level, no env
+   * wiring (the packaged entrypoint runs the designed default).
+   */
+  relevanceFloor?: number;
 }
 
 export interface Runtime {
@@ -112,7 +119,12 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
             budget: budgets,
             ...(options.embedder === undefined ? {} : { embedder: options.embedder }),
           },
-          ...(options.maxPassages === undefined ? [] : [{ maxPassages: options.maxPassages }]),
+          {
+            ...(options.maxPassages === undefined ? {} : { maxPassages: options.maxPassages }),
+            ...(options.relevanceFloor === undefined
+              ? {}
+              : { relevanceFloor: options.relevanceFloor }),
+          },
         );
 
   return {

@@ -20,6 +20,11 @@ function strOrUndefined(row: Row, key: string): string | undefined {
   const v = strOrNull(row, key);
   return v === null ? undefined : v;
 }
+function numberOrUndefined(row: Row, key: string): number | undefined {
+  if (row[key] === null || row[key] === undefined) return undefined;
+  const n = Number(row[key]);
+  return Number.isNaN(n) ? undefined : n;
+}
 
 export interface OwnerRow {
   id: string;
@@ -40,6 +45,13 @@ export interface DocumentInput {
   rawText?: string | undefined;
   /** The research request that fetched this document (ANS-07); NULL = legacy. */
   requestId?: string | undefined;
+  /**
+   * Evidence relevance receipt (SRC-11): lead-window similarity computed
+   * once per source at storage time. Advisory only — NULL/undefined =
+   * legacy or unmeasured and is ALWAYS included; exclusion happens at
+   * answer time (read-time floor), never at storage time.
+   */
+  relevanceScore?: number | undefined;
 }
 
 export type DocumentOrigin = "page-metadata" | "provider" | "domain-policy" | "user";
@@ -59,6 +71,8 @@ export interface DocumentRow {
   createdAt: string;
   /** Research-run linkage (ANS-07); undefined when the row predates it. */
   requestId?: string | undefined;
+  /** Relevance receipt (SRC-11); undefined = legacy/unmeasured (always included). */
+  relevanceScore?: number | undefined;
 }
 
 export interface PassageInput {
@@ -201,6 +215,7 @@ function documentFromRow(row: Row): DocumentRow {
     rawText: str(row, "raw_text"),
     createdAt: str(row, "created_at"),
     requestId: strOrUndefined(row, "request_id"),
+    relevanceScore: numberOrUndefined(row, "relevance_score"),
   };
 }
 
@@ -300,8 +315,8 @@ export class Repositories {
       }
       await this.client.execute({
         sql: `INSERT INTO documents (id, owner_id, canonical_url, original_url, content_hash, fetched_at,
-               published_at, published_origin, title, raw_mime, raw_text, request_id, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               published_at, published_origin, title, raw_mime, raw_text, request_id, relevance_score, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id,
           d.ownerId,
@@ -315,6 +330,7 @@ export class Repositories {
           d.rawMime ?? null,
           d.rawText ?? "",
           d.requestId ?? null,
+          d.relevanceScore ?? null,
           now(),
         ],
       });

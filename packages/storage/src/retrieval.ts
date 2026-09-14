@@ -82,7 +82,12 @@ function hitFromRow(row: Row): PassageHit {
  * queries. The join against passages drops rows whose passage row has
  * disappeared; owner scoping is enforced both on the FTS mirror and the
  * joined row. `documentIds` (ANS-08) optionally restricts the candidate
- * set to those documents (question-scoped retrieval).
+ * set to those documents (question-scoped retrieval). `relevanceFloor`
+ * (SRC-11, answer-time exclusion) optionally filters candidates scored
+ * below the designed floor — advisory: documents with NO relevance score
+ * (NULL = legacy/unmeasured) are ALWAYS included; exclusion is read-time
+ * and never storage-time, and the floor is tunable at read time (not a
+ * cache-key input — source versions unchanged).
  */
 export async function searchPassages(
   client: Client,
@@ -90,6 +95,7 @@ export async function searchPassages(
   queryText: string,
   limit = 10,
   documentIds?: string[],
+  relevanceFloor?: number,
 ): Promise<PassageHit[]> {
   const match = buildMatchQuery(queryText);
   if (match === null) return [];
@@ -97,19 +103,27 @@ export async function searchPassages(
     documentIds && documentIds.length > 0
       ? ` AND p.document_id IN (${documentIds.map(() => "?").join(", ")})`
       : "";
+  const floorFilter =
+    relevanceFloor === undefined
+      ? ""
+      : " AND (d.relevance_score IS NULL OR d.relevance_score >= ?)";
   const res = await client.execute({
     sql: `SELECT f.passage_id, p.document_id, d.content_hash, f.excerpt, bm25(passages_fts) AS score
           FROM passages_fts f
           JOIN passages p ON p.id = f.passage_id AND p.owner_id = ?
           JOIN documents d ON d.id = p.document_id
           WHERE passages_fts MATCH ?
-            AND f.owner_id = ?${docFilter}
+            AND f.owner_id = ?${docFilter}${floorFilter}
           ORDER BY score
           LIMIT ?`,
-    args:
-      documentIds && documentIds.length > 0
-        ? [ownerId, match, ownerId, ...documentIds, limit]
-        : [ownerId, match, ownerId, limit],
+    args: [
+      ownerId,
+      match,
+      ownerId,
+      ...(documentIds && documentIds.length > 0 ? documentIds : []),
+      ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
+      limit,
+    ],
   });
   return res.rows.map(hitFromRow);
 }
