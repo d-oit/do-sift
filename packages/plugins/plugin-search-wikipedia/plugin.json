@@ -1,0 +1,18 @@
+{
+  "name": "search-wikipedia",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "search",
+  "description": "Wikipedia MediaWiki action-API search adapter (SRC-06). Free and keyless; zero capabilities (no `paid`, no secrets). The single permitted network host is en.wikipedia.org (search + page content). Activation is terms-gated: config must name the dated plans/sources.md entry that clears this source. Content is CC BY-SA — the evidence store preserves attribution (source URL + title per passage); publishing derived content would require the same license.",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": ["en.wikipedia.org"],
+    "secrets": []
+  },
+  "config": {
+    "termsAcceptedAt": "",
+    "sourcesEntry": "",
+    "retryCapMs": 5000
+  },
+  "entry": "createWikipediaSearch"
+}

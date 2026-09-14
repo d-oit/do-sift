@@ -82,22 +82,37 @@ npx tsx apps/server/src/index.ts
 # → do-sift listening on http://127.0.0.1:8080
 ```
 
-| Variable                                   | Meaning                                                                                                           | Default              |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `DO_SIFT_OWNERS`                           | Comma-separated owner allowlist (required; seeds the owners registry)                                             | —                    |
-| `DO_SIFT_SEARCH_PROVIDER`                  | Search adapter; only `fixture` exists today (live adapters gated behind SRC-02 sources.md entries)                | —                    |
-| `DO_SIFT_MODEL_PROVIDER`                   | Answer model; `fixture` wires `/api/answer`, unset answers 501 (live providers gated behind ANS-02 + paid grants) | unset                |
-| `DO_SIFT_EMBEDDER`                         | `fastembed` = hybrid retrieval (local ONNX); unset = keyword-only bm25                                            | unset                |
-| `DO_SIFT_DB_URL`                           | libSQL URL; local `file:` only in the entrypoint (Turso runs through the storage plugin + kernel secrets)         | `file:do-sift.db`    |
-| `DO_SIFT_DB_MIGRATIONS_DIR`                | Numbered migrations applied at startup                                                                            | `migrations`         |
-| `DO_SIFT_HOST` / `DO_SIFT_PORT`            | Bind address/port                                                                                                 | `127.0.0.1` / `8080` |
-| `DO_SIFT_DEV_BYPASS` / `DO_SIFT_DEV_OWNER` | Loopback-only dev bypass (keep off outside dev)                                                                   | off                  |
-| `DO_SIFT_FETCH_ALLOWLIST`                  | Exhaustive fetch allowlist for the site-access policy (wired with the first live search adapter)                  | unset                |
+| Variable                                   | Meaning                                                                                                                   | Default              |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `DO_SIFT_OWNERS`                           | Comma-separated owner allowlist (required; seeds the owners registry)                                                     | —                    |
+| `DO_SIFT_SEARCH_PROVIDER`                  | Search adapter: `fixture` (synthetic, offline) or `wikipedia` (live — free, keyless; terms-checked in `plans/sources.md`) | —                    |
+| `DO_SIFT_MODEL_PROVIDER`                   | Answer model; `fixture` wires `/api/answer`, unset answers 501 (live providers gated behind ANS-02 + paid grants)         | unset                |
+| `DO_SIFT_EMBEDDER`                         | `fastembed` = hybrid retrieval (local ONNX); unset = keyword-only bm25                                                    | unset                |
+| `DO_SIFT_DB_URL`                           | libSQL URL; local `file:` only in the entrypoint (Turso runs through the storage plugin + kernel secrets)                 | `file:do-sift.db`    |
+| `DO_SIFT_DB_MIGRATIONS_DIR`                | Numbered migrations applied at startup                                                                                    | `migrations`         |
+| `DO_SIFT_HOST` / `DO_SIFT_PORT`            | Bind address/port                                                                                                         | `127.0.0.1` / `8080` |
+| `DO_SIFT_DEV_BYPASS` / `DO_SIFT_DEV_OWNER` | Loopback-only dev bypass (keep off outside dev)                                                                           | off                  |
+| `DO_SIFT_FETCH_ALLOWLIST`                  | Exhaustive fetch allowlist for the site-access policy (wired with the first live search adapter)                          | unset                |
 
 Migrations run automatically at startup; every allowlisted owner is
 seeded into the owners registry. Research mode makes zero LLM calls by
 product invariant; with no model configured, `/api/answer` answers 501
 honestly instead of degrading silently.
+
+### Live search (wikipedia)
+
+`DO_SIFT_SEARCH_PROVIDER=wikipedia` runs the free, keyless MediaWiki
+action API behind its dated terms gate (`plans/sources.md`, checked
+2026-09-14). Every page fetch goes through safe-fetch (scheme/IP/
+redirect/DNS-rebinding/size/time/MIME guards) with each hop checked
+against the site-access policy — `DO_SIFT_FETCH_ALLOWLIST` is an
+exhaustive allowlist when set, and the shipped default-deny list stays
+absolute. Content is **CC BY-SA**: the evidence store preserves
+attribution (source URL + title per passage); publishing derived content
+would require the same license. Fetched HTML is converted to text by the
+host before the block-heuristic extractor; no live test runs in CI — the
+live shape was verified by the recorded SRC-06 spike, and offline tests
+use recorded fixtures.
 
 ### Container
 
@@ -144,9 +159,12 @@ per run — cite `.do-harness/evidence.verification.json` rather than memory.
 - Single owner; no multi-user deployment (plan 000 non-goal until
   OPS/QUAL gates).
 - No TLS, no rate limiting in the server itself (reverse proxy duty).
-- The `apps/server` entrypoint serves local-file databases and labeled
-  fixture providers only; live search/LLM adapters and remote Turso via
-  the entrypoint remain behind their recorded gates (sources.md entries,
-  paid-capability grants).
+- Live search (Wikipedia) exists behind its dated terms gate; live LLM
+  adapters and remote Turso via the entrypoint remain behind their
+  recorded gates (no credentials exist in this environment; paid APIs
+  need explicit grants). Extraction is a block heuristic after host
+  HTML→text preprocessing — no DOM parsing (SRC-03 scope). Budgets are
+  not yet env-wirable in the entrypoint; the fixture/live-search posture
+  makes no billable calls.
 - Remote Turso behavior (DDL-in-transaction parity) is tested locally only
   until the sources.md activation gate.

@@ -1,20 +1,25 @@
 /**
- * OPS-05 (plan 005-007): the packaged service entrypoint's composition.
- * Wires in one place: local libSQL storage + migrations + owner seed, auth
- * (allowlist + optional loopback dev bypass), the RET-04 runtime (research
- * + answer over hybrid retrieval), and the SRC-05 HTTP server.
+ * OPS-05/SRC-06 (plans 005-007, 003-004): the packaged service entrypoint's
+ * composition. Wires in one place: local libSQL storage + migrations +
+ * owner seed, auth (allowlist + optional loopback dev bypass), the RET-04
+ * runtime (research + answer over hybrid retrieval), and the SRC-05 HTTP
+ * server.
  *
- * Provider selection is fail-closed and honest (parseEnvConfig): only
- * labeled fixtures exist today, so fixture mode is the supported offline
- * dev posture and the startup log says so. fetchPage in fixture mode is a
- * synthetic page store — .test hosts never resolve on purpose, and nothing
- * leaves the process. safe-fetch + site-access policy enter with the first
- * live search adapter (SRC-02 gate), not silently before it.
+ * Provider selection is fail-closed and honest (parseEnvConfig): fixture
+ * mode is fully synthetic (nothing leaves the process); live mode exists
+ * only for terms-gated providers — today Wikipedia, whose fetch path goes
+ * through safe-fetch with every hop checked against the site-access policy
+ * (exhaustive when DO_SIFT_FETCH_ALLOWLIST is set).
  */
 import { createClient, type Client } from "@libsql/client";
 import { AuthService, StaticOidcVerifier } from "@do-sift/auth";
+import type { SearchProvider } from "@do-sift/contracts";
 import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
+import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
 import type { PageContent } from "@do-sift/plugin-harness-research";
+import { createSiteAccessPolicy } from "@do-sift/plugin-policy-siteaccess";
+import { createWikipediaSearch } from "@do-sift/plugin-search-wikipedia";
+import { safeFetch, type DnsResolver, type FetchLike } from "@do-sift/safe-fetch";
 import {
   createResearchServer,
   createRuntime,
@@ -29,11 +34,17 @@ import {
   Repositories,
   type TextEmbedder,
 } from "@do-sift/storage";
+import { lookup as dnsLookup } from "node:dns/promises";
 import { parseEnvConfig, type AppConfig } from "./config.js";
 
 // The policy treats apps/ like plugin territory: no raw node:http import.
 // The server type comes from the factory's return type instead.
 type HttpServer = ReturnType<typeof createResearchServer>;
+
+/** Production resolver: every address goes through safe-fetch's guards. */
+const realDns: DnsResolver = {
+  lookup: async (host) => (await dnsLookup(host, { all: true })).map((a) => a.address),
+};
 
 /** Synthetic pages for fixture mode: .test hosts are reserved and never resolve. */
 const FIXTURE_PAGES: Record<string, { title: string; text: string }> = {
@@ -66,6 +77,38 @@ const FIXTURE_SEARCH_HITS = [
   },
 ];
 
+/** The dated plans/sources.md entry that clears the live Wikipedia source. */
+const WIKIPEDIA_TERMS = {
+  termsAcceptedAt: "2026-09-14",
+  sourcesEntry: "Wikipedia (MediaWiki action API, en.wikipedia.org) — checked 2026-09-14",
+};
+
+/**
+ * Minimal HTML→text for the live fetch path (SRC-06). The readability
+ * extractor (SRC-03) is a block heuristic, not a DOM parser, so the host
+ * preprocesses: drop script/style/comments, turn block boundaries into
+ * paragraph breaks, strip remaining tags, decode the common entities.
+ * The result is data — the UI renders it via createTextNode only; this is
+ * preprocessing, not a sanitizer.
+ */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<\/(p|div|h[1-6]|li|tr|blockquote|section|article)>/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export interface ComposeDeps {
   /** Test seam: overrides config.dbUrl (e.g. ":memory:" for hermetic tests). */
   dbUrl?: string;
@@ -75,6 +118,10 @@ export interface ComposeDeps {
    * (SO_REUSEADDR double-bind), so hermetic tests pass 0 (ephemeral).
    */
   port?: number;
+  /** Test seam: fetch used by live mode (search adapter + safe-fetch). */
+  fetchImpl?: FetchLike | undefined;
+  /** Test seam: DNS resolver for safe-fetch (tests stay hermetic). */
+  dns?: DnsResolver | undefined;
 }
 
 export interface ComposedApp {
@@ -96,14 +143,72 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     await repositories.owners.ensure(owner, owner);
   }
 
-  const search = new FakeSearchProvider({ hits: FIXTURE_SEARCH_HITS });
-  const fetchPage = async (fetchUrl: string): Promise<PageContent> => {
-    const page = FIXTURE_PAGES[fetchUrl];
-    if (page === undefined) {
-      throw new Error(`fixture page store has no page for ${fetchUrl}`);
-    }
-    return { text: page.text, contentType: "text/html" };
-  };
+  // Site-access policy governs every live fetch (exhaustive when the
+  // operator allowlist is set; the shipped deny list stays absolute).
+  const siteAccess = createSiteAccessPolicy();
+  await siteAccess.activate({
+    events: { emit: () => {} },
+    config: { allowlist: config.fetchAllowlist },
+  } as unknown as Parameters<typeof siteAccess.activate>[0]);
+
+  const fetchImpl: FetchLike = deps.fetchImpl ?? fetch;
+  let search: SearchProvider;
+  let fetchPage: (fetchUrl: string) => Promise<PageContent>;
+  let extract: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
+
+  if (config.searchProvider === "fixture") {
+    search = new FakeSearchProvider({ hits: FIXTURE_SEARCH_HITS });
+    fetchPage = async (fetchUrl) => {
+      const page = FIXTURE_PAGES[fetchUrl];
+      if (page === undefined) {
+        throw new Error(`fixture page store has no page for ${fetchUrl}`);
+      }
+      return { text: page.text, contentType: "text/html" };
+    };
+  } else {
+    // Live mode: the terms-gated adapter plus the real fetch path —
+    // safe-fetch (scheme/IP/redirect/DNS/size/time/MIME guards) with every
+    // hop checked against the site-access policy. The same policy backs
+    // the adapter's manifest-host assertion in this host-direct composition.
+    const wikipedia = createWikipediaSearch({ fetchImpl });
+    await wikipedia.activate({
+      events: { emit: () => {} },
+      pluginName: "search-wikipedia",
+      config: { ...WIKIPEDIA_TERMS },
+      network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
+    } as unknown as Parameters<typeof wikipedia.activate>[0]);
+    search = wikipedia;
+
+    // SRC-03 extraction: readability over fetched HTML (offline plugin).
+    const readability = createReadabilityExtractor();
+    await readability.activate({
+      pluginName: "extract-readability",
+      kind: "extractor",
+      config: {},
+      logger: { info: () => {}, warn: () => {} },
+      network: {
+        assertHostAllowed: (host: string) => {
+          throw new Error(`extract-readability must not fetch (asked for ${host})`);
+        },
+      },
+      secrets: { assertNameAllowed: () => {}, resolve: async () => "" },
+      events: { emit: () => {} },
+    } as unknown as Parameters<typeof readability.activate>[0]);
+    extract = (text) => readability.extract(text);
+
+    const dns: DnsResolver = deps.dns ?? realDns;
+    fetchPage = async (fetchUrl) => {
+      const result = await safeFetch(fetchUrl, {
+        maxBytes: 2_000_000,
+        timeoutMs: 10_000,
+        maxRedirects: 3,
+        dns,
+        fetchImpl,
+        checkHost: (host) => siteAccess.assertAllowed(host),
+      });
+      return { text: htmlToText(result.text), contentType: result.contentType };
+    };
+  }
 
   let embedder: TextEmbedder | undefined;
   if (config.embedder === "fastembed") {
@@ -116,6 +221,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     client,
     search,
     fetchPage,
+    ...(extract === undefined ? {} : { extract }),
     ...(model === undefined ? {} : { model }),
     ...(embedder === undefined ? {} : { embedder }),
   });
@@ -166,9 +272,14 @@ export async function main(env: Record<string, string | undefined> = process.env
   console.log(
     `  db: ${config.dbUrl} (migrations: ${config.migrationsDir}); owners: ${config.owners.length} allowlisted; dev bypass: ${config.devBypass ? "ON (loopback-only)" : "off"}`,
   );
+  const searchLabel =
+    config.searchProvider === "fixture"
+      ? "fixture (synthetic, dev only)"
+      : `wikipedia (live — CC BY-SA, attribution preserved; fetch allowlist: ${config.fetchAllowlist.length > 0 ? config.fetchAllowlist.join(",") : "default posture"})`;
   console.log(
-    `  search: fixture (synthetic, dev only) | model: ${config.modelProvider === undefined ? "not configured (/api/answer → 501)" : "fixture (synthetic, dev only)"} | embedder: ${config.embedder ?? "keyword-only"}`,
+    `  search: ${searchLabel} | model: ${config.modelProvider === undefined ? "not configured (/api/answer → 501)" : "fixture (synthetic, dev only)"} | embedder: ${config.embedder ?? "keyword-only"}`,
   );
+  console.log("  budget: no caps configured (fixture/live-search mode makes no billable calls)");
 
   const shutdown = (): void => {
     void app.close().then(() => process.exit(0));

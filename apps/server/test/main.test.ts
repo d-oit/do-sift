@@ -8,6 +8,7 @@
  * a labeled dev posture, never a silent default.
  */
 import { describe, expect, it } from "vitest";
+import type { DnsResolver, FetchLike } from "@do-sift/safe-fetch";
 import { parseEnvConfig, type AppConfig } from "../src/config.js";
 import { composeApp, type ComposedApp } from "../src/main.js";
 
@@ -109,6 +110,12 @@ describe("parseEnvConfig", () => {
     });
     expect(config.fetchAllowlist).toEqual(["example.org", "docs.example.org"]);
   });
+
+  it("accepts wikipedia as a search provider (terms-checked live adapter)", () => {
+    expect(
+      parseEnvConfig({ ...BASE_ENV, DO_SIFT_SEARCH_PROVIDER: "wikipedia" }).searchProvider,
+    ).toBe("wikipedia");
+  });
 });
 
 describe("composeApp (fixture mode, offline end-to-end)", () => {
@@ -196,6 +203,95 @@ describe("composeApp (fixture mode, offline end-to-end)", () => {
     try {
       expect((await app.repositories.owners.get("owner-a"))?.id).toBe("owner-a");
       expect((await app.repositories.owners.get("owner-b"))?.id).toBe("owner-b");
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", () => {
+  /** Shape recorded from the live API by the SRC-06 spike. */
+  const RECORDED_SEARCH = {
+    query: {
+      search: [
+        {
+          ns: 0,
+          title: "SQLite",
+          pageid: 1,
+          size: 1,
+          wordcount: 1,
+          snippet: 'SQLite is a <span class="searchmatch">database</span> engine.',
+          timestamp: "2026-01-01T00:00:00Z",
+        },
+      ],
+    },
+  };
+  const PAGE_HTML =
+    "<html><body><h1>SQLite</h1>" +
+    "<p>SQLite embeds the whole database in a single portable file.</p>" +
+    "<p>The FTS5 extension ranks keyword matches with bm25 scoring.</p>" +
+    "</body></html>";
+
+  it("runs research through the live adapter + safe-fetch path and answers from stored evidence", async () => {
+    const config: AppConfig = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_SEARCH_PROVIDER: "wikipedia",
+      DO_SIFT_MODEL_PROVIDER: "fixture",
+      DO_SIFT_DEV_BYPASS: "1",
+      DO_SIFT_DEV_OWNER: "owner-a",
+      DO_SIFT_FETCH_ALLOWLIST: "en.wikipedia.org",
+    });
+    let searchCalls = 0;
+    const fetchImpl: FetchLike = async (url) => {
+      if (url.includes("w/api.php")) {
+        searchCalls++;
+        return new Response(JSON.stringify(RECORDED_SEARCH), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/wiki/")) {
+        return new Response(PAGE_HTML, {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+      throw new Error(`stub fetch got an unexpected url: ${url}`);
+    };
+    const dns: DnsResolver = { lookup: async () => ["93.184.216.34"] };
+    const app = await composeApp(config, { dbUrl: ":memory:", port: 0, fetchImpl, dns });
+    try {
+      const base = `http://127.0.0.1:${app.port}`;
+
+      const research = await fetch(`${base}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "how does sqlite fts work?" }),
+      });
+      expect(research.status).toBe(200);
+      const sse = await research.text();
+      expect(sse).toContain("event: source");
+      expect(sse).toContain("event: done");
+      expect(sse).toContain('"documentsStored":1');
+      expect(searchCalls).toBe(1);
+
+      const answer = await fetch(`${base}/api/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "how does sqlite fts work?" }),
+      });
+      expect(answer.status).toBe(200);
+      const payload = (await answer.json()) as {
+        evidenceOnly: boolean;
+        blocks: Array<{ text: string; citations: string[] }>;
+      };
+      expect(payload.evidenceOnly).toBe(false);
+      expect(payload.blocks.length).toBeGreaterThan(0);
+      for (const block of payload.blocks) {
+        expect(block.citations.length).toBeGreaterThan(0);
+        // readability extraction stripped the fetched HTML at the boundary
+        expect(block.text).not.toContain("<");
+      }
     } finally {
       await app.close();
     }

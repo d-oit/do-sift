@@ -19,3 +19,10 @@ with an explicit 0.x compatibility policy (minor = breaking, patch = safe).
   stay behind their recorded gates); `/healthz` liveness route; the Docker
   image CMD now runs the service with a real healthcheck (build-time
   offline eval unchanged).
+- First live search adapter (`plugin-search-wikipedia`, SRC-06): free,
+  keyless MediaWiki action API behind the recorded terms gate
+  (`plans/sources.md`, checked 2026-09-14); entrypoint live mode fetches
+  pages through safe-fetch with every hop checked against the site-access
+  policy (`DO_SIFT_FETCH_ALLOWLIST`), plus host HTML→text preprocessing
+  before the readability extractor. Content is CC BY-SA — the evidence
+  store preserves attribution per passage.
