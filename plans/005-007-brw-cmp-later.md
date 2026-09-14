@@ -37,12 +37,61 @@ Exit: replay test passes; bypass test fails closed.
 
 ### OPS task table
 
-| ID     | Task                                                                                                | Status |
-| ------ | --------------------------------------------------------------------------------------------------- | ------ |
-| OPS-01 | Backup/restore rehearsal: local libSQL snapshot + verify (Turso procedure documented, not executed) | done   |
-| OPS-02 | Deployment documentation: env config, local file vs Turso, reverse proxy, backup cadence            | done   |
-| OPS-03 | Container image: Dockerfile, non-root, healthcheck, offline checks inside                           | done   |
-| OPS-04 | Release candidate 0.1.0 via prepare-release skill (validate only; never publish)                    | done   |
+| ID     | Task                                                                                                        | Status |
+| ------ | ----------------------------------------------------------------------------------------------------------- | ------ |
+| OPS-01 | Backup/restore rehearsal: local libSQL snapshot + verify (Turso procedure documented, not executed)         | done   |
+| OPS-02 | Deployment documentation: env config, local file vs Turso, reverse proxy, backup cadence                    | done   |
+| OPS-03 | Container image: Dockerfile, non-root, healthcheck, offline checks inside                                   | done   |
+| OPS-04 | Release candidate 0.1.0 via prepare-release skill (validate only; never publish)                            | done   |
+| OPS-05 | Packaged server entrypoint under `apps/` (env-configured composition; turns the image into a service image) | done   |
+
+### OPS-05 decomposition (2026-09-14, htn-planner workflow per plan 009)
+
+Preconditions met: the composition seam exists (`createRuntime`, RET-04),
+the HTTP surface exists (`createResearchServer`, ANS-05/SRC-05), provider
+and fetch APIs are read (auth, safe-fetch, site-access policy, fixtures),
+and the Dockerfile header already prescribes this task ("when it lands, the
+CMD switches to it"). No third-party uncertainty remains → vertical slice,
+no spike. Ordered subtasks, each gated on `verify --set feedback` exit 0:
+
+1. Plan row + decomposition recorded (this section).
+2. Red tests: `apps/server/test/main.test.ts` — `parseEnvConfig` matrix
+   (defaults; owner allowlist required non-empty; dev-bypass gating; remote
+   DB URL refused with a pointer to the storage-plugin path; unknown
+   provider values refused) + `composeApp` smoke over real HTTP with
+   fixture providers on `:memory:` (`/healthz` 200 unauthenticated;
+   `/api/research` SSE completes; `/api/answer` 501 when no model is
+   configured, grounded answer when the fixture model is configured) +
+   fail-closed composition errors. Plus `packages/server` tests for the
+   `/healthz` route and configurable `listen` port.
+3. Implement `packages/server` deltas: `/healthz` (static ok, no data) and
+   `listen(server, host, port = 0)` (backward-compatible default).
+4. Implement `apps/server/src/{config,main,index}.ts`: env → config →
+   composition (storage client + migrations + owners seed, AuthService +
+   StaticOidcVerifier, optional fastembed embedder, fixture providers only
+   when explicitly configured) → `createRuntime` → `createResearchServer`
+   → listen; SIGTERM/SIGINT graceful close; honest startup log. `main()`
+   stays thin; all logic testable through `composeApp`.
+   **Amendment before implementation:** in fixture mode `fetchPage` is a
+   synthetic page store (`.test` hosts, nothing leaves the process) —
+   safeFetch + site-access policy enter with the first live search
+   adapter, not before it; the runtime's `model` option becomes optional
+   (search mode = zero LLM calls is a recorded product invariant, so a
+   research-only runtime must compose).
+5. `vitest.config.ts` gains `apps/**/test/**/*.test.ts`; Dockerfile CMD →
+   the entrypoint, HEALTHCHECK → `/healthz` probe (port from env);
+   build-time offline eval stays. CHANGELOG gains the entrypoint under
+   [0.1.0] Added.
+6. Docs: `docs/deployment.md` replaces the "pending" note with the
+   entrypoint usage (env table, run examples, limits).
+7. Verify (feedback in the loop, verification set at handoff); record
+   evidence; commit.
+
+Acceptance: entrypoint starts offline with fixture providers and serves
+research + (with fixture model) grounded answers; refuses to start without
+an explicit search provider or owner allowlist; never starts networked
+providers silently (none exist yet — SRC-02/ANS-02 live gates untouched);
+image builds and its healthcheck probes the real service.
 
 ### BRW-01 evidence (2026-09-11)
 
@@ -583,3 +632,80 @@ noted, not blocking); publishing decision sits with the owner.
 owner's approval-gated call; development-wise nothing remains open in
 plans 001–011 — the next feature work is the live-provider activation
 gates (SRC-02/ANS-02 live adapters), which are also ask-first.
+
+### OPS-05 evidence (2026-09-14, agent)
+
+**Files:** `apps/server/src/config.ts` (new: pure `parseEnvConfig` —
+fail-closed env matrix, every refusal names the offending variable),
+`apps/server/src/main.ts` (new: `composeApp` — local libSQL client +
+migrations + owners seed, AuthService + StaticOidcVerifier (empty token
+map: bearer tokens refuse until a real OIDC verifier passes its sources.md
+gate), fixture search + fixture page store as `fetchPage` (`.test` hosts —
+nothing leaves the process), optional fastembed embedder, optional fixture
+model, `createRuntime` → `createResearchServer` → `listen`;
+`main()` — honest startup log, SIGINT/SIGTERM graceful close),
+`apps/server/src/index.ts` (new: thin boot), `apps/server/test/main.test.ts`
+(new, 13 tests), `packages/server/src/server.ts` (`/healthz` route —
+unauthenticated, constant body; `listen` gains a port parameter, default
+0 for compatibility), `packages/server/src/runtime.ts` (`model` option
+now optional — search mode is zero-LLM by recorded product invariant;
+answer/answerResponse refuse with a clear error when absent),
+`packages/server/test/server.test.ts` (+1 healthz),
+`packages/server/test/runtime.test.ts` (+1 model-less runtime),
+`vitest.config.ts` (+apps include), `Dockerfile` (CMD → the entrypoint;
+HEALTHCHECK → `/healthz` probe; writable `/data` volume as the in-image
+DB default — the old CMD only read, the service must write; baked model
+cache chowned; `ENV DO_SIFT_HOST=0.0.0.0` per container convention;
+fail-closed env still not defaulted), `CHANGELOG.md` (+entrypoint under
+[0.1.0] Added), `docs/deployment.md` (entrypoint usage: env table, run +
+docker run examples, limits).
+
+**Decomposition amendment (recorded before implementation, see the
+decomposition section):** fixture mode's `fetchPage` is the synthetic
+page store; safe-fetch + site-access policy enter with the first live
+search adapter.
+
+**Process notes:** red-first (the new tests failed or could not compile
+before implementation). One real catch by the sensors, not by me: the
+`pluginImports` policy flagged `apps/server/src/main.ts` importing
+`node:http` — apps/ is deliberately scanned like plugin territory, so the
+server type now derives from `createResearchServer`'s return type instead
+of a raw import (policy not weakened). One Windows-only test artifact:
+back-to-back apps binding the same fixed port reset connections
+(SO_REUSEADDR double-bind) — fixed with a `port` test seam (ephemeral 0),
+not by loosening the tests. One mangled-edit incident on
+`runtime.test.ts` (a new test accidentally replaced an existing one) was
+caught and restored in the same session before any run.
+
+**Commands:** `npx vitest run apps/server packages/server` → 46/46;
+`npm run check:fast` → PASS 5/5; `npm run signals -- verify --set
+verification` → 7/7 green (receipt:
+`.do-harness/evidence.verification.json`). Container smoke
+(`do-sift:ops-05-rc` =
+`sha256:15625456428ba7d3be28534c9c812a8e8a7cfef2a68615d12b534da68dd46bce`):
+built with the service CMD; `docker run` with fixture env → built-in
+healthcheck **healthy**; host `GET /healthz` → 200 `{"ok":true}`; host
+`POST /api/research` without credentials → **401** (dev bypass correctly
+loopback-only across the bridge); startup log announces fixture providers
+as synthetic; `docker run` with NO env → refuses with the
+`DO_SIFT_OWNERS` message, **exit 1**.
+
+**Risks / open questions:** the entrypoint composes the host directly
+(like `runtime.test.ts`); the full kernel/plugin path (capability-gated
+storage activation, secret resolution) is how Turso remote arrives —
+explicitly refused in the entrypoint for now. `StaticOidcVerifier({})`
+means bearer-token auth rejects everything until a real verifier lands —
+dev bypass is the only auth path, and it is loopback-only by
+construction. Budgets are not yet env-wirable (fixture mode makes no
+external calls; budgets enter with live providers). release:check for
+v0.1.0 now reports the existing tag — expected sealed-candidate state;
+the next candidate needs a version bump. The v0.1.0 release.md packaging
+caveat (image CMD = eval runner) is resolved from this commit onward, but
+release.md stays as the sealed candidate record.
+
+**Next suggested task:** registry push for v0.1.0 still waits on the
+owner's registry choice (GHCR needs a `write:packages` credential; Docker
+Hub `dosoft` is logged in). Development-wise: the live-provider gates
+(SRC-02/ANS-02, ask-first) are the next feature work; a natural companion
+is wiring `DO_SIFT_FETCH_ALLOWLIST` + safe-fetch into the entrypoint when
+the first live adapter lands.

@@ -138,3 +138,36 @@ describe("runtime.answerResponse (ANS-05)", () => {
     expect(second.answerId).toBe(first.answerId);
   });
 });
+
+describe("runtime without a model (OPS-05: search mode = zero LLM calls)", () => {
+  it("research runs with no model configured; the answer surface refuses honestly", async () => {
+    const search = new FakeSearchProvider({
+      hits: [{ url: "https://a.test/page", title: "Page A", snippet: "fts5", rank: 0 }],
+    });
+    const runtime = await createRuntime({
+      client,
+      search,
+      fetchPage: async () => ({
+        text: [KEYWORD_A, KEYWORD_B].join("\n\n"),
+        contentType: "text/html",
+      }),
+      budgetCaps: {
+        maxInputTokens: 10_000,
+        maxOutputTokens: 10_000,
+        maxSearchCalls: 100,
+        maxFetches: 100,
+      },
+      maxFetches: 2,
+      embedder: fakeEmbedder(),
+    });
+
+    const summary = await runtime.runResearch("owner-a", QUESTION);
+    expect(summary.passagesStored).toBe(2);
+    expect(summary.embedded).toBe(2); // embed-on-store is independent of the model
+
+    await expect(runtime.answer({ ownerId: "owner-a", question: QUESTION })).rejects.toThrow(
+      /model/,
+    );
+    await expect(runtime.answerResponse("owner-a", QUESTION)).rejects.toThrow(/model/);
+  });
+});

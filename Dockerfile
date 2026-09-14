@@ -1,11 +1,16 @@
-# do-sift offline verification image (OPS-03, plans/005-007).
+# do-sift service image (OPS-03 + OPS-05, plans/005-007).
 #
-# Purpose today: a reproducible, non-root container that carries the runtime
-# and runs the offline check suite INSIDE the image (INV-006: deterministic
-# datasets, 0 network, 0 model calls — local ONNX inference only). A packaged
-# server entrypoint is still pending under apps/ (docs/deployment.md); when
-# it lands, the CMD switches to it and this healthcheck becomes a service
-# liveness probe.
+# Purpose: a reproducible, non-root container that carries the runtime AND
+# the packaged entrypoint (apps/server): CMD = the service, healthcheck =
+# its /healthz route. The offline check suite still runs INSIDE the image
+# at build time (INV-006: deterministic datasets, 0 network, 0 model calls
+# — local ONNX inference only) and warms the model cache so the runtime
+# fastembed embedder stays offline.
+#
+# Fail-closed env is deliberately NOT defaulted: `docker run` without
+# DO_SIFT_OWNERS and DO_SIFT_SEARCH_PROVIDER refuses to start (see
+# docs/deployment.md). Only labeled fixture providers exist today; live
+# adapters stay behind their recorded gates.
 #
 # Debian-slim (glibc), not alpine: native deps (@libsql, onnxruntime-node)
 # ship glibc prebuilds.
@@ -34,12 +39,25 @@ RUN npm ci --include=dev
 # cache into /app/.fastembed_cache so runtime healthchecks stay offline).
 RUN npm run eval:offline
 
+# Writable data dir for the non-root runtime: the in-image DB default is
+# file:/data/do-sift.db — mount a volume there for persistence. The baked
+# model cache dir is chowned too, so a runtime-enabled fastembed embedder
+# can refresh it.
+RUN mkdir -p /data /app/.fastembed_cache && chown node:node /data /app/.fastembed_cache
+ENV DO_SIFT_DB_URL="file:/data/do-sift.db"
+VOLUME /data
+
 # Non-root (node image ships uid 1000 "node"); /app is world-readable so
 # the runtime user can read sources and the baked model cache.
 USER node
 
-# Liveness = the offline suite itself (slow but honest; long interval).
-HEALTHCHECK --interval=120s --timeout=120s --start-period=30s --retries=2 \
-  CMD ["node", "node_modules/tsx/dist/cli.mjs", "scripts/eval.ts"]
+# Container convention: bind all interfaces inside the container namespace;
+# publish selectively with -p and keep the reverse-proxy duties from
+# docs/deployment.md (no TLS/rate limiting in the server itself).
+ENV DO_SIFT_HOST=0.0.0.0
 
-CMD ["node", "node_modules/tsx/dist/cli.mjs", "scripts/eval.ts"]
+# Liveness = the real service's /healthz (unauthenticated, constant body).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.DO_SIFT_PORT || 8080) + '/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+
+CMD ["node", "node_modules/tsx/dist/cli.mjs", "apps/server/src/index.ts"]

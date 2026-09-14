@@ -310,3 +310,19 @@ describe("answer surface (ANS-05)", () => {
     }
   });
 });
+
+describe("GET /healthz (OPS-05 liveness, unauthenticated)", () => {
+  it("answers 200 {ok:true} with no credentials and no data, and is GET-only", async () => {
+    const s = createResearchServer({ auth: makeAuth(false), runResearch });
+    const p = await listen(s);
+    try {
+      const res = await fetch(`http://127.0.0.1:${p}/healthz`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      // no data leaks: the body is the constant ok object
+      expect((await fetch(`http://127.0.0.1:${p}/healthz`, { method: "POST" })).status).toBe(404);
+    } finally {
+      s.close();
+    }
+  });
+});

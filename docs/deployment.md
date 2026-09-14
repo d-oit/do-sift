@@ -67,10 +67,57 @@ npm run build      # tsc -b tsconfig.build.json
 npm run check      # full verification before starting anything
 ```
 
-The HTTP surface is a library (`createResearchServer` in
-packages/server); a packaged app entry under `apps/` is pending (tracked
-in the OPS notes). Migrations run automatically when the storage plugin
-activates with `migrationsDir` set.
+The packaged entrypoint is `apps/server` — run it with tsx (no build
+step needed; the repo runs through tsx). Provider selection is
+fail-closed: the entrypoint refuses to start without an explicit search
+provider and owner allowlist, and fixture providers are labeled as
+synthetic in the startup log — never a silent default.
+
+```bash
+DO_SIFT_OWNERS="me" \
+DO_SIFT_SEARCH_PROVIDER=fixture \
+DO_SIFT_MODEL_PROVIDER=fixture \
+DO_SIFT_DEV_BYPASS=1 DO_SIFT_DEV_OWNER=me \
+npx tsx apps/server/src/index.ts
+# → do-sift listening on http://127.0.0.1:8080
+```
+
+| Variable                                   | Meaning                                                                                                           | Default              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `DO_SIFT_OWNERS`                           | Comma-separated owner allowlist (required; seeds the owners registry)                                             | —                    |
+| `DO_SIFT_SEARCH_PROVIDER`                  | Search adapter; only `fixture` exists today (live adapters gated behind SRC-02 sources.md entries)                | —                    |
+| `DO_SIFT_MODEL_PROVIDER`                   | Answer model; `fixture` wires `/api/answer`, unset answers 501 (live providers gated behind ANS-02 + paid grants) | unset                |
+| `DO_SIFT_EMBEDDER`                         | `fastembed` = hybrid retrieval (local ONNX); unset = keyword-only bm25                                            | unset                |
+| `DO_SIFT_DB_URL`                           | libSQL URL; local `file:` only in the entrypoint (Turso runs through the storage plugin + kernel secrets)         | `file:do-sift.db`    |
+| `DO_SIFT_DB_MIGRATIONS_DIR`                | Numbered migrations applied at startup                                                                            | `migrations`         |
+| `DO_SIFT_HOST` / `DO_SIFT_PORT`            | Bind address/port                                                                                                 | `127.0.0.1` / `8080` |
+| `DO_SIFT_DEV_BYPASS` / `DO_SIFT_DEV_OWNER` | Loopback-only dev bypass (keep off outside dev)                                                                   | off                  |
+| `DO_SIFT_FETCH_ALLOWLIST`                  | Exhaustive fetch allowlist for the site-access policy (wired with the first live search adapter)                  | unset                |
+
+Migrations run automatically at startup; every allowlisted owner is
+seeded into the owners registry. Research mode makes zero LLM calls by
+product invariant; with no model configured, `/api/answer` answers 501
+honestly instead of degrading silently.
+
+### Container
+
+The image's CMD is the service entrypoint with a `/healthz` liveness
+probe; the build-time offline eval suite is unchanged. Note: the tagged
+v0.1.0 image predates the entrypoint — its CMD still runs the offline
+suite; the service CMD ships with the next image build. The fail-closed
+env is not defaulted, so provide configuration explicitly:
+
+```bash
+docker run -p 8080:8080 \
+  -e DO_SIFT_OWNERS="me" -e DO_SIFT_SEARCH_PROVIDER=fixture \
+  -e DO_SIFT_MODEL_PROVIDER=fixture \
+  -e DO_SIFT_DEV_BYPASS=1 -e DO_SIFT_DEV_OWNER=me \
+  do-sift:dev
+```
+
+The image binds `0.0.0.0` inside the container namespace (publish
+selectively with `-p`); the server itself still has no TLS or rate
+limiting — reverse-proxy duty.
 
 ## Backups
 
@@ -97,6 +144,9 @@ per run — cite `.do-harness/evidence.verification.json` rather than memory.
 - Single owner; no multi-user deployment (plan 000 non-goal until
   OPS/QUAL gates).
 - No TLS, no rate limiting in the server itself (reverse proxy duty).
-- No packaged container yet (OPS-03) and no app entry point under `apps/`.
+- The `apps/server` entrypoint serves local-file databases and labeled
+  fixture providers only; live search/LLM adapters and remote Turso via
+  the entrypoint remain behind their recorded gates (sources.md entries,
+  paid-capability grants).
 - Remote Turso behavior (DDL-in-transaction parity) is tested locally only
   until the sources.md activation gate.

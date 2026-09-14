@@ -222,6 +222,14 @@ export function createResearchServer(options: ResearchServerOptions): Server {
     void (async () => {
       res.setHeader("x-content-type-options", "nosniff");
       const url = req.url ?? "/";
+      // Liveness probe (OPS-05): unauthenticated, constant body, no data —
+      // safe for any load balancer or container healthcheck. GET-only;
+      // other methods fall through to the 404 handler.
+      if (req.method === "GET" && url === "/healthz") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
       if (req.method === "GET" && (url === "/" || url === "/index.html")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(options.pageHtml ?? DEFAULT_PAGE);
@@ -256,11 +264,14 @@ export function createResearchServer(options: ResearchServerOptions): Server {
   });
 }
 
-/** Listen on an ephemeral loopback port; resolves the bound port. */
-export function listen(server: Server, host = "127.0.0.1"): Promise<number> {
+/**
+ * Listen and resolve the bound port. `port` defaults to 0 (ephemeral, for
+ * tests); the app entrypoint passes its configured port.
+ */
+export function listen(server: Server, host = "127.0.0.1", port = 0): Promise<number> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, host, () => {
+    server.listen(port, host, () => {
       const addr = server.address();
       if (addr && typeof addr === "object") resolve(addr.port);
       else reject(new Error("server did not bind a port"));

@@ -33,8 +33,12 @@ export interface RuntimeOptions {
   fetchPage: (url: string) => Promise<PageContent>;
   /** Extraction plugin output; default = the harness's built-in splitter. */
   extract?: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
-  /** Answer-path model: exactly one bounded call per question (ADR 0006). */
-  model: ModelProvider;
+  /**
+   * Answer-path model: exactly one bounded call per question (ADR 0006).
+   * Optional since OPS-05: search mode is zero-LLM by product invariant, so
+   * a research-only runtime omits it and answer/answerResponse refuse.
+   */
+  model?: ModelProvider | undefined;
   /** Daily caps for the usage ledger; omit to run without a budget. */
   budgetCaps?: DailyCaps | undefined;
   /**
@@ -67,6 +71,9 @@ export interface Runtime {
   answerResponse(ownerId: string, question: string): Promise<AnswerHttpResponse>;
 }
 
+const NO_MODEL_MESSAGE =
+  "no model configured: the answer surface needs a configured model (search mode runs with zero LLM calls)";
+
 export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   const repositories = new Repositories(options.client);
   const budgets =
@@ -94,16 +101,19 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     config: { maxHits: options.maxHits, maxFetches: options.maxFetches },
   } as unknown as PluginContext);
 
-  const answers = createAnswerService(
-    {
-      client: options.client,
-      repositories,
-      model: options.model,
-      budget: budgets,
-      ...(options.embedder === undefined ? {} : { embedder: options.embedder }),
-    },
-    ...(options.maxPassages === undefined ? [] : [{ maxPassages: options.maxPassages }]),
-  );
+  const answers =
+    options.model === undefined
+      ? undefined
+      : createAnswerService(
+          {
+            client: options.client,
+            repositories,
+            model: options.model,
+            budget: budgets,
+            ...(options.embedder === undefined ? {} : { embedder: options.embedder }),
+          },
+          ...(options.maxPassages === undefined ? [] : [{ maxPassages: options.maxPassages }]),
+        );
 
   return {
     repositories,
@@ -117,9 +127,11 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       }
     },
     async answer(task, signal) {
+      if (answers === undefined) throw new Error(NO_MODEL_MESSAGE);
       return answers.answer(task, signal);
     },
     async answerResponse(ownerId, question) {
+      if (answers === undefined) throw new Error(NO_MODEL_MESSAGE);
       const outcome = await answers.answer({ ownerId, question });
       const stored = await repositories.answers.get(ownerId, outcome.answerId);
       if (stored === undefined) {
