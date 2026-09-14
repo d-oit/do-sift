@@ -433,7 +433,9 @@ describe("question-scoped retrieval (ANS-08)", () => {
         sql: "SELECT id FROM passages WHERE document_id = ?",
         args: [otherDoc],
       });
-      return String(rows.rows[0].id);
+      const hit = rows.rows[0];
+      if (hit === undefined) throw new Error("noise passage row missing");
+      return String(hit.id);
     })();
     await repos.requests.complete("owner-a", otherReq);
     const model = new FakeModelProvider();
