@@ -22,6 +22,7 @@ export type {
 } from "./repositories.js";
 export { BudgetService, BudgetServiceError } from "./budget.js";
 export type { DailyCaps, HeldUsage, ReserveInput, SettleInput, SettleResult } from "./budget.js";
+export { backfillPassageNoiseClasses } from "./noise.js";
 export { JobQueue, JobQueueError } from "./jobs.js";
 export type { JobQueueOptions, JobRecord, JobStatus } from "./jobs.js";
 export { buildMatchQuery, extractQueryTokens, searchPassages } from "./retrieval.js";

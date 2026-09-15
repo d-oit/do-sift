@@ -491,3 +491,43 @@ describe("noise classification at store time (SRC-12)", () => {
     expect(clean?.excerpt.startsWith("Mount Everest is the highest")).toBe(true);
   });
 });
+
+describe("legacy noise-class backfill at run time (SRC-13)", () => {
+  const ACTIVATE = {
+    events: { emit: () => {} },
+    config: { maxHits: 6, maxFetches: 2 },
+  } as unknown as Parameters<typeof createResearchHarness>[0];
+
+  async function ensureOwner(id: string): Promise<void> {
+    await client.execute({
+      sql: "INSERT INTO owners (id, display_name, created_at) VALUES (?, ?, '2026-09-15T00:00:00Z') ON CONFLICT(id) DO NOTHING",
+      args: [id, id],
+    });
+  }
+
+  it("a run backfills the owner's pre-SRC-12 unclassified passages", async () => {
+    await ensureOwner("owner-backfill");
+    // a legacy row: stored before SRC-12 existed, noise_class NULL
+    const legacyDoc = await repos.documents.insert({
+      ownerId: "owner-backfill",
+      canonicalUrl: "https://legacy.test/page",
+      originalUrl: "https://legacy.test/page",
+      contentHash: "hash-legacy-noise-001",
+      fetchedAt: "2026-09-14T00:00:00Z",
+      rawText: "legacy noise",
+    });
+    const legacyId = await repos.passages.insert({
+      ownerId: "owner-backfill",
+      documentId: legacyDoc,
+      excerpt:
+        "List of tallest mountains in the Solar System List of mountain peaks by prominence " +
+        "List of highest mountains on Earth",
+      extractionStatus: "ok",
+    });
+    const { harness } = makeDeps();
+    await harness.activate(ACTIVATE);
+    const summary = await harness.run({ ownerId: "owner-backfill", question: "tallest mountain" });
+    expect(summary.noiseBackfilled).toBe(1);
+    expect((await repos.passages.get("owner-backfill", legacyId))?.noiseClass).toBe("nav-list");
+  });
+});

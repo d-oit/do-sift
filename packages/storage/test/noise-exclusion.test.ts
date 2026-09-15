@@ -4,10 +4,12 @@ import {
   Repositories,
   applyMigrations,
   backfillPassageEmbeddings,
+  backfillPassageNoiseClasses,
   hybridSearch,
   loadMigrations,
   searchByEmbedding,
   searchPassages,
+  type PassageNoiseClass,
   type TextEmbedder,
 } from "../src/index.js";
 
@@ -145,5 +147,81 @@ describe("noise-class exclusion in retrieval (SRC-12)", () => {
     });
     const hits = await searchPassages(client, "owner-a", QUERY, 10, undefined, undefined, true);
     expect(hits).toHaveLength(1);
+  });
+});
+
+describe("legacy noise-class backfill (SRC-13)", () => {
+  /** The classifier is INJECTED (storage cannot depend on a plugin); a
+   * keyed stand-in exercises the backfill mechanics — selection, update,
+   * idempotence, owner scoping. The real heuristic's behavior is pinned by
+   * the harness fixture tests. */
+  const classify = (text: string): PassageNoiseClass | undefined => {
+    const t = text.trim();
+    if ((t.match(/\bList of\b/gu)?.length ?? 0) >= 3) return "nav-list";
+    if (/\bRetrieved\s+[A-Z][a-z]+\s+\d{1,2}\b/u.test(t)) return "reference";
+    if (t.endsWith(":")) return "stub";
+    return undefined;
+  };
+
+  it("classifies legacy NULL rows by shape and is idempotent", async () => {
+    const docId = await repos.documents.insert({
+      ownerId: "owner-a",
+      canonicalUrl: "https://example.test/legacy-backfill",
+      originalUrl: "https://example.test/legacy-backfill",
+      contentHash: "hash-legacy-backfill-1",
+      fetchedAt: "2026-09-15T00:00:00Z",
+      rawText: "legacy backfill",
+    });
+    const nav = await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: docId,
+      excerpt:
+        "List of tallest mountains in the Solar System List of mountain peaks by prominence " +
+        "List of highest mountains on Earth",
+      extractionStatus: "ok",
+      // no noiseClass — a pre-SRC-12 legacy row
+    });
+    const clean = await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: docId,
+      excerpt: "Mount Everest is the highest mountain above sea level, at 8,848 metres.",
+      extractionStatus: "ok",
+    });
+    const updated = await backfillPassageNoiseClasses(client, "owner-a", classify);
+    expect(updated).toBe(1); // only the flagged row changes; clean stays NULL
+    expect((await repos.passages.get("owner-a", nav))?.noiseClass).toBe("nav-list");
+    expect((await repos.passages.get("owner-a", clean))?.noiseClass).toBeUndefined();
+    // idempotent: the second pass finds nothing left to classify
+    expect(await backfillPassageNoiseClasses(client, "owner-a", classify)).toBe(0);
+  });
+
+  it("is owner-scoped — another owner's legacy rows are untouched", async () => {
+    await repos.owners.ensure("owner-b", "owner-b");
+    const mkDoc = async (owner: string, hash: string) =>
+      repos.documents.insert({
+        ownerId: owner,
+        canonicalUrl: `https://example.test/${hash}`,
+        originalUrl: `https://example.test/${hash}`,
+        contentHash: hash,
+        fetchedAt: "2026-09-15T00:00:00Z",
+        rawText: hash,
+      });
+    const docA = await mkDoc("owner-a", "hash-owner-a-legacy");
+    const docB = await mkDoc("owner-b", "hash-owner-b-legacy");
+    await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: docA,
+      excerpt: "Legacy prose for owner a about ranking.",
+      extractionStatus: "ok",
+    });
+    const stubB = await repos.passages.insert({
+      ownerId: "owner-b",
+      documentId: docB,
+      excerpt: "The main tenets of the Peace of Westphalia were:",
+      extractionStatus: "ok",
+    });
+    const updated = await backfillPassageNoiseClasses(client, "owner-a", classify);
+    expect(updated).toBe(0); // owner-a's row is clean; owner-b's stub untouched
+    expect((await repos.passages.get("owner-b", stubB))?.noiseClass).toBeUndefined();
   });
 });

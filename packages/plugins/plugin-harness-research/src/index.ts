@@ -16,6 +16,7 @@ import { SearchLimits, SearchQuery, isSiteDenied, type SearchProvider } from "@d
 import type { PluginContext, PluginInstance } from "@do-sift/kernel";
 import {
   backfillPassageEmbeddings,
+  backfillPassageNoiseClasses,
   cosineSimilarity,
   type PassageInput,
   type PassageNoiseClass,
@@ -72,6 +73,8 @@ export interface ResearchRunSummary {
   budgetReservationId?: string | undefined;
   /** Newly embedded passages (RET-03); undefined with no embedder or on failure. */
   embedded?: number | undefined;
+  /** Legacy passages classified by the SRC-13 backfill this run; undefined on failure. */
+  noiseBackfilled?: number | undefined;
   /** The run's request row (ANS-07): documents link to it; failed runs fail it. */
   requestId?: string | undefined;
 }
@@ -323,6 +326,22 @@ export function createResearchHarness(
               message: error instanceof Error ? error.message : String(error),
             });
           }
+        }
+
+        // Legacy noise-class backfill (SRC-13): converge a pre-SRC-12
+        // store at run time, owner-scoped and idempotent (the pure
+        // classifier is injected). Advisory like the embeddings backfill:
+        // emit and continue — never a run failure.
+        try {
+          summary.noiseBackfilled = await backfillPassageNoiseClasses(
+            deps.repositories.db,
+            task.ownerId,
+            classifyNoise,
+          );
+        } catch (error) {
+          ctx.events.emit("research.noise-backfill-failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
 
         ctx.events.emit("research.completed", {
