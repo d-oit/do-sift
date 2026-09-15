@@ -31,16 +31,22 @@ beforeEach(async () => {
   await repos.owners.ensure("owner-b", "Owner B");
 });
 
-async function seedEvidence(ownerId = "owner-a", requestId?: string): Promise<void> {
-  const docId = await repos.documents.insert({
+async function seedEvidence(
+  ownerId = "owner-a",
+  requestId?: string,
+  relevanceScore?: number,
+): Promise<void> {
+  const docInit: Parameters<typeof repos.documents.insert>[0] = {
     ownerId,
     canonicalUrl: "https://docs.test/fts5",
     originalUrl: "https://docs.test/fts5",
     contentHash: "hash-fts5-ranking-0001",
     fetchedAt: "2026-09-10T00:00:00Z",
     rawText: "FTS5 ranking",
-    ...(requestId === undefined ? {} : { requestId }),
-  });
+  };
+  if (requestId !== undefined) docInit.requestId = requestId;
+  if (relevanceScore !== undefined) docInit.relevanceScore = relevanceScore;
+  const docId = await repos.documents.insert(docInit);
   await repos.passages.insert({
     ownerId,
     documentId: docId,
@@ -567,6 +573,25 @@ describe("answer evidence basis (ANS-07, R-15/F9)", () => {
   });
 });
 
+describe("scoped retrieval bypasses the relevance floor for own-run evidence (SRC-11)", () => {
+  it("retrieves a below-floor own-run document through the scoped path", async () => {
+    const reqId = await repos.requests.create("owner-a", "search", QUESTION);
+    await seedEvidence("owner-a", reqId, 0.5); // below floor, but own-run
+    await repos.requests.complete("owner-a", reqId);
+    const outcome = await createAnswerService(makeDeps(new FakeModelProvider())).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    // The floor emptied the scoped pool → the below-floor own-run document
+    // is re-included WITHOUT the floor (own-run evidence is provider-
+    // pre-vetted; the floor must not produce empty answers here).
+    expect(outcome.evidenceOnly).toBe(false);
+    expect(outcome.evidenceFromRun).toBe("run");
+    const stored = await repos.answers.get("owner-a", outcome.answerId);
+    expect(stored?.blocks.some((b) => b.text.includes("FTS5 ranks keyword"))).toBe(true);
+  });
+});
+
 describe("relevance floor at answer time (SRC-11)", () => {
   /** Own-run documents scored below/above the designed floor: the noise
    * row is lexically overlapping but scored 0.5 — advisory-excluded from
@@ -634,17 +659,30 @@ describe("relevance floor at answer time (SRC-11)", () => {
   });
 
   it("the floor is read-time tunable — a higher option excludes at-or-above rows too", async () => {
-    await seedScoredEvidence();
-    const model = new FakeModelProvider();
-    const outcome = await createAnswerService(makeDeps(model), {
-      relevanceFloor: 0.95, // both scored rows exclude; NULL rows would stay
+    const { noiseId, topicId } = await seedScoredEvidence();
+    const modelDefault = new FakeModelProvider();
+    const defaultOutcome = await createAnswerService(makeDeps(modelDefault)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    // Default floor 0.70: the 0.5-scored noise row is excluded within the
+    // scoped pool; only the 0.9-scored row's passage is packed.
+    expect(defaultOutcome.evidenceOnly).toBe(false);
+    expect(modelDefault.calls[0]?.passageIds).toContain(topicId);
+    expect(modelDefault.calls[0]?.passageIds).not.toContain(noiseId);
+
+    const modelHigh = new FakeModelProvider();
+    const highOutcome = await createAnswerService(makeDeps(modelHigh), {
+      relevanceFloor: 0.95, // both scored rows exclude → scoped pool empties
     }).answer({
       ownerId: "owner-a",
       question: QUESTION,
     });
-    // Empty pool at the higher floor → honest empty evidence-only answer,
-    // zero model calls (read-time tuning changes nothing at storage time).
-    expect(outcome.evidenceOnly).toBe(true);
-    expect(model.calls).toHaveLength(0);
+    // The floor emptied the scoped pool → own-run docs are re-included
+    // WITHOUT the floor: the floor must not produce empty answers for a
+    // question whose own run HAS evidence (the run-006 case-07 remedy).
+    expect(highOutcome.evidenceOnly).toBe(false);
+    const storedHigh = await repos.answers.get("owner-a", highOutcome.answerId);
+    expect(storedHigh?.blocks).toHaveLength(2); // noise + topic re-included
   });
 });

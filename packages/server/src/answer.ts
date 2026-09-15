@@ -32,6 +32,7 @@ import {
   hybridSearch,
   searchPassages,
   type BudgetService,
+  type PassageHit,
   type Repositories,
   type TextEmbedder,
 } from "@do-sift/storage";
@@ -223,27 +224,65 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         if (scoped.length > 0) scopedDocIds = scoped;
       }
 
-      const retrieved =
-        deps.embedder === undefined
-          ? await searchPassages(
-              deps.client,
-              task.ownerId,
-              task.question,
-              maxPassages,
-              scopedDocIds,
-              // SRC-11: below-floor documents are advisory-excluded from the
-              // pool at answer time (NULL scores always included).
-              relevanceFloor,
-            )
-          : await hybridSearch(
-              deps.client,
-              task.ownerId,
-              task.question,
-              maxPassages,
-              deps.embedder,
-              scopedDocIds,
-              relevanceFloor,
-            );
+      let retrieved: PassageHit[] =
+        scopedDocIds !== undefined
+          ? deps.embedder === undefined
+            ? await searchPassages(
+                deps.client,
+                task.ownerId,
+                task.question,
+                maxPassages,
+                scopedDocIds,
+                relevanceFloor,
+              )
+            : await hybridSearch(
+                deps.client,
+                task.ownerId,
+                task.question,
+                maxPassages,
+                deps.embedder,
+                scopedDocIds,
+                relevanceFloor,
+              )
+          : deps.embedder === undefined
+            ? await searchPassages(
+                deps.client,
+                task.ownerId,
+                task.question,
+                maxPassages,
+                undefined,
+                relevanceFloor,
+              )
+            : await hybridSearch(
+                deps.client,
+                task.ownerId,
+                task.question,
+                maxPassages,
+                deps.embedder,
+                undefined,
+                relevanceFloor,
+              );
+
+      if (scopedDocIds !== undefined && retrieved.length === 0) {
+        // the floor emptied the scoped pool: re-include own-run docs without the floor
+        retrieved =
+          deps.embedder === undefined
+            ? await searchPassages(
+                deps.client,
+                task.ownerId,
+                task.question,
+                maxPassages,
+                scopedDocIds,
+              )
+            : await hybridSearch(
+                deps.client,
+                task.ownerId,
+                task.question,
+                maxPassages,
+                deps.embedder,
+                scopedDocIds,
+              );
+      }
 
       const sourceVersions = [...new Set(retrieved.map((p) => p.contentHash))].sort();
       const cacheKey = cacheKeyFor(task.ownerId, task.question, sourceVersions);

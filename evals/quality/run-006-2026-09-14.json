@@ -1,0 +1,445 @@
+{
+  "runId": "run-006",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-14 (operator-local date; captures on disk 09:12-09:17 local)",
+  "annotator": "agent operator, single-annotator authorial labels (RET-01 caveat applies)",
+  "pipeline": {
+    "search": "wikipedia (live, SRC-07 extracts + SRC-08 pre-pass + SRC-09 formatversion=2)",
+    "model": "fixture — ANSWER-TEXT QUALITY IS NOT MEASURED (docs/quality-gate.md limits)",
+    "embedder": "fastembed (hybrid RRF + SRC-11 relevance floor 0.70)",
+    "prePass": "SRC-08 heading-marker pre-pass live (unchanged from run-004/005): stored extracts contain no wikitext-style '== Heading ==' lines",
+    "src09": "SRC-09 formatversion=2 live (second QUAL run): extracts API requested with formatversion=2, query.pages parsed as ARRAY (v1 map tolerated); a parsing mismatch would surface as fetchErrors — zero occurred",
+    "ans07": "ANS-07 live: every research run creates a request row (mode 'search') before fetching; /api/answer stamps evidenceFromRun over {run, legacy, cross-question}",
+    "src11": "SRC-11 store-with-flag relevance pipeline LIVE FOR THE FIRST TIME in a QUAL run (declared change under test): lead-window cosine (question vs WHOLE unchunked extract; fastembed ~512-token truncation = accepted-lead semantics, disclosed honestly in code) computed at storage time per source; documents store relevance_score as a receipt; /api/answer applies the 0.70 floor at read time (below-floor documents EXCLUDED from the answer pool, receipts kept). Store side unchanged by design: doppelganger sources are still fetched, stored and carded",
+    "ans08": "ANS-08 question-scoped answer retrieval is ALSO live in this tree (policyRevision p1 default): /api/answer scopes candidates to documents linked to THIS question's completed search runs (whole-corpus fallback when none), which independently removes cross-question documents from the answer pool. This is the second pipeline delta between run-005 and run-006 and it constrains attribution: cases 02/03/08 doppelganger exclusions are floor-attributable (same-question documents, in scope), while case-05/07 cross-question eliminations are scoping-attributable (out-of-scope documents the floor never sees)",
+    "budget": "none configured"
+  },
+  "scale": { "0": "fail", "0.5": "partial", "1": "pass" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "passages": 13 },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "passages": 19
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 0,
+        "embedded": 32
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: both sources on-topic for SQLite; the FTS5/full-text-search sentence is present in answer block 0 ('SQLite supports full-text search through its FTS5 loadable extension, which allows users to efficiently search for a keyword in a large number of documents similar to how search engines search webpages'); same source pair and byte-identical passage counts as run-001..005",
+        "answer selection: 5 of 5 blocks clean on-topic prose (SQL-92 standard/type system, serverless design, browser embedding, Fossil hosting/testing, Hipp history) — the FTS5 sentence and the JSON/JSONB context are both present",
+        "extraction: answer-level 5/5 blocks clean prose; the two bare table-caption stubs ('Information about what other objects are supported natively.' + the partitioning-methods variant) REMAIN STORED in the Comparison-of-RDBMS document (byte-identical store profile to run-001..005 — same URLs, same extracts, same chunker) and are scored here per the protocol's stored-passages wording; unlike run-004/005 the stubs were NOT selected into the answer — a ranking outcome, not a floor effect (this document is above the floor for its own question); no template JSON, no reference markers, zero heading remnants",
+        "one '=' occurrence in the answer is SQL content ('CHECK(typeof(x)='integer')' in block 0), not markup — byte-identical finding to run-004/005",
+        "injection: pattern scan of this case's research SSE + answer JSON found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/World_Wide_Web", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Mike_Berners-Lee", "passages": 6 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 46,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 46
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval (F3 doppelganger case): Mike Berners-Lee (Tim's brother) STILL retrieved and stored on the ambiguous surname (6 of 46 passages) — provider-side hit selection unchanged for the SIXTH run in a row; SRC-11 is store-with-flag and by design does not change search or storage, so the union stays mixed (0.5). The doppelganger document belongs to THIS question's own run, so ANS-08 scoping keeps it in scope — its exclusion from the answer is floor-attributable",
+        "SRC-11 LIVE EXCLUSION (the change under test): the Mike Berners-Lee bio block that appeared in run-004 AND run-005 answers ('One of his brothers is computer scientist Sir Tim Berners-Lee, who invented the World Wide Web') is GONE — answer-level content scan for 'Mike Berners-Lee', 'brothers', 'carbon footprint', 'banana', 'food system', 'How Bad Are' found ZERO matches; 5 of 5 answer blocks are WWW/History content",
+        "answer selection: 5 of 5 blocks on-topic — WWW lead, WWW alternative lead, the direct 'The Web was invented by English computer scientist Tim Berners-Lee while working at CERN' block, Gopher/early-1990s projects history, and the CERN proposal history; the single 'Mike' occurrence is Mike Sendall (Tim's CERN manager, History article — on-topic history content, not the doppelganger); the doppelganger block slot was REPLACED by an on-topic block (block count 5 = run-005's 5) because the fixture composes from the now-eligible pool",
+        "extraction: ALL 5 blocks clean prose; no template JSON, no reference markers (1.0)",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F", "passages": 12 },
+        { "url": "https://en.wikipedia.org/wiki/Aurora_(singer)", "passages": 18 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 50,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 50
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval (F3 doppelganger case): ambiguous-term failure persists provider-side — the pop singer (18) + album (12) are 30 of 50 stored passages (2 of 3 sources), passage counts byte-identical to run-004/005; union mixed (0.5); SRC-11 does not change storage by design; both doppelganger documents belong to THIS question's own run, so ANS-08 scoping keeps them in scope — their exclusion from the answer is floor-attributable",
+        "SRC-11 LIVE EXCLUSION (the change under test): the album-singles passage that was run-005's 1 doppelganger answer block is GONE — content scan for 'Aksnes', 'What Happened to the Heart', 'single', 'album', 'tour', 'singer' found ZERO matches in the answer; 6 of 6 answer blocks are aurora SCIENCE",
+        "answer selection: 6 of 6 blocks aurora science — definition lead ('natural light display in Earth's upper atmosphere caused by charged particles'), STEVE/picket-fence, solar-wind/magnetosphere mechanism ('the basic cause involves the interaction of the solar wind with Earth's magnetosphere'), dune aurora, auroral kilometric radiation, citizen-science Steve discovery",
+        "extraction: ALL 6 blocks clean prose; no template JSON, no reference markers (1.0)",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia", "passages": 18 },
+        { "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees", "passages": 10 },
+        { "url": "https://en.wikipedia.org/wiki/Westphalia", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "NO rate-limit incident: all 3 fetches succeeded, fetchErrors 0 (run-004's case-04 window did not recur in run-005 and did not recur here either)",
+        "PROVIDER-SIDE HIT VARIANCE within the adjacent family: the third doppelganger source this run is the Westphalia REGION article (20 passages) — run-001..005 retrieved North_Rhine-Westphalia; same family, same passage total (48), same 0.5 union. Recorded as provider-side selection variance, not a pipeline change (SRC-11 does not touch search)",
+        "retrieval (F3, adjacent family): the region article (20) + Treaty_of_the_Pyrenees (10) are 30 of 48 stored passages; union mixed (0.5). DESIGNED BEHAVIOR, NOT A DEFECT: the spike measured the Q04 adjacent family at 0.746-0.792 cosine — ABOVE the 0.70 floor — so SRC-11 keeps them eligible by design; the flag only removes clearly-off-topic pages (plans/003-004-src-ans.md SRC-11: 'adjacent Q04 noise is disclosed, not fixed'); the family documents belong to THIS question's own run, so ANS-08 scoping keeps them in scope as well",
+        "answer selection: 4 of 6 blocks on-topic (Peace lead with the two October-1648 treaties in Osnabrück and Münster, Westphalian-sovereignty/'Westphalian myth' debate, Augsburg-validity treaty quotation, Thirty Years' War aftermath/Pyrenees); 2 blocks are adjacent-family content from the Westphalia region article (Tilsit/Province-of-Westphalia history block; 'Westphalia is known for the 1648 Peace of Westphalia…' lead) — the SRC-11 designed residual, recorded as designed-behavior not a defect",
+        "extraction: answer-level 6/6 blocks read as prose (the colon-lead-in stub 'The main tenets of the Peace of Westphalia were:' that run-004/005 surfaced in answers was NOT selected this run); the stub REMAINS STORED in the Peace-of-Westphalia document (byte-identical store profile), scored per the stored-passages wording (0.5); no template JSON, no reference markers, zero '==' markers",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content (the Augsburg validity quotation is historical quotation, not assistant-directed instruction)"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/MRNA_vaccine", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough", "passages": 8 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: for a health question a critic BLP (McCullough, 8 passages) is again among the stored sources (posture observation carried from run-001..005); COVID-19 vaccine + mRNA vaccine are squarely on-topic and the mechanism passages are present and cited (mRNA vaccine definition 'a type of vaccine that uses a copy of a molecule called messenger RNA (mRNA) to produce an immune response', adaptive-immune goal, 'Naked' mRNA history); Wikipedia NPOV held; union mixed (0.5)",
+        "CROSS-QUESTION NOISE ELIMINATED, ATTRIBUTION ANS-08: the Mike Berners-Lee 'How Bad Are Bananas?' bibliography block (ISBN list) that hybrid RRF let through in run-002..005 on the keyword 'How' is GONE — content scan for 'banana', 'ISBN', 'Berners-Lee' found ZERO matches; the noise source is the MikeBL document stored by case-02's run, which under ANS-08 question-scoped retrieval (p1) is OUT OF SCOPE for case-05's question regardless of any floor — this improvement is attributable to ANS-08 scoping, with the SRC-11 floor (MikeBL spike score 0.530 < 0.70) as a redundant second gate; 6 of 6 answer blocks are on-topic mRNA content",
+        "extraction: the case's OWN stored passages (COVID vaccine, mRNA vaccine, McCullough) show clean prose in all 6 selected blocks; the run-005 0.5 was driven entirely by the answer-selected bibliography block, which no longer appears; no template JSON, no reference markers, zero heading remnants (1.0)",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Tallest_mountain", "passages": 2 },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "passages": 18 },
+        {
+          "url": "https://en.wikipedia.org/wiki/Summits_farthest_from_the_Earth's_center",
+          "passages": 3
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 23,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 23
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval: full 3-doc store again (fourth run in a row after run-003's fetchErrors window); Tallest_mountain grounds the highest/tallest/farthest distinction (Everest highest above sea level; Chimborazo farthest from Earth's center); Mountain is generic background but on-subject; Summits_farthest directly on-topic; union on-topic (1)",
+        "answer selection: 4 of 6 blocks on-topic (tallest-vs-highest distinction, Everest 8,848 m, mountain definition, Chimborazo farthest-from-center); 2 blocks are SAME-DOCUMENT LIST/REFERENCES residue — the bare nav-list passage ('List of tallest mountains in the Solar System List of mountain peaks by prominence …') and the references fragment (Horrell/Krulwich citation lines); IDENTICAL to run-004/005 — and NOT a floor or scoping case: these blocks live in on-topic own-run documents (above floor, in scope), so neither SRC-11 nor ANS-08 targets this noise class; same-document residue needs passage-level filtering",
+        "extraction: the bare nav-list content and the references block are SELECTED INTO the answer this run (directly visible noise — nav lines and citation lists are not prose); no template JSON, no reference markers in the bracketed-citation sense; zero heading remnants (0.5)",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "passages": 5
+        },
+        { "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof", "passages": 20 },
+        { "url": "https://en.wikipedia.org/wiki/Firo_(cryptocurrency)", "passages": 12 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 37,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 37
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "NO rate-limit incident (neither run-003's case-07 429 nor any other window): research succeeded on attempt 1, no retry consumed",
+        "retrieval: all 3 sources are the ZKP family and cover zk-SNARKs substantively — definition block ('In 2012, Alessandro Chiesa et al developed the zk-SNARK protocol, an acronym for zero-knowledge succinct non-interactive argument of knowledge'), Zcash/Zerocash application context, Sigma/Lelantus contribution; union on-topic (1); same shape as run-001..005 (no dedicated zk-SNARK article)",
+        "CROSS-QUESTION NOISE ELIMINATED, ATTRIBUTION ANS-08: run-005's two noise blocks are both GONE — the Aurora 'What Happened to the Heart?' concert-tour passage (the 'What' → Aurora-tour keyword pattern of run-003/004/005) and the RDBMS table-caption stub (evidence fc8cce04… in run-005, from case-01's Comparison-of-RDBMS document): content scan for 'Aurora', 'relational database' found ZERO matches. Both noise sources are documents stored by OTHER questions' runs, so under ANS-08 question-scoped retrieval (p1) they are out of scope entirely — scoping-attributable, not floor-attributable and not ranking variance; 5 of 5 answer blocks are ZKP-family content from this case's own run",
+        "no empty-pool condition occurred: the answer returned 5 blocks with evidenceFromRun 'run' — the committed empty-pool fallback (re-include own-run documents without the floor when the floor empties the scoped pool) was not needed, and no case in this run ended with an empty answer",
+        "extraction: answer-level 5/5 blocks clean prose this run (the mid-formula fragment '(x,z)] is a record of the interactions between P(x) and V(x,z)…' that run-003/004/005 surfaced in answers was NOT selected); the fragment REMAINS STORED in the Non-interactive-ZKP document (byte-identical store profile), scored per the stored-passages wording (0.5); no template JSON, no reference markers",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall", "passages": 20 },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "passages": 9
+        },
+        { "url": "https://en.wikipedia.org/wiki/Berlin_Wall", "passages": 20 }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 49
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval (F3 doppelganger case): the Roger Waters 'The Wall – Live in Berlin' concert page is STILL retrieved and stored on the shared title (9 of 49 passages) — provider-side hit selection unchanged for the SIXTH run in a row; union mixed (0.5); store-with-flag keeps the receipts by design; the concert document belongs to THIS question's own run, so ANS-08 scoping keeps it in scope — its exclusion from the answer is floor-attributable",
+        "SRC-11 POOL EXCLUSION corroborated: answer-level content scan for 'Roger Waters', 'Potsdamer', 'concert', 'Live in Berlin' found ZERO matches; the four 'Brandenburg Gate' occurrences in the answer are all WALL HISTORY/anniversary content (the Berlin/Brandenburg border-wall demolition, the Gate section reopening 22 December 1989, and the 2009 Festival-of-Freedom 20th-anniversary events around the Gate) — on-topic, not concert content",
+        "briefing-vs-artifact discrepancy recorded honestly: run-005's own artifact states its case-08 answer ALREADY had ZERO doppelganger residue blocks (the concert passages sat in the store but were not selected into run-005's answer either); the SRC-11 improvement for case-08 is therefore at the POOL level — the 9 concert passages are no longer ELIGIBLE for any answer — rather than a visible answer-content change run-over-run; run-002/003-era concert blocks are the historical baseline the exclusion addresses",
+        "answer selection: 6 of 6 blocks from the factual pages — direct answer ('The Berlin Wall fell on 9 November 1989 during the Peaceful Revolution…'), official dismantling (13 June 1990, Bernauer Straße), Wall structure (140 km, hinterland wall), travel-restriction context, Berlin Wall lead, 2009 Festival of Freedom",
+        "extraction: ALL 6 blocks clean prose; no template JSON, no reference markers (1.0)",
+        "injection: pattern scan of this case's artifacts found no instruction-shaped content"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.6875,
+    "extractionCleanliness": 0.75,
+    "citationResolution": 1.0,
+    "degradationHonesty": 1.0,
+    "injectionObservation": 1.0,
+    "meanAll": 0.8875
+  },
+  "mechanicalChecks": {
+    "headingMarkerEqRuns": {
+      "command": "grep -c '==' on all 8 research captures + 8 answer JSONs",
+      "result": "ZERO matches in all 16 files (third consecutive clean run under the SRC-08 pre-pass; run-003 baseline: 19 heading remnants)",
+      "researchCapturesNote": "research SSE captures carry url/title/passageCount summaries only (no page text); the answer block text is where heading noise could surface — clean"
+    },
+    "singleEqualsRuns": "exactly ONE single '=' occurrence across all 16 files: case-01 answer prose 'CHECK(typeof(x)='integer')' — a SQL code fragment from the Comparison-of-RDBMS page, content not markup (byte-identical finding to run-004/005)",
+    "templateJsonMarkers": "grep for '{{', '\"wt\"', 'infobox', '| name =', '\"parts\"' → zero matches in all 16 files (F1 holds)",
+    "referenceMarkers": "grep for '[ NN ]'/[NN] bracketed citation markers → zero matches in all 16 files",
+    "injectionPatternScan": "16 patterns ('ignore instructions', 'disregard previous', 'you are an AI/assistant/language model', 'as an AI', 'system prompt', 'prompt injection', 'assistant:', 'instructions:', 'you must never/immediately/always', 'jailbreak', 'developer mode', 'do not reveal', 'pretend to be') case-insensitive over all 16 files → zero matches; nothing instruction-shaped observed anywhere in captured passages or answers, so there is nothing to quote verbatim (R-12 stays open for the live-model future)",
+    "src09LiveValidation": {
+      "check": "fetch errors attributable to extract-response JSON parsing under formatversion=2 (second live run)",
+      "result": "23 of 23 fetches succeeded across the 8 research runs (2+3×7), fetchErrors:0 in every done event, denied:0 everywhere; ZERO failures attributable to parsing; no error events, no 429s, no rate-limit windows",
+      "counts": { "fetches": 23, "fetchErrors": 0, "parseAttributable": 0 }
+    },
+    "ans07LiveValidation": {
+      "check": "evidenceFromRun on every /api/answer payload",
+      "result": "8 of 8 payloads carry evidenceFromRun:\"run\" (01:run 02:run 03:run 04:run 05:run 06:run 07:run 08:run) — truthful in every case because each case's own research completed first and stored case-relevant passages; all 8 runs show embedded == passagesStored (333/333)",
+      "counts": { "expectedRun": 8, "observedRun": 8, "other": 0 }
+    },
+    "emptyRunCondition": {
+      "check": "if a research run stored nothing case-relevant, the answer's evidenceFromRun must NOT be 'run' (F9's live observation)",
+      "result": "no empty-run condition occurred: every research run stored 2-3 documents / 23-50 passages, all case-relevant (minimum case-06: 23); every answer's 'run' flag is correct; F9 remains open, untested for a fourth run. No answer ended empty either (the committed empty-pool fallback — re-include own-run documents without the floor — was never observed to be needed; whether it fired transiently before re-ranking is not observable from the captures)",
+      "counts": { "emptyRuns": 0, "emptyFinalAnswers": 0 }
+    },
+    "fetchCapPosture": "cases 02-08 report skippedBudget:3 (6 hits → 3 fetched): hits beyond the per-run fetch cap (maxFetches=3) are skipped and counted; case-01 had 2 hits / 0 skipped — identical posture to run-005",
+    "src11LiveValidation": {
+      "check": "SRC-11 store-with-flag + answer-time 0.70 floor, first live QUAL exercise — observed at content level (the SSE/answer payloads do not surface relevance scores, and the :memory: db was discarded at teardown per protocol, so receipt values are not queryable post-run; the designed observation path is the answer text plus the source cards)",
+      "storeSide": "store-with-flag confirmed: all doppelganger sources were still FETCHED and STORED with receipts — source events list Mike_Berners-Lee (6 passages), What_Happened_to_the_Heart? (12) + Aurora_(singer) (18), The_Wall_–_Live_in_Berlin (9), and the adjacent family (Westphalia 20 + Treaty_of_the_Pyrenees 10); passage totals byte-identical to run-005 (333/333) — the flag changes pool eligibility, not search or storage",
+      "answerSideFloorAttributable": "cases 02/03 (the floor's discriminators, doppelganger docs in own-run scope): run-005's doppelganger blocks (case-02 MikeBL bio, case-03 album-singles) are absent with ZERO content-keyword matches; case-08 corroborates at pool level (zero concert content; run-005's answer was already clean per its own artifact); block counts 47→45 with the two case-07 noise slots not replaced and the 02/03 slots replaced by on-topic blocks",
+      "scopingAttributable": "cases 05/07 cross-question eliminations are ANS-08-attributable (out-of-scope documents): case-05's Berners-Lee bibliography and case-07's Aurora-tour + RDBMS-stub residue — the floor is a redundant second gate there (MikeBL 0.530 < 0.70), not the discriminator",
+      "adjacentFamily": "case-04's adjacent family (Westphalia region article + Treaty_of_the_Pyrenees) REMAINS in the answer (2 of 6 blocks) — DESIGNED behavior: the family measures 0.746-0.792 cosine, above the 0.70 floor; SRC-11 removes clearly-off-topic pages only and does not fix Q04 (plans/003-004-src-ans.md)",
+      "notAttributable": "case-01/04 stub non-selection is a ranking outcome, not a floor effect (those documents are above floor for their own questions); case-06's same-document residue persists exactly as in run-004/005 (on-topic, in-scope — correctly untouched)",
+      "surfacings": "no relevance scores surfaced in SSE source events or answer payloads (the receipt lives in the documents table; no relevance-failed events occurred — 8/8 runs embedded all stored documents)",
+      "counts": {
+        "doppelgangerBlocksRun005": 3,
+        "crossQuestionNoiseBlocksRun005": 3,
+        "doppelgangerBlocksRun006": 0,
+        "crossQuestionNoiseBlocksRun006": 0,
+        "answerBlocksRun005": 47,
+        "answerBlocksRun006": 45
+      }
+    },
+    "ans08ScopedRetrieval": {
+      "check": "ANS-08 (live in this tree, policyRevision p1): cross-question documents excluded from the answer pool",
+      "result": "CONSISTENT THROUGHOUT: no evidence id is cited by more than one case this run (45 blocks, 45 unique ids — the run-005 cross-question shared-stub nuance, evidence fc8cce04… in both case-01 and case-07, is gone); case-05's and case-07's cross-question noise blocks are absent; same-document residue (case-06) correctly remains — scoping does not target it",
+      "attributionDiscipline": "improvements are attributed to ANS-08 scoping (cross-question elimination: cases 05/07) vs SRC-11 floor (doppelganger-document exclusion: cases 02/03, corroborated by 08) vs re-ranking composition (stub selection shifts in 01/04/07) ONLY where distinguishable"
+    }
+  },
+  "comparison": {
+    "baseline": "evals/quality/run-005-2026-09-14.json (primary; same 8 questions, same order, each asked exactly once)",
+    "postureDelta": "port 18115→18116 (everything else identical posture: wikipedia live search, fixture model, fastembed hybrid RRF, :memory: scratch db, default fetch-allowlist posture). TWO pipeline deltas sit between run-005 and this run: (1) SRC-11 evidence-layer relevance floor 0.70 — the DECLARED change under test (storage-time lead-window similarity receipt; read-time exclusion from the answer pool, receipts kept); (2) ANS-08 question-scoped answer retrieval (p1) — present and active in this tree; run-005's recorded cross-question noise blocks (case-05 bibliography, case-07 Aurora-tour + RDBMS stub) are impossible under active scoping, so run-005's execution predates ANS-08 activation even though its artifact was committed after the ANS-08 commit. Startup log verified: 'do-sift listening on http://127.0.0.1:18116' with 'embedder: fastembed' (not keyword-only). Port hygiene: 18116 verified FREE before start (netstat, no stale process). Operator pacing: polite ≥30 s inter-case pauses throughout; every question asked exactly once (no cached:true anywhere); zero retries consumed.",
+    "hybridMechanismVerified": "embed-on-store ran on every research: the done event's summary.embedded equals passagesStored in all 8 cases (32/32, 46/46, 50/50, 48/48, 48/48, 23/23, 37/37, 49/49 — 333/333, total byte-identical to run-005); stored passage counts are byte-identical to run-005 in every case, confirming the floor did NOT change what is STORED (store-with-flag: receipts kept) — only what reaches the answer pool. One provider-side variance: case-04's third hit is the Westphalia region article this run (run-005: North_Rhine-Westphalia) — same adjacent family, same 20-passage total.",
+    "perDimension": [
+      {
+        "dimension": "retrievalRelevance",
+        "run005": 0.6875,
+        "run006": 0.6875,
+        "delta": "0",
+        "note": "STRUCTURALLY UNCHANGED — the designed outcome: SRC-11 is store-with-flag and cannot alter provider-side hit selection or what is stored, and ANS-08 scoping operates at answer time only. The five mixed unions (02, 03, 04, 05, 08) stay 0.5 and the three clean unions (01, 06, 07) stay 1; case-04's adjacent-family member identity swapped provider-side without changing the mixed-union structure. This dimension measures search hits + stored passages; the SRC-11 effect sits one layer up (answer-pool eligibility) and is recorded in mechanicalChecks.src11LiveValidation, not here.",
+        "structurally": "0.6875 matches the structural series 0.6875 / 0.6875 / 0.75(artifact) / 0.6875 / 0.6875 / 0.6875"
+      },
+      {
+        "dimension": "extractionCleanliness",
+        "run005": 0.6875,
+        "run006": 0.75,
+        "delta": "+0.0625",
+        "note": "AGGREGATE +0.0625, driven entirely by case-05 (0.5→1.0): run-005's 0.5 was answer-selected cross-question bibliography noise, which ANS-08 scoping removed from the pool; case-05's own stored passages are clean prose. All other per-case scores match run-005's store-level profile: the stored-noise classes are UNCHANGED (case-01 table-caption stubs, case-04 colon-lead-in stub, case-06 nav-list + references blocks — the latter again SELECTED into the answer, the one directly-visible extraction noise this run — and case-07 mid-formula fragment); cases 01/04/07 stubs were not re-selected this run (answer-level cleaner, store-level unchanged, scored per the stored-passages wording). Mechanical check: zero '==' heading-marker runs in all 16 files (third consecutive clean run)."
+      },
+      {
+        "dimension": "citationResolution",
+        "run005": 1.0,
+        "run006": 1.0,
+        "delta": "0",
+        "note": "all 45 answer blocks carry an 'According to evidence <uuid>:' reference to stored evidence (45 unique passage ids — one per block, no cross-case shared citation this run; run-005 had 46 unique of 47) and each block composes from its cited evidence passage, so targets plausibly support their sentences (fixture-model harness behavior — see limits); ANS-03 enforcement unchanged"
+      },
+      {
+        "dimension": "degradationHonesty",
+        "run005": 1.0,
+        "run006": 1.0,
+        "delta": "0",
+        "note": "no degradation event occurred in any of the 8 final answers (all cached:false / degraded:false / evidenceOnly:false with real citations present); evidenceFromRun truthful in all 8 cases ('run' ×8 — each case's own research stored case-relevant passages). No empty-store condition and no empty final answer arose, so F9's trigger did not occur — F9 remains open, untested for a fourth run."
+      },
+      {
+        "dimension": "injectionObservation",
+        "run005": 1.0,
+        "run006": 1.0,
+        "delta": "0",
+        "note": "pattern scan over all 16 captured files (8 research + 8 answer) → zero matches; pattern list recorded in mechanicalChecks.injectionPatternScan; R-12 stays open for the live-model future"
+      }
+    ],
+    "meanAll": {
+      "run005": 0.875,
+      "run006": 0.8875,
+      "delta": "+0.0125",
+      "note": "the small lift is the case-05 extraction composition change (ANS-08-attributable); retrieval is structurally unchanged and the store-level noise classes persist — do not read meanAll as a retrieval-quality gain (R-06: limits must accompany any citation)"
+    },
+    "src11Exclusion": {
+      "verdict": "WORKING",
+      "evidence": "Content-level, like run-002's template-JSON scan: the doppelganger blocks that run-005's answers selected are absent from this run's answers — case-02 Mike Berners-Lee bio block (run-005 note: '1 doppelganger block is the Mike B-L bio… his brothers') → 0 matches for mike-berners-lee/brothers/carbon/bananas/food-system; case-03 album-singles block → 0 matches for Aksnes/album/singles/tour; case-08 concert content → 0 matches for Waters/Potsdamer/concert (the four Brandenburg-Gate hits are wall history/anniversary content). These three cases are floor-attributable because the doppelganger documents belong to their own question's run (in scope under ANS-08) yet their passages did not surface — consistent with the spike scores (MikeBL 0.530, album 0.637, singer 0.674, concert 0.653, all < 0.70) and with the offline fixture tests that pin the mechanism; the cross-question eliminations in cases 05/07 are ANS-08-attributable and independent of the floor.",
+      "storeWithFlagConfirmed": "doppelganger sources still stored and carded (by design, NOT a defect): MikeBL 6, album 12 + singer 18, concert 9 passages all in the stores; passage totals byte-identical to run-005 (333/333)",
+      "designedResidual": "case-04's adjacent family remains above the floor (spike 0.746-0.792) — 2 of 6 answer blocks are region-article content; SRC-11 discloses but does not fix Q04",
+      "honestCaveats": "relevance receipt values are not queryable post-run (:memory: discarded per protocol) and the SSE does not surface scores, so the verdict rests on answer-content scans + store identity + the code path (floor threaded through bm25 and both halves of hybridSearch, packages/server/src/answer.ts) + the offline fixture tests; no empty answer occurred anywhere, so the floor's committed empty-pool fallback (re-include own-run documents without the floor) was never observed end-to-end",
+      "scope": "single-annotator content observation over one run"
+    },
+    "f1": {
+      "verdict": "holds",
+      "evidence": "zero template-JSON markers ('{{', '\"wt\"', 'infobox', '| name =', '\"parts\"') across all 16 files this run; SRC-07 + SRC-08 + SRC-09 + fastembed storage + SRC-11 relevance receipt do not reintroduce it; F1 stays fixed as in run-002..005."
+    },
+    "f3": {
+      "verdict": "unchanged provider-side (sixth consecutive run); SRC-11 changes the consequence, not the cause",
+      "evidence": "provider-side doppelganger selection is unchanged: case-02 Mike Berners-Lee (6 of 46), case-03 Aurora (singer) + What Happened to the Heart? (30 of 50), case-08 The Wall – Live in Berlin (9 of 49) — all retrieved and stored again; case-04's adjacent family visible again with a swapped member identity (Westphalia region article this run vs North_Rhine-Westphalia in run-001..005 — day-to-day provider variance, same class). Union retrieval stays 0.5 in exactly the five mixed cases (02, 03, 04, 05, 08) and 1 in the three clean ones (01, 06, 07). WHAT CHANGED: the stored doppelganger passages no longer reach answers (SRC-11 floor), and cross-question noise no longer reaches answers (ANS-08 scoping) — F3's answer-level damage is mitigated while its retrieval-level cause (provider hit selection on ambiguous surnames/titles) remains open and requires provider-side hit quality or doppelganger-aware storage policy — not tested by this run."
+    },
+    "f9": {
+      "verdict": "untested this run (no recurrence possible)",
+      "evidence": "F9 is the empty-store honesty gap. This run every research call stored case-relevant passages (minimum case-06: 23), so the trigger condition never occurred; all 8 evidenceFromRun values are 'run' and correct; no final answer was empty either. F9 remains open."
+    },
+    "provenanceNote": {
+      "conflictingPreexistingArtifact": "at run start, an UNTRACKED file already existed at the designated artifact path (evals/quality/run-006-2026-09-14.json) describing a purported run-006 executed 2026-09-15T06:32:08Z-06:37:32Z (its own pacing.log survives at .do-harness/qual-run-006/pacing.log). Its stored-passage counts and most case compositions match this run's raw captures, but its case-07 narrative (empty answer, 0 blocks, evidenceFromRun omitted, citationResolution n/a) is INCONSISTENT with the committed code at its own claimed execution time: HEAD 5c93565 (SRC-11, committed 2026-09-14 19:28:34 +0200, before that window) includes an empty-pool fallback in packages/server/src/answer.ts that re-includes own-run documents WITHOUT the floor when the floor empties the scoped pool — a final empty answer is not reachable when own-run documents exist, and this run's identical tree returned 5 blocks for the same question. Its raw capture files were overwritten by this run's captures (only pacing.log survives), so its claims are unverifiable. Disposition: the pre-existing file was preserved unmodified at .do-harness/qual-run-006/run-006-preexisting-conflicting-artifact-preserved.json, and this artifact — backed by the raw captures on disk — is recorded as run-006. Flagged for the human owner to reconcile."
+    }
+  },
+  "findings": [
+    "SRC-11 (the declared change under test): ANSWER-SIDE EXCLUSION VERIFIED LIVE, verdict WORKING — the known doppelganger sources are still fetched and stored (receipts kept: byte-identical stored-passage counts in every case, source cards still shown, 333/333 embedded) but their passages no longer reach the answer pool: case-02's MikeBL bio block and case-03's album-singles block (both present in run-005) are GONE with zero doppelganger-content substring hits; case-08 corroborates at pool level. Adjacent Q04 family stays included by design (disclosed, not fixed). Attribution discipline: cases 02/03/08 are floor-attributable (own-run documents); cases 05/07 cross-question eliminations are ANS-08-attributable.",
+    "ANS-08 (second pipeline delta, active in this tree): cross-question noise elimination CONFIRMED — case-05's Berners-Lee bibliography block and case-07's Aurora-tour + RDBMS-stub residue are gone (out-of-scope documents); no evidence id repeats across cases (45 unique of 45); same-document residue (case-06) correctly remains. Run-005's recorded cross-question blocks imply run-005 executed before ANS-08 activation.",
+    "F8 (rate limiting): NO window this run — 23/23 fetches, fetchErrors:0 in all 8 done events, denied:0, no 429s, no retries consumed; ≥30 s inter-case pacing from the start. Also ZERO research.relevance-failed events — the SRC-11 similarity receipt computed successfully on every fetched source.",
+    "F3 (retrieval, re-measured): provider-side UNCHANGED for the sixth run, exactly as predicted — doppelganger sources stored again in 02/03/08 and case-04's adjacent family (member identity swapped: Westphalia region article replacing North_Rhine-Westphalia — day-to-day provider variance); retrieval aggregate 0.6875 unchanged. The answer-side exclusion now works (SRC-11 + ANS-08) — F3's remaining half is provider-side hit selection only.",
+    "F2 (noise classes): the STORE is unchanged (caption stubs, colon stub, nav-list + references blocks, mid-formula fragment all remain stored — byte-identical store profile); case-06's residue was again SELECTED into the answer (same-document residue is targeted by neither SRC-11 nor ANS-08); remaining quality levers: caption/list/reference filtering in the store, and provider-side hit quality for F3.",
+    "F1 (holds): zero template-JSON markers across all 16 files; zero '==' heading markers (third consecutive clean run under the SRC-08 pre-pass); the single '=' in the corpus is case-01's SQL fragment (content).",
+    "F6 (limits): citation-resolution and degradation-honesty are 1.0 under the FIXTURE model, which composes blocks from stored evidence — these measure the harness, not model quality; answer fluency/completeness unmeasured (docs/quality-gate.md limits).",
+    "F7 (provenance): port 18116 free at startup (netstat, no stale process). Startup line verified: 'do-sift listening on http://127.0.0.1:18116' with 'embedder: fastembed'. Shutdown: listener PID 34332's full tree killed via taskkill //F //T at tree root 34968 (bash 34968 → bash 15060 → node 5836 npx → cmd 6456 → node 8752 tsx → node 34332 listener + child 34160) — 7/7 PIDs confirmed terminated (taskkill SUCCESS lines), no orphan node processes found afterward, no socket on 18116 after teardown; the background wrapper exited 0 after the kill; the :memory: scratch db was discarded with the processes (stored relevance receipts are point-in-time and not queryable post-run — content-level answer checks are the recorded observable).",
+    "F5 (clean): no instruction-shaped (prompt-injection) content observed in any captured passage, answer, or SSE event — nothing to quote verbatim; the scan pattern list is recorded in mechanicalChecks.injectionPatternScan; R-12 stays open for the live-model future.",
+    "PROVENANCE ALERT: a pre-existing untracked artifact claiming run-006 was found at the designated path at run start; its case-07 empty-pool narrative is code-inconsistent with HEAD 5c93565 (the committed empty-pool fallback makes a final empty answer unreachable when own-run documents exist) and its raw captures no longer exist. It is preserved at .do-harness/qual-run-006/run-006-preexisting-conflicting-artifact-preserved.json; this artifact (raw captures on disk) is the recorded run-006. Human reconciliation recommended."
+  ],
+  "limits": "Single-annotator, authorial labels — one operator's run, not inter-rater reliability. NOT model quality: /api/answer is produced by the fixture model; only citation-resolution and honesty behavior of the harness are measured; answer-text fluency, completeness, and reasoning are unmeasured. No quality claims may cite this artifact without repeating docs/quality-gate.md's limits (R-06). Live-provider dependence: scores describe wikipedia's behavior on 2026-09-14 (including this run's zero-fetch-error window and the case-04 adjacent-family member swap, both point-in-time) — re-run rather than extrapolate (sources.md 90-day rule). The SRC-11 exclusion verdict rests on answer-content observation over one run; relevance receipt values live in the database and were not surfaced to this operator."
+}
