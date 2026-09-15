@@ -1,0 +1,388 @@
+{
+  "runId": "run-008",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-15T20:18-20:27Z (captures on disk; operator-local date 2026-09-15)",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": "HEAD 639922a — SRC-16 merged search composition (wikipedia+marginalia fan-out) + SRC-11/ANS-08/ANS-09/SRC-12/SRC-13/SRC-14 lineage; fixture model (harness measured, not model quality)",
+  "scale": { "0": "fail", "1": "pass", "0.5": "partial" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "relevanceScore": 0.716, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "relevanceScore": 0.647,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 0,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "marginalia contributed 0 unique hits (its results deduped against wikipedia's wiki-URLs or below the interleave cutoff); merged pool = 2, both wiki sources",
+        "RDBMS-comparison page stored as a receipt, MARKED LOW at 0.647, absent from the 5 answer blocks"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Mike_Berners-Lee",
+          "relevanceScore": 0.54,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 46,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 46,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "MikeBL dopp stored as receipt, MARKED LOW, zero dopp content in the 5 answer blocks (same shape as run-006/007)"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "relevanceScore": 0.811, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F",
+          "relevanceScore": 0.636,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Aurora_(singer)",
+          "relevanceScore": 0.674,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 50,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 50,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "both Aurora dopps stored as receipts, MARKED LOW; blocks are aurora physics only (STEVE included)"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia",
+          "relevanceScore": 0.849,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/North_Rhine-Westphalia",
+          "relevanceScore": 0.75,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees",
+          "relevanceScore": 0.69,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the word 'Pyrenees' appears in an answer block but in legitimate on-topic prose (the Westphalia article's own Thirty Years' War aftermath narrative: 'Fighting continued between France and Spain until the Treaty of the Pyrenees in 1659') — NOT dopp content; the Pyrenees DOCUMENT's blocks stayed out of the pool"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine",
+          "relevanceScore": 0.682,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/MRNA_vaccine",
+          "relevanceScore": 0.85,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough",
+          "relevanceScore": 0.545,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "McCullough (misinformation-adjacent) stored as receipt, MARKED LOW, zero content in blocks; COVID-19_vaccine at the 0.682 boundary (disclosed, receipts kept)"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain",
+          "relevanceScore": 0.814,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "relevanceScore": 0.823, "low": false },
+        {
+          "url": "https://thehimalayanvoice.blogspot.com/2021/12/is-mount-everest-really-tallest.html",
+          "relevanceScore": 0.856,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 40,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 40,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "HEADLINE — THE R-16 REMEDY, LIVE: the Marginalia-only page (the Everest-class article MediaWiki's ranking structurally never surfaces for this question class — ABSENT from top-20 under every query shape per the 2026-09-15 design-pass spike) was returned by the merged composition, fetched through safe-fetch + the HTML pre-pass, STORED at relevance 0.856 (above floor, honestly unmarked), and its block ANSWERS the question directly: 'Mount Everest is the tallest mountain above sea level, while Mauna Kea can certainly claim to be the world's tallest mountain (when sea level isn't taken into account)' — the factually complete answer the seven previous runs could not produce",
+        "1 fetch error (a further marginalia hit refused by the guards — advisory path, run continued)",
+        "the Chimborazo word-match in the block scan is the legitimate tallest-vs-highest discussion (Summits-farthest class content), not dopp content"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "relevanceScore": 0.496,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof",
+          "relevanceScore": 0.57,
+          "low": true
+        },
+        { "url": "https://zkp.science/", "relevanceScore": 0.686, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 45,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 45,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "ANS-09 scoped-pool fallback exercised live for the SECOND time: every stored source scored below the 0.70 floor today (0.496/0.570/0.686 — provider content variance), the floored scoped pool emptied, the fallback refilled it unfloored, and the answer is grounded (6 blocks, opening with the Chiesa definition)",
+        "zkp.science is a NEW Marginalia-only source (a ZKP research site) — below floor, honestly LOW-marked, receipts kept; the 'cryptocurrency' word-match in the block scan is the legitimate Zcash-application context in the ZKP prose"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall",
+          "relevanceScore": 0.78,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "relevanceScore": 0.653,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Berlin_Wall",
+          "relevanceScore": 0.794,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 49,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "concert dopp stored as receipt, MARKED LOW, zero concert content in blocks (the 1989 answer opens block 1)"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.6875,
+    "extractionCleanliness": 1,
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.9375
+  },
+  "mechanicalChecks": {
+    "headingMarkerEqRuns": 0,
+    "templateJsonMarkers": 0,
+    "referenceMarkers": 0,
+    "midFormulaFragments": 0,
+    "injectionPatternScan": "0 matches across all 16 capture files",
+    "noiseShapedAnswerBlocks": 0,
+    "doppContentAnswerBlocks": "0 genuine (3 raw word-matches all adjudicated legitimate on-topic prose: Pyrenees-in-Westphalia-narrative, Chimborazo-in-tallest-vs-highest, cryptocurrency-in-Zcash-context)",
+    "unCitedBlocks": 0,
+    "src16LiveValidation": "merged composition live: BOTH providers queried in every case (wikipedia search + marginalia search per run); marginalia contributed unique hits in 2/8 cases (06: Everest-class page above floor; 07: zkp.science below floor, LOW-marked)",
+    "ans09LiveValidation": "case-07: the scoped-pool fallback exercised live for the second time (all stored sources below floor, grounded answer)",
+    "emptyRunCondition": "no case ended with an empty answer; all 8 evidenceFromRun 'run'; zero degradations",
+    "f8RateLimit": "0 x 429s observed in captures; 2 fetch errors total (case-06/07, one each — guard refusals on further marginalia hits, advisory); >=30s pacing throughout",
+    "f7PortProcessHygiene": "port 18119 verified free at startup (netstat); startup line 'search: merged/wikipedia+marginalia (live...)'; listener PID 25764 killed via taskkill //F //T post-run (SUCCESS x2 tree lines), no LISTEN afterward",
+    "observabilityGap": "a per-provider SUB-SEARCH failure inside the merged composition is not separately observable from the captures — the composite degrades to survivors silently BY DESIGN (provenance-only visibility: a pool with zero marginalia-provider hits shows it); suggested follow-up: a per-provider search receipt event so run summaries can report provider health"
+  },
+  "comparison": {
+    "baseline": "run-007 (2026-09-15, single-provider wikipedia)",
+    "perDimension": {
+      "retrievalRelevance": "0.6875 -> 0.6875 (unchanged, eighth run — the dopps are still what the providers return; SRC-16 is ADDITIVE: it adds the pages one provider structurally misses, it does not remove the other provider's dopps)",
+      "extractionCleanliness": "1 -> 1 (SRC-12 pre-pass held on the NEW content path too — the blogspot/zkp.science pages arrived as raw HTML through safe-fetch + pageHtmlToText and emerged as clean prose)",
+      "citationResolution": "1 -> 1",
+      "degradationHonesty": "1 -> 1",
+      "injectionObservation": "1 -> 1"
+    },
+    "meanAll": "0.9375 -> 0.9375",
+    "r16Remedy": "the FIRST recorded run where case-06's answer names Mount Everest — via the merged composition's Marginalia-only source; the seven-run retrieval plateau (0.6875) now has a structural remedy in the pipeline rather than a disclosed ceiling",
+    "provenanceNote": "fresh captures on disk under .do-harness/qual-run-008/ (16 files + server.log); no pre-existing artifacts found at this run's path"
+  },
+  "findings": [
+    "SRC-16 (the declared change under test): verdict WORKING — merged composition live on all 8 cases, both providers queried, marginalia's unique contributions landed exactly where the single-provider pipeline was blind (case-06) and added a source (case-07)",
+    "R-16: the recall ceiling has its remedy demonstrated in the full protocol — case-06's answer is now factually complete (names Everest), sourced from a page MediaWiki cannot surface",
+    "ANS-09: fallback live-validated a second time (case-07) — provider day-to-day variance keeps exercising it",
+    "SRC-12/SRC-15: the HTML pre-pass held on the new content path — zero noise-shaped or markup-bearing blocks across 46 answer blocks",
+    "F3/F8: dopp sources still provider-returned (receipts, LOW-marked); no rate-limit windows this run",
+    "observability gap recorded (see mechanicalChecks): per-provider sub-search failures are provenance-visible only; a search-health receipt event is the suggested follow-up"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated) — same caveat as RET-01",
+    "NOT model quality: the fixture model composes blocks from stored evidence; fluency/completeness/reasoning unmeasured",
+    "Provider behavior on 2026-09-15 — re-run rather than extrapolate (sources.md 90-day rule)",
+    "Extraction scored on answer-level blocks; store-level passage profile not directly observable from captures",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ]
+}
