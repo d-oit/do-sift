@@ -1,0 +1,396 @@
+{
+  "runId": "run-007",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-15T18:21-18:29Z (captures on disk; operator-local date 2026-09-15)",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": "HEAD 62dc5a6 — SRC-11 relevance floor + ANS-08 scoped retrieval + ANS-09 scoped-pool fallback + SRC-12 noise exclusion + SRC-13 backfill (0 on scratch) + SRC-14 card prominence; fixture model (harness measured, not model quality)",
+  "scale": { "0": "fail", "1": "pass", "0.5": "partial" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "relevanceScore": 0.716, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "relevanceScore": 0.647,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 0,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "2 hits total from the provider (Q01's known small-hit behavior); RDBMS-comparison page stored as a receipt and MARKED LOW (SRC-14) at 0.647 — its blocks do not appear in the answer (5/5 SQLite content)",
+        "all 5 answer blocks clean prose, every block cites stored evidence"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Mike_Berners-Lee",
+          "relevanceScore": 0.54,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 46,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 46,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the MikeBL doppelganger stored again (receipts kept) and MARKED LOW at 0.540 (SRC-14 live) — content scan for 'carbon footprint'/'Mike Berners-Lee' across the 5 answer blocks: ZERO matches (SRC-11 exclusion live)",
+        "F3 provider-side unchanged: the dopp source is still what the search API returns"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "relevanceScore": 0.811, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F",
+          "relevanceScore": 0.636,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Aurora_(singer)",
+          "relevanceScore": 0.674,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 50,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 50,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "BOTH Aurora dopps (the album, the singer) stored as receipts and MARKED LOW (0.636/0.674) — content scan across the 6 answer blocks: zero album/singer content; blocks are aurora physics (incl. STEVE)"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia",
+          "relevanceScore": 0.849,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/North_Rhine-Westphalia",
+          "relevanceScore": 0.75,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees",
+          "relevanceScore": 0.69,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "adjacent family included (North_Rhine-Westphalia 0.750 above floor — the disclosed not-fixed F3 half); Pyrenees treaty marked LOW at 0.690",
+        "no colon-lead-in stub selected this run (run-005's case-04 shape) — SRC-12 keeps it out of the pool"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine",
+          "relevanceScore": 0.682,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/MRNA_vaccine",
+          "relevanceScore": 0.85,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough",
+          "relevanceScore": 0.545,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the misinformation-adjacent McCullough bio (SRC-10's Q05 observation) stored as a receipt and MARKED LOW at 0.545; zero McCullough content in the 6 answer blocks",
+        "COVID-19_vaccine marked LOW at 0.682 (just under floor) — adjacent-relevant by topic; the floor's boundary case, receipts kept, disclosed"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain",
+          "relevanceScore": 0.814,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "relevanceScore": 0.823, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/Summits_farthest_from_the_Earth%27s_center",
+          "relevanceScore": 0.756,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 23,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 23,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "R-16 CONFIRMED AGAIN live: no Mount Everest in the provider hits (matches the 2026-09-15 design-pass spike, ABSENT even at srlimit=20/synonym variants); the returned sources ARE on-topic for the class (tallest-vs-highest distinction is the answer's honest content) and all score above the floor",
+        "run-006's case-06 nav-list + reference blocks (selected into the answer that day) are GONE — SRC-12 noise exclusion live: zero noise-shaped blocks in all 45 answer blocks this run"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "relevanceScore": 0.496,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof",
+          "relevanceScore": 0.57,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Firo_(cryptocurrency)",
+          "relevanceScore": 0.467,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 37,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 37,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "HEADLINE — ANS-09 scoped-pool fallback EXERCISED LIVE FOR THE FIRST TIME: all 3 on-topic ZKP sources scored BELOW the 0.70 floor today (0.496/0.570/0.467 — provider content variance day-to-day; run-006's day they were above), the floored scoped pool emptied, the fallback re-included the own-run documents WITHOUT the floor, and the answer is GROUNDED (5 blocks, opening with the Chiesa definition) — exactly the case-07 empty-answer remedy the ANS-09 slice was cut for",
+        "the three LOW cards are truthful prominence (SRC-14), not an error: the receipts are visible and marked while the pool uses the fallback path"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall",
+          "relevanceScore": 0.78,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "relevanceScore": 0.653,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Berlin_Wall",
+          "relevanceScore": 0.794,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 49,
+        "noiseBackfilled": 0
+      },
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the concert dopp stored as a receipt and MARKED LOW at 0.653; zero concert content in the 6 answer blocks (the 1989 answer opens block 1)"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.6875,
+    "extractionCleanliness": 1,
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.9375
+  },
+  "mechanicalChecks": {
+    "headingMarkerEqRuns": 0,
+    "singleEqualsRuns": "case-01's SQL '=' fragment only (content, per run-006 note)",
+    "templateJsonMarkers": 0,
+    "referenceMarkers": 0,
+    "midFormulaFragments": 0,
+    "injectionPatternScan": "0 matches across all 16 capture files (patterns: ignore-previous-instructions variants, 'you are now', 'system prompt', 'as an AI language model', bare 'instructions:')",
+    "noiseShapedAnswerBlocks": 0,
+    "src14LiveValidation": "13 LOW cards across 7 of 8 cases (case-06: none needed); every marked source still stored + shown (prominence, not removal)",
+    "ans09LiveValidation": "case-07: fallback branch exercised live for the first time — all own-run sources below floor, pool refilled unfloored, grounded answer",
+    "src12LiveValidation": "0 noise-shaped answer blocks (run-006 case-06 carried nav-list + reference blocks)",
+    "emptyRunCondition": "no case ended with an empty answer; all 8 evidenceFromRun 'run'",
+    "f8RateLimit": "0 x 429s, 0 retries, 23 fetches, 0 fetch errors, denied 0; >=30s inter-case pacing from the start",
+    "f7PortProcessHygiene": "port 18117 verified free at startup (netstat); startup line 'do-sift listening on http://127.0.0.1:18117' with 'embedder: fastembed'; listener PID 38688 killed via taskkill //F //T post-run (SUCCESS); post-teardown only TIME_WAIT sockets, no LISTENER; the background wrapper's exit-1 notification is the kill's expected code",
+    "startupTrap": "the first start attempt used apps/server/src/main.ts (exports main() but never calls it) — silent exit 0; the documented entrypoint is apps/server/src/index.ts (docs/deployment.md correct); recorded as an ops observation, no repo change"
+  },
+  "comparison": {
+    "baseline": "run-006 (2026-09-14)",
+    "perDimension": {
+      "retrievalRelevance": "0.6875 -> 0.6875 (unchanged — provider-side F3 is structurally unchanged, seventh consecutive run)",
+      "extractionCleanliness": "0.75 -> 1.0 (SRC-12-attributable at pool level: noise-shaped blocks 0 this run vs case-06's nav-list/reference blocks selected in run-006; LIMIT: scored on answer-level blocks, the store-level profile is not directly observable from captures)",
+      "citationResolution": "1 -> 1",
+      "degradationHonesty": "1 -> 1",
+      "injectionObservation": "1 -> 1"
+    },
+    "meanAll": "0.8875 -> 0.9375",
+    "src14Exclusion": "answer-pool cleanliness holds from run-006; NEW: the prominence layer makes the receipt visible per card (13 LOW marks)",
+    "ans09Fallback": "run-006 recorded the fallback as present-but-not-needed; this run EXERCISED it (case-07) — the last unexercised ANS-09 branch is now live-validated",
+    "provenanceNote": "fresh captures on disk under .do-harness/qual-run-007/ (16 files + server.log + pacing in the driver stdout); no pre-existing artifacts were found at this run's path"
+  },
+  "findings": [
+    "SRC-14 (the declared change under test): verdict WORKING — 13 low-relevance cards across 7 cases, receipts kept and shown, dopp/misinformation sources marked (MikeBL 0.540, Aurora album 0.636, Aurora singer 0.674, McCullough 0.545, Live-in-Berlin 0.653, Pyrenees 0.690, RDBMS-comparison 0.647, COVID-vaccine 0.682 boundary)",
+    "ANS-09 (second pipeline delta): verdict WORKING — the case-07 empty-pool remedy fired live for the first time and produced the grounded answer run-006's superseded fragment falsely claimed was impossible",
+    "SRC-12 (third pipeline delta): verdict WORKING — zero noise-shaped answer blocks across 45 blocks; the colon-lead-in (case-04's run-005 shape) and case-06's nav-list/reference selections are gone",
+    "F3 (retrieval, re-measured): provider-side UNCHANGED seventh run — doppelganger sources stored again (02/03/05/08) and now both excluded from the pool AND marked on cards; retrieval aggregate 0.6875 unchanged",
+    "R-16: the Everest recall ceiling confirmed live the same day its query-reformulation lever was spike-disproven (see the R-16 design pass in plans/003-004-src-ans.md); the honest behavior stands",
+    "F8 (rate limiting): NO window this run — 23/23 fetches clean; zero relevance-failed events (SRC-11 similarity receipt computed on every fetched source); noiseBackfilled 0 everywhere (scratch DB, store-with-flag at insert)",
+    "F6 (limits): citation-resolution and degradation-honesty are 1.0 under the FIXTURE model — these measure the harness, not model quality (docs/quality-gate.md limits)"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated this run) — same caveat as RET-01; measures the author's judgment over one operator's run",
+    "NOT model quality: the fixture model composes blocks from stored evidence; fluency/completeness/reasoning unmeasured",
+    "Provider behavior on 2026-09-15 — re-run rather than extrapolate (sources.md 90-day rule)",
+    "Extraction scored on answer-level blocks (the pool); store-level passage profile not directly observable from this run's captures",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ]
+}
