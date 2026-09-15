@@ -686,3 +686,113 @@ describe("relevance floor at answer time (SRC-11)", () => {
     expect(storedHigh?.blocks).toHaveLength(2); // noise + topic re-included
   });
 });
+
+describe("relevance-floor scoping (ANS-09)", () => {
+  /** Cross-question corpus evidence for the floor boundary: two docs linked
+   * to ANOTHER question's completed run (so the asked question has no own
+   * run → corpus-fallback retrieval), one scored below the floor, one
+   * above. The floor must keep gating here — the scoped-pool fallback
+   * exists ONLY for the question's own run's evidence. */
+  async function seedCrossQuestionScored(
+    ownerId = "owner-a",
+  ): Promise<{ belowId: string; aboveId: string }> {
+    const otherReq = await repos.requests.create(ownerId, "search", "some other question");
+    const belowDoc = await repos.documents.insert({
+      ownerId,
+      canonicalUrl: "https://cross.test/below",
+      originalUrl: "https://cross.test/below",
+      contentHash: "hash-cross-below-001",
+      fetchedAt: "2026-09-15T00:00:00Z",
+      rawText: "cross below",
+      requestId: otherReq,
+      relevanceScore: 0.5,
+    });
+    const aboveDoc = await repos.documents.insert({
+      ownerId,
+      canonicalUrl: "https://cross.test/above",
+      originalUrl: "https://cross.test/above",
+      contentHash: "hash-cross-above-001",
+      fetchedAt: "2026-09-15T00:00:00Z",
+      rawText: "cross above",
+      requestId: otherReq,
+      relevanceScore: 0.9,
+    });
+    const belowId = await repos.passages.insert({
+      ownerId,
+      documentId: belowDoc,
+      excerpt: "FTS5 ranks keyword matches with bm25, where lower scores are better.",
+      extractionStatus: "ok",
+    });
+    const aboveId = await repos.passages.insert({
+      ownerId,
+      documentId: aboveDoc,
+      excerpt: "The bm25 function weighs rarer terms more heavily in the ranking.",
+      extractionStatus: "ok",
+    });
+    await repos.requests.complete(ownerId, otherReq);
+    return { belowId, aboveId };
+  }
+
+  it("hybrid path: the floor emptying the scoped pool falls back unfloored too", async () => {
+    const reqId = await repos.requests.create("owner-a", "search", QUESTION);
+    await seedEvidence("owner-a", reqId, 0.5); // below floor, but own-run
+    await repos.requests.complete("owner-a", reqId);
+    const excerpt = "FTS5 ranks keyword matches with bm25, where lower scores are better.";
+    const vectors: Record<string, number[]> = {
+      [QUESTION]: [1, 0],
+      [excerpt]: [0.9, 0.1],
+    };
+    const embedder: TextEmbedder = {
+      modelId: "fake-embed-floor",
+      async embedPassages(texts) {
+        return texts.map((t) => vectors[t] ?? [0, 0, 1]);
+      },
+      async embedQuery(text) {
+        return vectors[text] ?? [0, 0, 1];
+      },
+    };
+    await backfillPassageEmbeddings(client, "owner-a", embedder);
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model, true, embedder)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    // Both fusion halves exclude the only own-run doc at the floor → the
+    // scoped hybrid pool empties → the fallback re-runs hybridSearch
+    // WITHOUT the floor and the own-run evidence reaches the model.
+    expect(outcome.evidenceOnly).toBe(false);
+    expect(outcome.evidenceFromRun).toBe("run");
+    expect(model.calls[0]?.passageIds.length).toBeGreaterThan(0);
+  });
+
+  it("corpus fallback keeps the floor — below-floor cross-question evidence stays excluded", async () => {
+    const { belowId, aboveId } = await seedCrossQuestionScored();
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: QUESTION, // no completed own run → corpus-fallback retrieval
+    });
+    expect(outcome.evidenceOnly).toBe(false);
+    expect(outcome.evidenceFromRun).toBe("cross-question");
+    expect(model.calls[0]?.passageIds).toContain(aboveId);
+    expect(model.calls[0]?.passageIds).not.toContain(belowId);
+  });
+
+  it("corpus fallback never falls back unfloored — an all-below-floor corpus answers empty", async () => {
+    const { aboveId } = await seedCrossQuestionScored();
+    // remove the above-floor row so every corpus candidate is below floor
+    await client.execute({ sql: "DELETE FROM passages WHERE id = ?", args: [aboveId] });
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    // The floor gates cross-question evidence by design (ANS-09): no
+    // scoped-pool fallback on the corpus path — the honest empty
+    // evidence-only answer, zero model calls.
+    expect(outcome.evidenceOnly).toBe(true);
+    expect(outcome.degraded).toBe(true);
+    expect(outcome.evidenceFromRun).toBeUndefined();
+    expect(model.calls).toHaveLength(0);
+  });
+});
