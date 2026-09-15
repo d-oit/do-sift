@@ -16,3 +16,4 @@ export type {
 } from "./answer.js";
 export { createRuntime } from "./runtime.js";
 export type { Runtime, RuntimeOptions } from "./runtime.js";
+export { createMergedSearchProvider, mergeSearchHits, MergedSearchError } from "./search-merge.js";

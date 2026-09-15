@@ -24,7 +24,9 @@ export interface AppConfig {
   owners: string[];
   devBypass: boolean;
   devOwner?: string | undefined;
-  searchProvider: SearchProviderChoice;
+  /** SRC-16: one or more live/fixture search providers, in priority order
+   * (primary first). A single value parses as a one-element list. */
+  searchProviders: SearchProviderChoice[];
   /** Unset → the answer surface stays unwired: /api/answer answers 501. */
   modelProvider?: ModelProviderChoice | undefined;
   /** Unset → keyword-only bm25 on both research and answer retrieval. */
@@ -63,12 +65,32 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
   const searchRaw = env.DO_SIFT_SEARCH_PROVIDER;
   if (searchRaw === undefined || searchRaw === "") {
     throw new Error(
-      "DO_SIFT_SEARCH_PROVIDER is required ('fixture', 'wikipedia', or 'marginalia' — live adapters are terms-checked in plans/sources.md) — refusing to start an idle research surface",
+      "DO_SIFT_SEARCH_PROVIDER is required ('fixture', 'wikipedia', or 'marginalia' — comma-separated lists compose a merged provider, SRC-16) — refusing to start an idle research surface",
     );
   }
-  if (searchRaw !== "fixture" && searchRaw !== "wikipedia" && searchRaw !== "marginalia") {
+  const ALLOWED_SEARCH = new Set(["fixture", "wikipedia", "marginalia"]);
+  const searchProviders = searchRaw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+  if (searchProviders.length === 0) {
+    throw new Error(`DO_SIFT_SEARCH_PROVIDER lists no providers (got "${searchRaw}")`);
+  }
+  for (const choice of searchProviders) {
+    if (!ALLOWED_SEARCH.has(choice)) {
+      throw new Error(
+        `DO_SIFT_SEARCH_PROVIDER entries must be "fixture", "wikipedia", or "marginalia" (got "${choice}"); live adapters require a dated plans/sources.md entry (SRC-02 gate)`,
+      );
+    }
+  }
+  if (new Set(searchProviders).size !== searchProviders.length) {
     throw new Error(
-      `DO_SIFT_SEARCH_PROVIDER must be "fixture", "wikipedia", or "marginalia" (got "${searchRaw}"); live adapters require a dated plans/sources.md entry (SRC-02 gate)`,
+      `DO_SIFT_SEARCH_PROVIDER lists duplicate providers (got "${searchRaw}") — a merged provider needs distinct sources`,
+    );
+  }
+  if (searchProviders.includes("fixture") && searchProviders.length > 1) {
+    throw new Error(
+      `DO_SIFT_SEARCH_PROVIDER cannot mix "fixture" with live providers (got "${searchRaw}")`,
     );
   }
 
@@ -121,7 +143,7 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
     owners,
     devBypass,
     ...(devBypass && devOwner !== undefined && devOwner !== "" ? { devOwner } : {}),
-    searchProvider: searchRaw,
+    searchProviders: searchProviders as SearchProviderChoice[],
     ...(modelRaw === "fixture" ? { modelProvider: "fixture" as const } : {}),
     ...(embedderRaw === "fastembed" ? { embedder: "fastembed" as const } : {}),
     fetchAllowlist: splitList(env.DO_SIFT_FETCH_ALLOWLIST),

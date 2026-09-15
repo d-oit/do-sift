@@ -26,6 +26,7 @@ import {
 } from "@do-sift/plugin-search-wikipedia";
 import { safeFetch, type DnsResolver, type FetchLike } from "@do-sift/safe-fetch";
 import {
+  createMergedSearchProvider,
   createResearchServer,
   createRuntime,
   listen,
@@ -141,7 +142,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
   let fetchPage: (fetchUrl: string) => Promise<PageContent>;
   let extract: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
 
-  if (config.searchProvider === "fixture") {
+  if (config.searchProviders[0] === "fixture") {
     search = new FakeSearchProvider({ hits: FIXTURE_SEARCH_HITS });
     fetchPage = async (fetchUrl) => {
       const page = FIXTURE_PAGES[fetchUrl];
@@ -151,30 +152,40 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       return { text: page.text, contentType: "text/html" };
     };
   } else {
-    // Live mode: the terms-gated adapter plus the real fetch path —
+    // Live mode: terms-gated adapters plus the real fetch path —
     // safe-fetch (scheme/IP/redirect/DNS/size/time/MIME guards) with every
     // hop checked against the site-access policy. The same policy backs
-    // the adapter's manifest-host assertion in this host-direct composition.
-    if (config.searchProvider === "marginalia") {
-      // SRC-15: the second keyless provider (R-16 structural lever).
-      const marginalia = createMarginaliaSearch({ fetchImpl });
-      await marginalia.activate({
-        events: { emit: () => {} },
-        pluginName: "search-marginalia",
-        config: { ...MARGINALIA_TERMS },
-        network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
-      } as unknown as Parameters<typeof marginalia.activate>[0]);
-      search = marginalia;
-    } else {
-      const wikipedia = createWikipediaSearch({ fetchImpl });
-      await wikipedia.activate({
-        events: { emit: () => {} },
-        pluginName: "search-wikipedia",
-        config: { ...WIKIPEDIA_TERMS },
-        network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
-      } as unknown as Parameters<typeof wikipedia.activate>[0]);
-      search = wikipedia;
+    // the adapters' manifest-host assertions in this host-direct
+    // composition. SRC-16: multiple providers compose into ONE merged
+    // provider (fan-out + interleave + dedup) so both recall bases feed
+    // every run.
+    const liveAdapters: SearchProvider[] = [];
+    for (const choice of config.searchProviders) {
+      if (choice === "marginalia") {
+        // SRC-15: the second keyless provider (R-16 structural lever).
+        const marginalia = createMarginaliaSearch({ fetchImpl });
+        await marginalia.activate({
+          events: { emit: () => {} },
+          pluginName: "search-marginalia",
+          config: { ...MARGINALIA_TERMS },
+          network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
+        } as unknown as Parameters<typeof marginalia.activate>[0]);
+        liveAdapters.push(marginalia);
+      } else if (choice === "wikipedia") {
+        const wikipedia = createWikipediaSearch({ fetchImpl });
+        await wikipedia.activate({
+          events: { emit: () => {} },
+          pluginName: "search-wikipedia",
+          config: { ...WIKIPEDIA_TERMS },
+          network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
+        } as unknown as Parameters<typeof wikipedia.activate>[0]);
+        liveAdapters.push(wikipedia);
+      }
     }
+    search =
+      liveAdapters.length === 1
+        ? liveAdapters[0]!
+        : createMergedSearchProvider(liveAdapters as [SearchProvider, SearchProvider]);
 
     // SRC-03 extraction: readability over fetched HTML (offline plugin).
     const readability = createReadabilityExtractor();
@@ -194,13 +205,19 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     extract = (text) => readability.extract(text);
 
     const dns: DnsResolver = deps.dns ?? realDns;
+    const wikiInComposition = config.searchProviders.includes("wikipedia");
     fetchPage = async (fetchUrl) => {
-      // SRC-15 (marginalia): hits are arbitrary web URLs — the SRC-06
-      // general live-fetch path applies: safeFetch over the page itself
-      // (every hop site-access-checked), extraction over the HTML by the
-      // readability plugin above. No extract-endpoint rewrite exists for
-      // non-wiki hosts.
-      if (config.searchProvider === "marginalia") {
+      // SRC-16: DUAL content path per hit URL. A wiki URL in a composition
+      // that includes wikipedia maps to the plain-text extract endpoint
+      // (SRC-07 — no HTML-stripping pipeline for wiki pages); anything
+      // else goes through the generic safe-fetch path with the SRC-15
+      // pre-pass (marginalia hits are arbitrary web URLs — the SRC-06
+      // general live-fetch path, every hop site-access-checked).
+      const extractApiUrl = wikiInComposition ? wikipediaExtractUrl(fetchUrl) : undefined;
+      if (extractApiUrl === undefined) {
+        if (wikiInComposition && config.searchProviders.length === 1) {
+          throw new Error(`unsupported content url in wikipedia mode: ${fetchUrl}`);
+        }
         const result = await safeFetch(fetchUrl, {
           maxBytes: 2_000_000,
           timeoutMs: 10_000,
@@ -219,10 +236,6 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       // SRC-07: content comes from the plain-text extract endpoint — no
       // HTML stripping pipeline exists, so template metadata cannot leak
       // into passages (QUAL run-001 finding F1). Same guards, same host.
-      const extractApiUrl = wikipediaExtractUrl(fetchUrl);
-      if (extractApiUrl === undefined) {
-        throw new Error(`unsupported content url in wikipedia mode: ${fetchUrl}`);
-      }
       const result = await safeFetch(extractApiUrl, {
         maxBytes: 2_000_000,
         timeoutMs: 10_000,
@@ -327,12 +340,13 @@ export async function main(env: Record<string, string | undefined> = process.env
   console.log(
     `  db: ${config.dbUrl} (migrations: ${config.migrationsDir}); owners: ${config.owners.length} allowlisted; dev bypass: ${config.devBypass ? "ON (loopback-only)" : "off"}`,
   );
+  const providersLabel = config.searchProviders.join("+");
+  const compositionLabel =
+    config.searchProviders.length > 1 ? `merged/${providersLabel}` : providersLabel;
   const searchLabel =
-    config.searchProvider === "fixture"
+    config.searchProviders[0] === "fixture"
       ? "fixture (synthetic, dev only)"
-      : config.searchProvider === "marginalia"
-        ? `marginalia (live — CC BY-NC-SA result metadata, attribution preserved; fetch allowlist: ${config.fetchAllowlist.length > 0 ? config.fetchAllowlist.join(",") : "default posture"})`
-        : `wikipedia (live — CC BY-SA, attribution preserved; fetch allowlist: ${config.fetchAllowlist.length > 0 ? config.fetchAllowlist.join(",") : "default posture"})`;
+      : `${compositionLabel} (live — result metadata CC BY-SA (wikipedia) / CC BY-NC-SA (marginalia), attribution preserved; fetch allowlist: ${config.fetchAllowlist.length > 0 ? config.fetchAllowlist.join(",") : "default posture"})`;
   console.log(
     `  search: ${searchLabel} | model: ${config.modelProvider === undefined ? "not configured (/api/answer → 501)" : "fixture (synthetic, dev only)"} | embedder: ${config.embedder ?? "keyword-only"}`,
   );
