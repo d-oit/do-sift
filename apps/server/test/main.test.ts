@@ -480,3 +480,106 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
     }
   });
 });
+
+describe("marginalia search provider (SRC-15)", () => {
+  it("accepts marginalia as a search provider (terms-checked live adapter)", () => {
+    expect(
+      parseEnvConfig({ ...BASE_ENV, DO_SIFT_SEARCH_PROVIDER: "marginalia" }).searchProvider,
+    ).toBe("marginalia");
+  });
+
+  it("runs research through the marginalia adapter + the generic safe-fetch page path and answers from stored evidence", async () => {
+    const config: AppConfig = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_SEARCH_PROVIDER: "marginalia",
+      DO_SIFT_MODEL_PROVIDER: "fixture",
+      DO_SIFT_DEV_BYPASS: "1",
+      DO_SIFT_DEV_OWNER: "owner-a",
+      DO_SIFT_FETCH_ALLOWLIST: "api.marginalia.nu,tallest-example.test",
+    });
+    // Shape recorded from the live public API by the SRC-15 spike — the
+    // R-16-class response whose rank-1 result is the page MediaWiki never
+    // surfaces for this question class.
+    const RECORDED_MARGINALIA_SEARCH = {
+      license: "CC-BY-NC-SA 4.0",
+      page: 1,
+      pages: 11,
+      query: "What is the tallest mountain on Earth?",
+      results: [
+        {
+          url: "https://tallest-example.test/everest",
+          title: "Mount Everest — tallest above sea level",
+          description: "Mount Everest is Earth's highest mountain above sea level, 8,848 m.",
+          quality: 4.2,
+          format: "html",
+          resultsFromDomain: 1,
+          details: [],
+        },
+      ],
+    };
+    const PAGE_HTML =
+      "<html><body><h1>Mount Everest</h1>" +
+      "<p>Mount Everest is Earth's highest mountain above sea level, at 8,848 metres.</p>" +
+      "<p>The summit is the highest point on the Earth's surface.</p></body></html>";
+    let pageFetches = 0;
+    let searchInit: RequestInit | undefined;
+    const fetchImpl: FetchLike = async (url, init) => {
+      if (url.startsWith("https://api.marginalia.nu/public/search/")) {
+        searchInit = init;
+        return new Response(JSON.stringify(RECORDED_MARGINALIA_SEARCH), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === "https://tallest-example.test/everest") {
+        pageFetches++;
+        return new Response(PAGE_HTML, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      }
+      throw new Error(`stub fetch got an unexpected url: ${url}`);
+    };
+    const dns: DnsResolver = { lookup: async () => ["93.184.216.34"] };
+    const app = await composeApp(config, { dbUrl: ":memory:", port: 0, fetchImpl, dns });
+    try {
+      const base = `http://127.0.0.1:${app.port}`;
+      const research = await fetch(`${base}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "What is the tallest mountain on Earth?" }),
+      });
+      expect(research.status).toBe(200);
+      const sse = await research.text();
+      expect(sse).toContain("event: source");
+      expect(sse).toContain('"url":"https://tallest-example.test/everest"');
+      expect(sse).toContain("event: done");
+      expect(sse).toContain('"documentsStored":1');
+      // descriptive UA on the search call (same posture as wikipedia)
+      expect(searchInit?.headers).toMatchObject({
+        "user-agent": expect.stringContaining("do-sift"),
+      });
+      expect(pageFetches).toBe(1); // the generic page path fetched the hit URL
+
+      const answer = await fetch(`${base}/api/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "What is the tallest mountain on Earth?" }),
+      });
+      expect(answer.status).toBe(200);
+      const payload = (await answer.json()) as {
+        evidenceOnly: boolean;
+        blocks: Array<{ text: string; citations: string[] }>;
+      };
+      expect(payload.evidenceOnly).toBe(false);
+      expect(payload.blocks.length).toBeGreaterThan(0);
+      for (const block of payload.blocks) {
+        expect(block.citations.length).toBeGreaterThan(0);
+        // readability extraction stripped the fetched HTML at the boundary
+        expect(block.text).not.toContain("<");
+      }
+    } finally {
+      await app.close();
+    }
+  });
+});

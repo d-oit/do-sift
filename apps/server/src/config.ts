@@ -12,7 +12,7 @@
  *   does not replace (docs/deployment.md).
  */
 
-export type SearchProviderChoice = "fixture" | "wikipedia";
+export type SearchProviderChoice = "fixture" | "wikipedia" | "marginalia";
 export type ModelProviderChoice = "fixture";
 export type EmbedderChoice = "fastembed";
 
@@ -63,12 +63,12 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
   const searchRaw = env.DO_SIFT_SEARCH_PROVIDER;
   if (searchRaw === undefined || searchRaw === "") {
     throw new Error(
-      "DO_SIFT_SEARCH_PROVIDER is required ('fixture' or 'wikipedia' — the live adapter is terms-checked 2026-09-14 in plans/sources.md) — refusing to start an idle research surface",
+      "DO_SIFT_SEARCH_PROVIDER is required ('fixture', 'wikipedia', or 'marginalia' — live adapters are terms-checked in plans/sources.md) — refusing to start an idle research surface",
     );
   }
-  if (searchRaw !== "fixture" && searchRaw !== "wikipedia") {
+  if (searchRaw !== "fixture" && searchRaw !== "wikipedia" && searchRaw !== "marginalia") {
     throw new Error(
-      `DO_SIFT_SEARCH_PROVIDER must be "fixture" or "wikipedia" (got "${searchRaw}"); live adapters require a dated plans/sources.md entry (SRC-02 gate)`,
+      `DO_SIFT_SEARCH_PROVIDER must be "fixture", "wikipedia", or "marginalia" (got "${searchRaw}"); live adapters require a dated plans/sources.md entry (SRC-02 gate)`,
     );
   }
 

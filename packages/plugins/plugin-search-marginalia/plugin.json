@@ -1,0 +1,18 @@
+{
+  "name": "search-marginalia",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "search",
+  "description": "Marginalia Search adapter (SRC-15) — the R-16 structural lever: a second keyless provider whose recall covers the query classes the MediaWiki search API's ranking structurally misses (live-verified 2026-09-15: Everest-class pages at ranks 1-5 for the raw tallest-mountain question). Free and keyless on the verified legacy public path; zero capabilities. The single permitted network host is api.marginalia.nu. Activation is terms-gated: config must name the dated plans/sources.md entry that clears this source (checked 2026-09-15). Result metadata is CC BY-NC-SA 4.0 (non-commercial research tool; linked pages carry their own licenses); the evidence store preserves attribution.",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": ["api.marginalia.nu"],
+    "secrets": []
+  },
+  "config": {
+    "termsAcceptedAt": "",
+    "sourcesEntry": "",
+    "retryCapMs": 5000
+  },
+  "entry": "createMarginaliaSearch"
+}

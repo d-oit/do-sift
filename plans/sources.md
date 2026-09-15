@@ -52,6 +52,34 @@ re-verify before relying on an entry older than 90 days.
 - **Activation**: approved for SRC-06 (free, keyless, terms recorded).
   Model/search providers below remain the template for any future entry.
 
+### Marginalia Search (marginalia.nu) — checked 2026-09-15 (live probe fetches, spike evidence in plans/003-004-src-ans.md SRC-15)
+
+- **Free and keyless on the verified endpoint**: `https://api.marginalia.nu/public/search/<url-encoded query>`
+  returned 200 JSON on 5 live probes this date (legacy public path; no credentials, no billing risk).
+- **Response shape (verified live)**: envelope `{license, page, pages, query, results[]}`; result items carry
+  `url`, `title`, `description` (plain text, may be truncated with `...`), `quality` (float),
+  `format` (e.g. `html`), `resultsFromDomain` (int), `details`. Rank = array order (no explicit rank field).
+- **License**: response metadata is **CC-BY-NC-SA 4.0** (stated in every response and on the API index page).
+  Non-commercial constraint applies to the result METADATA; linked/target pages carry their own licenses.
+  Storing excerpts in the owner-scoped private evidence store with source attribution preserved is within the
+  recorded terms for this non-commercial research tool; any future commercial deployment must re-verify
+  (a paid/metered commercial key exists for that case — see below).
+- **The newer documented API**: api2.marginalia-search.com (docs dated 2025-12-08 on api.marginalia.nu) uses an
+  `API-Key` header. The shared `public` key is sanctioned for integrations but is quota-crippled in practice —
+  live probe this date returned 429 `Daily Limit Exceeded` / `QPM Limit Exceeded`. Free non-commercial personal
+  keys require EMAIL (contact@marginalia-search.com) — owner follow-up, not automatable. The adapter therefore
+  targets the verified legacy endpoint; migration to api2 with a personal key is recorded as the follow-up when
+  the owner requests a key by email.
+- **Error envelope**: transient failures arrive as HTML status pages (observed `504 Gateway Time-out` nginx, twice
+  under rapid probing) — adapters must treat non-JSON/non-200 as a typed error with bounded retry, never hot.
+- **Rate limits**: not numerically documented for the legacy public path; aggressive under bursts (observed 504s
+  at ~1 req/1.5s). Serialize + pace requests; honor Retry-After when present.
+- **Recall value (why this entry exists)**: for the R-16 class question `What is the tallest mountain on Earth?` the
+  MediaWiki search API never surfaces Mount Everest (top-20, all query shapes — 2026-09-15 spike); Marginalia's
+  public API returns Everest-class pages at ranks 1-5 for the SAME raw question (live-verified this date), and
+  ranks en.wikipedia.org/wiki/Tallest_mountain at 7. This is the R-16 structural lever.
+- **Activation**: approved for SRC-15 (free, keyless on the verified endpoint, terms recorded this date).
+
 ## Model providers
 
 None activated. Same gate as search; additionally record price per 1M

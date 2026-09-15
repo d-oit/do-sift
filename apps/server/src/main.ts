@@ -17,6 +17,7 @@ import type { SearchProvider } from "@do-sift/contracts";
 import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
 import type { PageContent } from "@do-sift/plugin-harness-research";
+import { createMarginaliaSearch, pageHtmlToText } from "@do-sift/plugin-search-marginalia";
 import { createSiteAccessPolicy } from "@do-sift/plugin-policy-siteaccess";
 import {
   createWikipediaSearch,
@@ -87,6 +88,12 @@ const WIKIPEDIA_TERMS = {
   sourcesEntry: "Wikipedia (MediaWiki action API, en.wikipedia.org) — checked 2026-09-14",
 };
 
+/** The dated plans/sources.md entry that clears the live Marginalia source (SRC-15). */
+const MARGINALIA_TERMS = {
+  termsAcceptedAt: "2026-09-15",
+  sourcesEntry: "Marginalia Search (marginalia.nu) — checked 2026-09-15",
+};
+
 export interface ComposeDeps {
   /** Test seam: overrides config.dbUrl (e.g. ":memory:" for hermetic tests). */
   dbUrl?: string;
@@ -148,14 +155,26 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     // safe-fetch (scheme/IP/redirect/DNS/size/time/MIME guards) with every
     // hop checked against the site-access policy. The same policy backs
     // the adapter's manifest-host assertion in this host-direct composition.
-    const wikipedia = createWikipediaSearch({ fetchImpl });
-    await wikipedia.activate({
-      events: { emit: () => {} },
-      pluginName: "search-wikipedia",
-      config: { ...WIKIPEDIA_TERMS },
-      network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
-    } as unknown as Parameters<typeof wikipedia.activate>[0]);
-    search = wikipedia;
+    if (config.searchProvider === "marginalia") {
+      // SRC-15: the second keyless provider (R-16 structural lever).
+      const marginalia = createMarginaliaSearch({ fetchImpl });
+      await marginalia.activate({
+        events: { emit: () => {} },
+        pluginName: "search-marginalia",
+        config: { ...MARGINALIA_TERMS },
+        network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
+      } as unknown as Parameters<typeof marginalia.activate>[0]);
+      search = marginalia;
+    } else {
+      const wikipedia = createWikipediaSearch({ fetchImpl });
+      await wikipedia.activate({
+        events: { emit: () => {} },
+        pluginName: "search-wikipedia",
+        config: { ...WIKIPEDIA_TERMS },
+        network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
+      } as unknown as Parameters<typeof wikipedia.activate>[0]);
+      search = wikipedia;
+    }
 
     // SRC-03 extraction: readability over fetched HTML (offline plugin).
     const readability = createReadabilityExtractor();
@@ -176,6 +195,27 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
 
     const dns: DnsResolver = deps.dns ?? realDns;
     fetchPage = async (fetchUrl) => {
+      // SRC-15 (marginalia): hits are arbitrary web URLs — the SRC-06
+      // general live-fetch path applies: safeFetch over the page itself
+      // (every hop site-access-checked), extraction over the HTML by the
+      // readability plugin above. No extract-endpoint rewrite exists for
+      // non-wiki hosts.
+      if (config.searchProvider === "marginalia") {
+        const result = await safeFetch(fetchUrl, {
+          maxBytes: 2_000_000,
+          timeoutMs: 10_000,
+          maxRedirects: 3,
+          headers: { "user-agent": USER_AGENT },
+          dns,
+          fetchImpl,
+          checkHost: (host) => siteAccess.assertAllowed(host),
+        });
+        // SRC-15: HTML → text pre-pass (plugin-owned) before the
+        // text-block readability extractor — raw markup must not reach
+        // stored passages (F1 lesson). The extractor still runs on the
+        // result via the shared live-mode wiring.
+        return { text: pageHtmlToText(result.text), contentType: "text/plain" };
+      }
       // SRC-07: content comes from the plain-text extract endpoint — no
       // HTML stripping pipeline exists, so template metadata cannot leak
       // into passages (QUAL run-001 finding F1). Same guards, same host.
@@ -290,7 +330,9 @@ export async function main(env: Record<string, string | undefined> = process.env
   const searchLabel =
     config.searchProvider === "fixture"
       ? "fixture (synthetic, dev only)"
-      : `wikipedia (live — CC BY-SA, attribution preserved; fetch allowlist: ${config.fetchAllowlist.length > 0 ? config.fetchAllowlist.join(",") : "default posture"})`;
+      : config.searchProvider === "marginalia"
+        ? `marginalia (live — CC BY-NC-SA result metadata, attribution preserved; fetch allowlist: ${config.fetchAllowlist.length > 0 ? config.fetchAllowlist.join(",") : "default posture"})`
+        : `wikipedia (live — CC BY-SA, attribution preserved; fetch allowlist: ${config.fetchAllowlist.length > 0 ? config.fetchAllowlist.join(",") : "default posture"})`;
   console.log(
     `  search: ${searchLabel} | model: ${config.modelProvider === undefined ? "not configured (/api/answer → 501)" : "fixture (synthetic, dev only)"} | embedder: ${config.embedder ?? "keyword-only"}`,
   );
