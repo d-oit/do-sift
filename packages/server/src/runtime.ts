@@ -58,6 +58,12 @@ export interface RuntimeOptions {
    * wiring (the packaged entrypoint runs the designed default).
    */
   relevanceFloor?: number;
+  /**
+   * SRC-12 noise-class exclusion of the answer pool (default on,
+   * designed in plans/003-004-src-ans.md). Options-level like the floor;
+   * no env wiring (the packaged entrypoint runs the designed default).
+   */
+  noiseFilter?: boolean;
 }
 
 export interface Runtime {
@@ -124,6 +130,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
             ...(options.relevanceFloor === undefined
               ? {}
               : { relevanceFloor: options.relevanceFloor }),
+            ...(options.noiseFilter === undefined ? {} : { noiseFilter: options.noiseFilter }),
           },
         );
 

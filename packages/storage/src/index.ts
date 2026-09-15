@@ -14,6 +14,7 @@ export type {
   JobRow,
   OwnerRow,
   PassageInput,
+  PassageNoiseClass,
   PassageRow,
   RequestRow,
   UsageEntryInput,

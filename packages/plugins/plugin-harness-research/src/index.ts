@@ -14,7 +14,12 @@
 import { createHash } from "node:crypto";
 import { SearchLimits, SearchQuery, isSiteDenied, type SearchProvider } from "@do-sift/contracts";
 import type { PluginContext, PluginInstance } from "@do-sift/kernel";
-import { backfillPassageEmbeddings, cosineSimilarity } from "@do-sift/storage";
+import {
+  backfillPassageEmbeddings,
+  cosineSimilarity,
+  type PassageInput,
+  type PassageNoiseClass,
+} from "@do-sift/storage";
 import type { BudgetService, DocumentInput, Repositories, TextEmbedder } from "@do-sift/storage";
 
 export interface ResearchHarnessConfig {
@@ -88,6 +93,41 @@ export function extractPassages(text: string): string[] {
     .filter((p) => p.length >= MIN_EXCERPT)
     .slice(0, MAX_PASSAGES_PER_DOC)
     .map((p) => p.slice(0, MAX_EXCERPT));
+}
+
+/**
+ * Noise-class classification (SRC-12, store-with-flag). A PURE text
+ * heuristic applied per extracted chunk at store time; the class is a
+ * receipt, exclusion happens at read time (answer pool only). Shapes are
+ * anchored to the verbatim captured evidence in the QUAL run artifacts
+ * (see plans/003-004-src-ans.md SRC-12). Precision-over-recall by design:
+ * a false flag suppresses real evidence from the answer pool, a miss only
+ * leaves one noisy block. Bare table-caption stubs and mid-formula
+ * fragments are deliberately NOT classified — by text alone a caption is
+ * indistinguishable from a legitimate short fact-bearing sentence
+ * (segmentation work, disclosed not fixed).
+ */
+export function classifyNoise(text: string): PassageNoiseClass | undefined {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return undefined;
+  // nav-list: a run of concatenated list-entry titles (the run-006
+  // case-06 shape — "List of … List of … List of …"), not prose.
+  const listLeads = trimmed.match(/\bList of\b/gu)?.length ?? 0;
+  if (listLeads >= 3) return "nav-list";
+  // reference: bibliography/citation markers (run-005 case-05, run-006
+  // case-06 shapes — "Retrieved <date>", doi:, ISBN).
+  if (
+    /\bRetrieved\s+[A-Z][a-z]+\s+\d{1,2}\b/u.test(trimmed) ||
+    /\bRetrieved\s+\d{1,2}\s+[A-Z][a-z]+\b/u.test(trimmed) ||
+    /\bdoi:\s?\S/u.test(trimmed) ||
+    /\bISBN\b/u.test(trimmed)
+  ) {
+    return "reference";
+  }
+  // stub: a chunk ENDING in a colon is a list lead-in whose list content
+  // was split away (the run-005 case-04 shape) — not self-contained prose.
+  if (trimmed.endsWith(":")) return "stub";
+  return undefined;
 }
 
 function positiveInt(value: unknown, fallback: number): number {
@@ -234,12 +274,18 @@ export function createResearchHarness(
                 ? deps.extract(page.text)
                 : extractPassages(page.text).map((text) => ({ text, status: "ok" as const }));
               for (const passage of extracted) {
-                await deps.repositories.passages.insert({
+                // SRC-12 (store-with-flag): per-chunk noise class computed
+                // at store time — pure text heuristic, no failure path,
+                // receipts kept; exclusion is read-time (answer pool).
+                const noiseClass = classifyNoise(passage.text);
+                const passageInit: PassageInput = {
                   ownerId: task.ownerId,
                   documentId: docId,
                   excerpt: passage.text,
                   extractionStatus: passage.status,
-                });
+                };
+                if (noiseClass !== undefined) passageInit.noiseClass = noiseClass;
+                await deps.repositories.passages.insert(passageInit);
                 summary.passagesStored++;
               }
               deps.onSource?.({

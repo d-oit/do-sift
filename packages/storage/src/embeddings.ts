@@ -126,7 +126,9 @@ export interface VectorHit {
  * `relevanceFloor` (SRC-11, answer-time exclusion) optionally filters
  * candidates scored below the designed floor — advisory: documents with
  * NO relevance score (NULL = legacy/unmeasured) are ALWAYS included;
- * exclusion is read-time and never storage-time.
+ * exclusion is read-time and never storage-time. `noiseFilter` (SRC-12)
+ * drops passages flagged at store time with a noise class — NULL
+ * (unclassified/legacy) is ALWAYS included, byte-identical when omitted.
  */
 export async function searchByEmbedding(
   client: Client,
@@ -136,6 +138,7 @@ export async function searchByEmbedding(
   limit = 10,
   documentIds?: string[],
   relevanceFloor?: number,
+  noiseFilter?: boolean,
 ): Promise<VectorHit[]> {
   if (queryVector.length === 0) return [];
   const docFilter =
@@ -146,12 +149,13 @@ export async function searchByEmbedding(
     relevanceFloor === undefined
       ? ""
       : " AND (d.relevance_score IS NULL OR d.relevance_score >= ?)";
+  const noiseClause = noiseFilter === true ? " AND p.noise_class IS NULL" : "";
   const res = await client.execute({
     sql: `SELECT pe.passage_id, p.document_id, d.content_hash, p.excerpt, pe.vector
           FROM passage_embeddings pe
           JOIN passages p ON p.id = pe.passage_id AND p.owner_id = ?
           JOIN documents d ON d.id = p.document_id
-          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}${floorFilter}`,
+          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}${floorFilter}${noiseClause}`,
     args: [
       ownerId,
       ownerId,
@@ -209,7 +213,8 @@ export function rrfFuse(bm25: PassageHit[], vector: VectorHit[], limit: number):
  * over stored embeddings. Tokenless or keyword-free questions still retrieve
  * through the vector list; passages without an embedding only surface via
  * the bm25 side. `relevanceFloor` (SRC-11) threads the answer-time
- * exclusion through BOTH halves of the fusion.
+ * exclusion through BOTH halves of the fusion; `noiseFilter` (SRC-12)
+ * threads the noise-class exclusion the same way.
  */
 export async function hybridSearch(
   client: Client,
@@ -219,8 +224,17 @@ export async function hybridSearch(
   embedder: TextEmbedder,
   documentIds?: string[],
   relevanceFloor?: number,
+  noiseFilter?: boolean,
 ): Promise<PassageHit[]> {
-  const bm25 = await searchPassages(client, ownerId, question, limit, documentIds, relevanceFloor);
+  const bm25 = await searchPassages(
+    client,
+    ownerId,
+    question,
+    limit,
+    documentIds,
+    relevanceFloor,
+    noiseFilter,
+  );
   const queryVector = await embedder.embedQuery(question);
   const vector = await searchByEmbedding(
     client,
@@ -230,6 +244,7 @@ export async function hybridSearch(
     limit,
     documentIds,
     relevanceFloor,
+    noiseFilter,
   );
   return rrfFuse(bm25, vector, limit);
 }

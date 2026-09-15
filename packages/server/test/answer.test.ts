@@ -796,3 +796,68 @@ describe("relevance-floor scoping (ANS-09)", () => {
     expect(model.calls).toHaveLength(0);
   });
 });
+
+describe("noise-flagged passages never reach the answer pool (SRC-12)", () => {
+  /** Own-run document carrying one nav-list-flagged chunk and one clean
+   * chunk — the run-006 case-06 answer-pool shape. */
+  async function seedNoiseAndClean(): Promise<{ noiseId: string; cleanId: string }> {
+    const ownReq = await repos.requests.create(
+      "owner-a",
+      "search",
+      "what is the tallest mountain on earth?",
+    );
+    const doc = await repos.documents.insert({
+      ownerId: "owner-a",
+      canonicalUrl: "https://docs.test/noise-doc",
+      originalUrl: "https://docs.test/noise-doc",
+      contentHash: "hash-noise-doc-001",
+      fetchedAt: "2026-09-15T00:00:00Z",
+      rawText: "noise doc",
+      requestId: ownReq,
+    });
+    const noiseId = await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: doc,
+      excerpt:
+        "List of tallest mountains in the Solar System List of mountain peaks by prominence " +
+        "List of highest mountains on Earth Summits farthest from the Earth's center",
+      extractionStatus: "ok",
+      noiseClass: "nav-list",
+    });
+    const cleanId = await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId: doc,
+      excerpt:
+        "Mount Everest is the highest mountain above sea level, at 8,848 metres, and it is " +
+        "not the summit farthest from the Earth's center.",
+      extractionStatus: "ok",
+    });
+    await repos.requests.complete("owner-a", ownReq);
+    return { noiseId, cleanId };
+  }
+
+  it("excludes noise-flagged passages from packing; the store bumps to p2", async () => {
+    const { noiseId, cleanId } = await seedNoiseAndClean();
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: "what is the tallest mountain on earth?",
+    });
+    expect(outcome.evidenceOnly).toBe(false);
+    expect(model.calls[0]?.passageIds).toContain(cleanId);
+    expect(model.calls[0]?.passageIds).not.toContain(noiseId);
+    const stored = await repos.answers.get("owner-a", outcome.answerId);
+    expect(stored?.policyRevision).toBe("p2"); // SRC-12: packing semantics changed (D5)
+  });
+
+  it("noiseFilter:false restores the legacy pool (read-time tunable)", async () => {
+    const { noiseId, cleanId } = await seedNoiseAndClean();
+    const model = new FakeModelProvider();
+    const outcome = await createAnswerService(makeDeps(model), { noiseFilter: false }).answer({
+      ownerId: "owner-a",
+      question: "what is the tallest mountain on earth?",
+    });
+    expect(outcome.evidenceOnly).toBe(false);
+    expect(model.calls[0]?.passageIds).toEqual(expect.arrayContaining([noiseId, cleanId]));
+  });
+});

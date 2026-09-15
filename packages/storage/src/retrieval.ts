@@ -87,7 +87,10 @@ function hitFromRow(row: Row): PassageHit {
  * below the designed floor — advisory: documents with NO relevance score
  * (NULL = legacy/unmeasured) are ALWAYS included; exclusion is read-time
  * and never storage-time, and the floor is tunable at read time (not a
- * cache-key input — source versions unchanged).
+ * cache-key input — source versions unchanged). `noiseFilter` (SRC-12,
+ * answer-time exclusion) drops passages flagged at store time with a
+ * noise class — advisory in the same shape: NULL (unclassified/legacy)
+ * is ALWAYS included, and the filter is byte-identical when omitted.
  */
 export async function searchPassages(
   client: Client,
@@ -96,6 +99,7 @@ export async function searchPassages(
   limit = 10,
   documentIds?: string[],
   relevanceFloor?: number,
+  noiseFilter?: boolean,
 ): Promise<PassageHit[]> {
   const match = buildMatchQuery(queryText);
   if (match === null) return [];
@@ -107,13 +111,14 @@ export async function searchPassages(
     relevanceFloor === undefined
       ? ""
       : " AND (d.relevance_score IS NULL OR d.relevance_score >= ?)";
+  const noiseClause = noiseFilter === true ? " AND p.noise_class IS NULL" : "";
   const res = await client.execute({
     sql: `SELECT f.passage_id, p.document_id, d.content_hash, f.excerpt, bm25(passages_fts) AS score
           FROM passages_fts f
           JOIN passages p ON p.id = f.passage_id AND p.owner_id = ?
           JOIN documents d ON d.id = p.document_id
           WHERE passages_fts MATCH ?
-            AND f.owner_id = ?${docFilter}${floorFilter}
+            AND f.owner_id = ?${docFilter}${floorFilter}${noiseClause}
           ORDER BY score
           LIMIT ?`,
     args: [

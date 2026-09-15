@@ -75,12 +75,17 @@ export interface DocumentRow {
   relevanceScore?: number | undefined;
 }
 
+export type PassageNoiseClass = "nav-list" | "reference" | "stub";
+
 export interface PassageInput {
   ownerId: string;
   documentId: string;
   heading?: string | undefined;
   excerpt: string;
   extractionStatus: "ok" | "partial" | "failed";
+  /** SRC-12 store-with-flag receipt: the noise class computed at store
+   * time, or undefined (NULL = unclassified/legacy, always included). */
+  noiseClass?: PassageNoiseClass | undefined;
 }
 
 export interface PassageRow {
@@ -90,6 +95,7 @@ export interface PassageRow {
   heading?: string | undefined;
   excerpt: string;
   extractionStatus: "ok" | "partial" | "failed";
+  noiseClass?: PassageNoiseClass | undefined;
   createdAt: string;
 }
 
@@ -227,6 +233,7 @@ function passageFromRow(row: Row): PassageRow {
     heading: strOrUndefined(row, "heading"),
     excerpt: str(row, "excerpt"),
     extractionStatus: str(row, "extraction_status") as PassageRow["extractionStatus"],
+    noiseClass: (strOrUndefined(row, "noise_class") ?? undefined) as PassageNoiseClass | undefined,
     createdAt: str(row, "created_at"),
   };
 }
@@ -390,7 +397,7 @@ export class Repositories {
       await this.client.batch(
         [
           {
-            sql: "INSERT INTO passages (id, owner_id, document_id, heading, excerpt, extraction_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            sql: "INSERT INTO passages (id, owner_id, document_id, heading, excerpt, extraction_status, noise_class, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             args: [
               id,
               p.ownerId,
@@ -398,6 +405,7 @@ export class Repositories {
               p.heading ?? null,
               p.excerpt,
               p.extractionStatus,
+              p.noiseClass ?? null,
               now(),
             ],
           },

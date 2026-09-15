@@ -1,0 +1,13 @@
+-- SRC-12 (plan 003): store-with-flag noise classification — a passage
+-- flagged at store time as a noise class (nav-list concatenation,
+-- reference/bibliography entry, colon-lead-in stub) is excluded from the
+-- ANSWER POOL at read time; the receipt stays stored (never dropped), the
+-- run never fails on classification (pure text heuristic — no failure
+-- path), and NULL = unclassified/legacy evidence (pre-SRC-12 rows) is
+-- ALWAYS INCLUDED. Purely additive (expand): no destructive ops, existing
+-- rows keep NULL.
+-- Rollback story: restore from a pre-migration backup (VACUUM INTO
+-- snapshot, as for every applied migration; ALTER TABLE ... ADD COLUMN
+-- has no clean downgrade, nothing else breaks — expected size delta
+-- ~zero, one nullable column, no data rewrite).
+ALTER TABLE passages ADD COLUMN noise_class TEXT;

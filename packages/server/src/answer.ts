@@ -57,6 +57,16 @@ export interface AnswerServiceOptions {
    * policyRevision bump.
    */
   relevanceFloor?: number;
+  /**
+   * SRC-12 answer-time exclusion of noise-classified passages (nav-list /
+   * reference / stub, flagged at store time). Designed behavior is on;
+   * the option exists for read-time tunability like the floor. NOTE: the
+   * DEFAULT CHANGE from off-to-on IS a packing-semantics change and IS
+   * accompanied by the p1 → p2 policyRevision bump below (the packed
+   * passage set can change under an identical sourceVersions set when a
+   * document carries both clean and flagged chunks — D5 conservatism).
+   */
+  noiseFilter?: boolean;
 }
 
 export interface AnswerServiceDeps {
@@ -113,6 +123,8 @@ const DEFAULTS = {
   // SRC-11 designed floor (plans/003-004-src-ans.md: drops exactly the 4
   // clearly-off-topic dopps with 0/7 correct pages dropped at n=14).
   relevanceFloor: 0.7,
+  // SRC-12 designed behavior: noise-classified passages never pack.
+  noiseFilter: true,
 };
 
 export class AnswerCancelledError extends Error {
@@ -164,10 +176,13 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
   const maxOutputTokens = options.maxOutputTokens ?? DEFAULTS.maxOutputTokens;
   const maxPassages = options.maxPassages ?? DEFAULTS.maxPassages;
   const relevanceFloor = options.relevanceFloor ?? DEFAULTS.relevanceFloor;
+  const noiseFilter = options.noiseFilter ?? DEFAULTS.noiseFilter;
   const revisions = {
-    // p1: ANS-08 — retrieval became question-scoped (linkage filter);
-    // revision bump invalidates answers cached under unscoped retrieval.
-    policyRevision: options.revisions?.policyRevision ?? "p1",
+    // p2: SRC-12 — noise-classified passages are excluded from packing
+    // (answer-pool semantics changed); revision bump invalidates answers
+    // cached under the pre-SRC-12 pool (p1: ANS-08 — retrieval became
+    // question-scoped).
+    policyRevision: options.revisions?.policyRevision ?? "p2",
     // pr1: packing semantics changed in ANS-02 (output budget reserved from
     // the input ceiling) — revision bump invalidates pre-ANS-02 cache rows.
     promptRevision: options.revisions?.promptRevision ?? "pr1",
@@ -234,6 +249,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 maxPassages,
                 scopedDocIds,
                 relevanceFloor,
+                noiseFilter,
               )
             : await hybridSearch(
                 deps.client,
@@ -243,6 +259,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 deps.embedder,
                 scopedDocIds,
                 relevanceFloor,
+                noiseFilter,
               )
           : deps.embedder === undefined
             ? await searchPassages(
@@ -252,6 +269,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 maxPassages,
                 undefined,
                 relevanceFloor,
+                noiseFilter,
               )
             : await hybridSearch(
                 deps.client,
@@ -261,10 +279,13 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 deps.embedder,
                 undefined,
                 relevanceFloor,
+                noiseFilter,
               );
 
       if (scopedDocIds !== undefined && retrieved.length === 0) {
         // the floor emptied the scoped pool: re-include own-run docs without the floor
+        // (SRC-12 note: the noise filter STAYS on — the fallback exists for the
+        // floor's false negatives on on-topic evidence, not for noise)
         retrieved =
           deps.embedder === undefined
             ? await searchPassages(
@@ -273,6 +294,8 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 task.question,
                 maxPassages,
                 scopedDocIds,
+                undefined,
+                noiseFilter,
               )
             : await hybridSearch(
                 deps.client,
@@ -281,6 +304,8 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 maxPassages,
                 deps.embedder,
                 scopedDocIds,
+                undefined,
+                noiseFilter,
               );
       }
 

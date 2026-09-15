@@ -444,3 +444,50 @@ describe("evidence relevance (SRC-11)", () => {
     expect(events).toContain("research.relevance-failed"); // emitted, continued
   });
 });
+
+describe("noise classification at store time (SRC-12)", () => {
+  const ACTIVATE = {
+    events: { emit: () => {} },
+    config: { maxHits: 6, maxFetches: 2 },
+  } as unknown as Parameters<typeof createResearchHarness>[0];
+
+  async function ensureOwner(id: string): Promise<void> {
+    await client.execute({
+      sql: "INSERT INTO owners (id, display_name, created_at) VALUES (?, ?, '2026-09-15T00:00:00Z') ON CONFLICT(id) DO NOTHING",
+      args: [id, id],
+    });
+  }
+
+  it("flags noise-shaped chunks at store time and keeps the receipts (store-with-flag)", async () => {
+    await ensureOwner("owner-noise");
+    // Page A carries the run-006 case-06 store shape: a nav-list
+    // concatenation paragraph and a clean prose paragraph (default
+    // extraction splits on blank lines, so each lands as its own
+    // passage). Page B stays plain prose.
+    const NOISE_PAGE = [
+      "List of tallest mountains in the Solar System List of mountain peaks by prominence " +
+        "List of highest mountains on Earth Summits farthest from the Earth's center",
+      "Mount Everest is the highest mountain above sea level, at 8,848 metres, and it is " +
+        "not the summit farthest from the Earth's center.",
+    ].join("\n\n");
+    const { harness } = makeDeps({
+      fetchPage: async (url) =>
+        url === "https://a.test/page"
+          ? { text: NOISE_PAGE, contentType: "text/html" }
+          : { text: PAGE_B, contentType: "text/html" },
+    });
+    await harness.activate(ACTIVATE);
+
+    const summary = await harness.run({ ownerId: "owner-noise", question: "tallest mountain" });
+    expect(summary.passagesStored).toBe(3); // receipts kept — nothing dropped
+
+    const docs = await repos.documents.list("owner-noise");
+    const doc = docs.find((d) => d.canonicalUrl === "https://a.test/page");
+    if (doc === undefined) throw new Error("document not stored");
+    const passages = await repos.passages.listByDocument("owner-noise", doc.id);
+    const flagged = passages.find((p) => p.noiseClass === "nav-list");
+    const clean = passages.find((p) => p.noiseClass === undefined);
+    expect(flagged?.excerpt.startsWith("List of tallest mountains")).toBe(true);
+    expect(clean?.excerpt.startsWith("Mount Everest is the highest")).toBe(true);
+  });
+});
