@@ -18,3 +18,19 @@
 | R-14 | MediaWiki TextExtracts is under code-stewardship review (official, checked 2026-09-14); documented caveats: citations may persist in extract text (eswiki only — zero on enwiki live checks), newlines after lists may drop, some pages yield empty extract (→ honest fetch failure), and raw TeX `{\displaystyle…}` fragments may appear as indented lines; fastembed silently truncates extracts to ~512 tokens, so whole-extract similarity is effectively lead-window similarity (document, never claim full-document similarity) | medium     | low    | Page Content Service (`/api/rest_v1/page/summary` or `/html` — stable, cached) is the sanctioned alternative if extracts degrades; conditional-request/ETag caching (etiquette-recommended) not plumbed yet; re-check at the sources.md 90-day gate | open                                                                                                                                                |
 | R-15 | Answer-path honesty gap (QUAL run-003 finding F9): when a research run produces nothing (e.g. rate-limited), the answer still draws on the owner corpus's older cross-question evidence and claims `degraded:false` — no signal that nothing case-relevant exists                                                                                                                                                                                                                                                                     | medium     | medium | Remedy is ANS-scope: per-question evidence linkage in the outcome (e.g. `evidenceFromRun` flag or run-scoped retrieval) before any live model lands; today the fixture model bounds damage                                                          | open                                                                                                                                                |
 | R-16 | Provider recall ceiling (QUAL/spike 2026-09-14): "What is the tallest mountain on Earth?" never surfaces Mount Everest in the MediaWiki search API's top-10 hits — source selection and re-ranking cannot fix an upstream recall gap; answer coverage for such questions depends entirely on what the provider returns                                                                                                                                                                                                                | medium     | medium | Record per the fixed-question runs; candidate levers are query reformulation/exploration (design pass needed) or a second provider; re-check when the search-layer design pass runs                                                                 | open                                                                                                                                                |
+
+## Dated design notes
+
+### R-16 — query-reformulation lever CLOSED by spike (2026-09-15)
+
+The deterministic reformulation lever is spike-disproven (8 live probes,
+evidence in plans/003-004-src-ans.md "R-16 design pass"): Mount Everest
+is ABSENT from the MediaWiki search API's top-20 for the full question,
+both keyphrase variants, AND both synonym variants — list pages dominate
+the class. Within the zero-LLM search-mode discipline R-16 is
+unaddressable at the search layer; the honest current behavior stands
+(grounded in what the provider returns, pool kept clean downstream). The
+remaining lever is a second provider, gated on a dated sources.md entry
+
+- the integrate-provider pass (owner decision). Do not re-litigate query
+  reformulation without new evidence.
