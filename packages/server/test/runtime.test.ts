@@ -180,3 +180,38 @@ describe("runtime without a model (OPS-05: search mode = zero LLM calls)", () =>
     await expect(runtime.answerResponse("owner-a", QUESTION)).rejects.toThrow(/model/);
   });
 });
+
+describe("source-card relevance prominence (SRC-14)", () => {
+  it("the runtime decorates cards with relevanceLow against its floor", async () => {
+    // default floor: the synthetic embedder pairs page extracts at 0.95 —
+    // NOT low; the raw score receipt is present either way.
+    const runtime = await createRuntime(baseOptions(fakeEmbedder()));
+    const cards: Array<{
+      url: string;
+      relevanceScore?: number | undefined;
+      relevanceLow?: boolean | undefined;
+    }> = [];
+    await runtime.runResearch("owner-a", QUESTION, (source) => cards.push(source));
+    expect(cards[0]?.relevanceScore).toBeCloseTo(0.95);
+    expect(cards[0]?.relevanceLow).toBe(false);
+
+    // a raised floor flips the same receipt to prominence-low — the floor
+    // is the runtime's option, applied consistently to cards and answers.
+    const strict = await createRuntime({ ...baseOptions(fakeEmbedder()), relevanceFloor: 0.96 });
+    const strictCards: Array<{ url: string; relevanceLow?: boolean | undefined }> = [];
+    await strict.runResearch("owner-a", QUESTION, (source) => strictCards.push(source));
+    expect(strictCards[0]?.relevanceLow).toBe(true);
+  });
+
+  it("cards without a score (no embedder) are never marked low", async () => {
+    const runtime = await createRuntime(baseOptions());
+    const cards: Array<{
+      url: string;
+      relevanceScore?: number | undefined;
+      relevanceLow?: boolean | undefined;
+    }> = [];
+    await runtime.runResearch("owner-a", QUESTION, (source) => cards.push(source));
+    expect(cards[0]?.relevanceScore).toBeUndefined();
+    expect(cards[0]?.relevanceLow).toBeUndefined();
+  });
+});

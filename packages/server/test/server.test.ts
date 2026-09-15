@@ -328,3 +328,54 @@ describe("GET /healthz (OPS-05 liveness, unauthenticated)", () => {
     }
   });
 });
+
+describe("source-card relevance prominence (SRC-14)", () => {
+  it("forwards relevance receipts on the SSE source event", async () => {
+    const cardServer = createResearchServer({
+      auth: makeAuth(true),
+      runResearch: async (_ownerId, _question, onSource) => {
+        onSource({
+          url: "https://dopp.test/page",
+          title: "Doppelganger",
+          passageCount: 3,
+          relevanceScore: 0.53,
+          relevanceLow: true,
+        });
+        return {
+          hits: 1,
+          documentsStored: 1,
+          passagesStored: 3,
+          denied: 0,
+          fetchErrors: 0,
+          skippedBudget: 0,
+        };
+      },
+      answer: async () => {
+        throw new Error("not used");
+      },
+    });
+    const cardPort = await listen(cardServer);
+    try {
+      const res = await fetch(`http://127.0.0.1:${cardPort}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "q" }),
+      });
+      const events = parseSse(await res.text());
+      const source = events.find((e) => e.event === "source");
+      expect(source?.data).toMatchObject({
+        url: "https://dopp.test/page",
+        relevanceScore: 0.53,
+        relevanceLow: true,
+      });
+    } finally {
+      cardServer.close();
+    }
+  });
+
+  it("the bundled page renders a low-relevance marker on source cards", async () => {
+    const res = await fetch(baseUrl());
+    const html = await res.text();
+    expect(html).toContain("LOW RELEVANCE");
+  });
+});

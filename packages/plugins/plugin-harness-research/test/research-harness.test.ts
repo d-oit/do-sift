@@ -57,6 +57,7 @@ function makeDeps(
     extract?: (text: string) => Array<{ text: string; status: "ok" | "partial" }>;
     embedder?: TextEmbedder;
     onEvent?: (name: string, payload?: unknown) => void;
+    onSource?: (source: { url: string; title?: string | undefined; passageCount: number }) => void;
   } = {},
 ) {
   const fetchLog: string[] = [];
@@ -95,6 +96,7 @@ function makeDeps(
       budget: overrides.budget,
       extract: overrides.extract,
       ...(overrides.embedder === undefined ? {} : { embedder: overrides.embedder }),
+      ...(overrides.onSource === undefined ? {} : { onSource: overrides.onSource }),
     },
   );
   return { harness, fetchLog };
@@ -529,5 +531,52 @@ describe("legacy noise-class backfill at run time (SRC-13)", () => {
     const summary = await harness.run({ ownerId: "owner-backfill", question: "tallest mountain" });
     expect(summary.noiseBackfilled).toBe(1);
     expect((await repos.passages.get("owner-backfill", legacyId))?.noiseClass).toBe("nav-list");
+  });
+});
+
+describe("source-card relevance receipt (SRC-14)", () => {
+  const ACTIVATE = {
+    events: { emit: () => {} },
+    config: { maxHits: 6, maxFetches: 2 },
+  } as unknown as Parameters<typeof createResearchHarness>[0];
+
+  async function ensureOwner(id: string): Promise<void> {
+    await client.execute({
+      sql: "INSERT INTO owners (id, display_name, created_at) VALUES (?, ?, '2026-09-15T00:00:00Z') ON CONFLICT(id) DO NOTHING",
+      args: [id, id],
+    });
+  }
+
+  it("onSource carries the raw relevanceScore receipt (undefined without an embedder)", async () => {
+    await ensureOwner("owner-card");
+    const seen: Array<Record<string, unknown>> = [];
+    const { harness } = makeDeps({
+      embedder: {
+        modelId: "fake-card-1",
+        async embedPassages(texts) {
+          return texts.map((t) => (t.includes("Alpha") ? [0, 1, 0] : [0.9, 0.43589, 0]));
+        },
+        async embedQuery() {
+          return [1, 0, 0];
+        },
+      },
+      onSource: (source) => seen.push(source as Record<string, unknown>),
+    });
+    await harness.activate(ACTIVATE);
+    await harness.run({ ownerId: "owner-card", question: "what is alpha?" });
+    // The raw score is a receipt — the RUNTIME (floor owner) decides prominence.
+    const a = seen.find((s) => s.url === "https://a.test/page");
+    const b = seen.find((s) => s.url === "https://b.test/page");
+    expect(a?.relevanceScore).toBeCloseTo(0);
+    expect(b?.relevanceScore).toBeCloseTo(0.9);
+
+    await ensureOwner("owner-card2");
+    const plain: Array<Record<string, unknown>> = [];
+    const { harness: plainHarness } = makeDeps({
+      onSource: (source) => plain.push(source as Record<string, unknown>),
+    });
+    await plainHarness.activate(ACTIVATE);
+    await plainHarness.run({ ownerId: "owner-card2", question: "what is alpha?" });
+    for (const card of plain) expect(card.relevanceScore).toBeUndefined();
   });
 });

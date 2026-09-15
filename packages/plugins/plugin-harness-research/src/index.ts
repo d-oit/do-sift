@@ -47,7 +47,15 @@ export interface ResearchHarnessDeps {
   extract?: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
   /** Progress hook (SRC-05 SSE): fired after each source is fully stored. */
   onSource?:
-    | ((source: { url: string; title?: string | undefined; passageCount: number }) => void)
+    | ((source: {
+        url: string;
+        title?: string | undefined;
+        passageCount: number;
+        /** SRC-14: the raw store-time similarity receipt (undefined without
+         * an embedder). The RUNTIME decides prominence — the floor is the
+         * composition's option, not the harness's. */
+        relevanceScore?: number | undefined;
+      }) => void)
     | undefined;
   /**
    * When present, newly stored passages are embedded for hybrid retrieval
@@ -295,6 +303,7 @@ export function createResearchHarness(
                 url: hit.url,
                 title: hit.title ?? undefined,
                 passageCount: extracted.length,
+                ...(relevanceScore === undefined ? {} : { relevanceScore }),
               });
             } catch {
               summary.fetchErrors++;

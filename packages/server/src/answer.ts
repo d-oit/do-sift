@@ -116,13 +116,19 @@ export interface AnswerOutcome {
   reconciliation?: UsageReconciliation | undefined;
 }
 
+/**
+ * SRC-11 designed floor (plans/003-004-src-ans.md: drops exactly the 4
+ * clearly-off-topic dopps with 0/7 correct pages dropped at n=14).
+ * Exported as the single source of truth — the runtime reads it for
+ * source-card prominence decoration (SRC-14) when no floor option is set.
+ */
+export const DEFAULT_RELEVANCE_FLOOR = 0.7;
+
 const DEFAULTS = {
   maxInputTokens: 4000,
   maxOutputTokens: 700,
   maxPassages: 6,
-  // SRC-11 designed floor (plans/003-004-src-ans.md: drops exactly the 4
-  // clearly-off-topic dopps with 0/7 correct pages dropped at n=14).
-  relevanceFloor: 0.7,
+  relevanceFloor: DEFAULT_RELEVANCE_FLOOR,
   // SRC-12 designed behavior: noise-classified passages never pack.
   noiseFilter: true,
 };

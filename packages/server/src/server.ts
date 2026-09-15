@@ -20,6 +20,12 @@ export interface SourceCard {
   url: string;
   title?: string | undefined;
   passageCount: number;
+  /** SRC-14: the raw store-time similarity receipt (undefined without an
+   * embedder) — data, not a verdict; see plans/003-004-src-ans.md SRC-14. */
+  relevanceScore?: number | undefined;
+  /** SRC-14: runtime decoration against the composition's floor — the UI
+   * prominence verdict. Receipts are still shown, never hidden. */
+  relevanceLow?: boolean | undefined;
 }
 
 export interface ResearchRunOutcome {
@@ -371,6 +377,15 @@ const DEFAULT_PAGE = `<!doctype html>
           meta.className = "passages";
           meta.textContent = data.passageCount + " passage(s) stored as evidence";
           card.append(link, meta);
+          // SRC-14: prominence, not removal — a low-relevance source stays
+          // visible as a receipt, marked against the evidence floor.
+          if (data.relevanceLow === true) {
+            const mark = document.createElement("div");
+            mark.className = "passages";
+            mark.textContent =
+              "LOW RELEVANCE — stored as a receipt, excluded from the answer pool";
+            card.append(mark);
+          }
           cards.append(card);
         } else if (type === "done") {
           status.textContent = data.documentsStored + " source(s), " + data.passagesStored + " passage(s).";

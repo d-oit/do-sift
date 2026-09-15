@@ -22,7 +22,7 @@ import {
   type ResearchRunSummary,
 } from "@do-sift/plugin-harness-research";
 import { BudgetService, Repositories, type DailyCaps, type TextEmbedder } from "@do-sift/storage";
-import { createAnswerService, type AnswerOutcome } from "./answer.js";
+import { createAnswerService, DEFAULT_RELEVANCE_FLOOR, type AnswerOutcome } from "./answer.js";
 import type { AnswerHttpResponse } from "./server.js";
 
 export interface RuntimeOptions {
@@ -72,7 +72,13 @@ export interface Runtime {
   runResearch(
     ownerId: string,
     question: string,
-    onSource?: (source: { url: string; title?: string | undefined; passageCount: number }) => void,
+    onSource?: (source: {
+      url: string;
+      title?: string | undefined;
+      passageCount: number;
+      relevanceScore?: number | undefined;
+      relevanceLow?: boolean | undefined;
+    }) => void,
   ): Promise<ResearchRunSummary>;
   answer(task: { ownerId: string; question: string }, signal?: AbortSignal): Promise<AnswerOutcome>;
   /**
@@ -95,8 +101,17 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       : new BudgetService(options.client, options.budgetCaps);
 
   let currentOnSource:
-    | ((source: { url: string; title?: string | undefined; passageCount: number }) => void)
+    | ((source: {
+        url: string;
+        title?: string | undefined;
+        passageCount: number;
+        relevanceScore?: number | undefined;
+        relevanceLow?: boolean | undefined;
+      }) => void)
     | undefined;
+  // SRC-14: the runtime owns the floor for card prominence — the same
+  // option (or the exported designed default) the answer service applies.
+  const cardFloor = options.relevanceFloor ?? DEFAULT_RELEVANCE_FLOOR;
   const harness = createResearchHarness(
     { events: { emit: () => {} } } as unknown as PluginContext,
     {
@@ -105,7 +120,18 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       repositories,
       budget: budgets,
       extract: options.extract,
-      onSource: (source) => currentOnSource?.(source),
+      onSource: (source) => {
+        const card = {
+          url: source.url,
+          title: source.title,
+          passageCount: source.passageCount,
+          ...(source.relevanceScore === undefined ? {} : { relevanceScore: source.relevanceScore }),
+          ...(source.relevanceScore === undefined
+            ? {}
+            : { relevanceLow: source.relevanceScore < cardFloor }),
+        };
+        currentOnSource?.(card);
+      },
       ...(options.embedder === undefined ? {} : { embedder: options.embedder }),
     },
   );
