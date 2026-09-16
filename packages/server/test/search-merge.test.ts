@@ -100,3 +100,48 @@ describe("createMergedSearchProvider (composite)", () => {
     expect(() => createMergedSearchProvider([a, a])).toThrow(/distinct/);
   });
 });
+
+describe("search-health receipt (SRC-17)", () => {
+  it("lastHealth() records each provider's outcome for the most recent search call", async () => {
+    const a = stub("wikipedia", async () => [hit("wikipedia", "https://a.test/1", 0)]);
+    const b = stub("marginalia", async () => [hit("marginalia", "https://b.test/1", 0)]);
+    const merged = createMergedSearchProvider([a, b]);
+    await merged.search(QUERY, LIMITS);
+    expect(merged.lastHealth()).toEqual([
+      { provider: "wikipedia", ok: true },
+      { provider: "marginalia", ok: true },
+    ]);
+  });
+
+  it("a failing provider is recorded with its error message; the run still succeeds", async () => {
+    const a = stub("wikipedia", async () => {
+      throw new Error("wikipedia exploded");
+    });
+    const b = stub("marginalia", async () => [hit("marginalia", "https://b.test/1", 0)]);
+    const merged = createMergedSearchProvider([a, b]);
+    const hits = await merged.search(QUERY, LIMITS);
+    expect(hits.map((h) => h.provider)).toEqual(["marginalia"]);
+    const health = merged.lastHealth();
+    expect(health[0]).toMatchObject({ provider: "wikipedia", ok: false });
+    expect(String(health[0]?.error)).toContain("wikipedia exploded");
+    expect(health[1]).toEqual({ provider: "marginalia", ok: true });
+  });
+
+  it("health resets per search call and persists readable after an all-fail throw", async () => {
+    let fail = true;
+    const a = stub("wikipedia", async () => {
+      if (fail) throw new Error("down-a");
+      return [hit("wikipedia", "https://a.test/1", 0)];
+    });
+    const b = stub("marginalia", async () => {
+      if (fail) throw new Error("down-b");
+      return [hit("marginalia", "https://b.test/1", 0)];
+    });
+    const merged = createMergedSearchProvider([a, b]);
+    await expect(merged.search(QUERY, LIMITS)).rejects.toThrow(MergedSearchError);
+    expect(merged.lastHealth().map((h) => h.error)).toEqual(["down-a", "down-b"]);
+    fail = false;
+    await merged.search(QUERY, LIMITS);
+    expect(merged.lastHealth().every((h) => h.ok)).toBe(true);
+  });
+});

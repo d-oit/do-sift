@@ -710,6 +710,10 @@ describe("merged search composition (SRC-16)", () => {
       expect(sse).toContain('"url":"https://tallest-example.test/sqlite-alt"');
       expect(sse).toContain("event: done");
       expect(sse).toContain('"documentsStored":2');
+      // SRC-17: the run summary carries per-provider search health
+      expect(sse).toContain(
+        '"providerHealth":[{"provider":"wikipedia","ok":true},{"provider":"marginalia","ok":true}]',
+      );
       expect(fetched).toHaveLength(2);
 
       const answer = await fetch(`${base}/api/answer`, {
@@ -728,6 +732,86 @@ describe("merged search composition (SRC-16)", () => {
         expect(block.citations.length).toBeGreaterThan(0);
         expect(block.text).not.toContain("<");
       }
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("search-health receipt (SRC-17)", () => {
+  it("reports a degraded provider in the run summary while the survivor serves the run", async () => {
+    const config: AppConfig = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_SEARCH_PROVIDER: "wikipedia,marginalia",
+      DO_SIFT_MODEL_PROVIDER: "fixture",
+      DO_SIFT_DEV_BYPASS: "1",
+      DO_SIFT_DEV_OWNER: "owner-a",
+      DO_SIFT_FETCH_ALLOWLIST: "en.wikipedia.org,api.marginalia.nu",
+    });
+    const WIKI_SEARCH = {
+      query: {
+        search: [
+          {
+            ns: 0,
+            title: "SQLite",
+            pageid: 1,
+            size: 1,
+            wordcount: 1,
+            snippet: "SQLite is a database engine.",
+            timestamp: "2026-01-01T00:00:00Z",
+          },
+        ],
+      },
+    };
+    const WIKI_EXTRACT = {
+      query: {
+        pages: [
+          {
+            pageid: 1,
+            ns: 0,
+            title: "SQLite",
+            extract:
+              "SQLite embeds the whole database in a single portable file.\n\nThe FTS5 extension ranks keyword matches with bm25 scoring.",
+          },
+        ],
+      },
+    };
+    const fetchImpl: FetchLike = async (url) => {
+      if (url.includes("list=search")) {
+        return new Response(JSON.stringify(WIKI_SEARCH), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("prop=extracts")) {
+        return new Response(JSON.stringify(WIKI_EXTRACT), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      // every marginalia call fails (the recorded run-008-class envelope)
+      return new Response("<html>504 Gateway Time-out</html>", { status: 504 });
+    };
+    const dns: DnsResolver = { lookup: async () => ["93.184.216.34"] };
+    const app = await composeApp(config, { dbUrl: ":memory:", port: 0, fetchImpl, dns });
+    try {
+      const base = `http://127.0.0.1:${app.port}`;
+      const research = await fetch(`${base}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "how does sqlite fts work?" }),
+      });
+      expect(research.status).toBe(200);
+      const sse = await research.text();
+      // the run still succeeds on the survivor (wikipedia), and the health
+      // receipt records the marginalia failure with its error — first-class
+      // in the measurement, not provenance-only
+      expect(sse).toContain("event: done");
+      expect(sse).toContain('"documentsStored":1');
+      expect(sse).toContain('"providerHealth":[');
+      expect(sse).toContain('{"provider":"wikipedia","ok":true}');
+      expect(sse).toContain('"provider":"marginalia","ok":false');
+      expect(sse).toContain("504");
     } finally {
       await app.close();
     }

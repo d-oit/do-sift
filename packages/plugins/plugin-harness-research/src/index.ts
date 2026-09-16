@@ -83,6 +83,13 @@ export interface ResearchRunSummary {
   embedded?: number | undefined;
   /** Legacy passages classified by the SRC-13 backfill this run; undefined on failure. */
   noiseBackfilled?: number | undefined;
+  /**
+   * SRC-17: per-provider sub-search outcomes for this run's search call
+   * (merged compositions only; undefined for single-provider runs). The
+   * health receipt makes survivor-degradation first-class in run
+   * summaries instead of provenance-only.
+   */
+  providerHealth?: Array<{ provider: string; ok: boolean; error?: string | undefined }> | undefined;
   /** The run's request row (ANS-07): documents link to it; failed runs fail it. */
   requestId?: string | undefined;
 }

@@ -35,6 +35,10 @@ export interface ResearchRunOutcome {
   denied: number;
   fetchErrors: number;
   skippedBudget: number;
+  /** SRC-17: per-provider sub-search outcomes (merged compositions only;
+   * undefined for single-provider runs) — the health receipt on the SSE
+   * done event, making survivor-degradation first-class. */
+  providerHealth?: Array<{ provider: string; ok: boolean; error?: string | undefined }> | undefined;
 }
 
 export interface ResearchServerOptions {

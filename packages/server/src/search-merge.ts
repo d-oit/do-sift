@@ -45,14 +45,32 @@ export function mergeSearchHits(lists: SearchHit[][], limit: number): SearchHit[
 }
 
 /**
+ * Per-provider outcome of one merged search call (SRC-17): the health
+ * receipt that makes survivor-degradation first-class in run summaries
+ * instead of provenance-only.
+ */
+export interface ProviderHealthEntry {
+  provider: string;
+  ok: boolean;
+  /** The failure's message when ok is false (truncated to 200 chars). */
+  error?: string | undefined;
+}
+
+/**
  * Compose one SearchProvider that fans out to every given provider and
  * merges their hits (see mergeSearchHits). Each provider is asked for the
  * caller's FULL limit so the interleaved cap retains diversity from every
- * source. Degrades to survivors on a per-provider failure.
+ * source. Degrades to survivors on a per-provider failure; every outcome
+ * — success or failure — is recorded for `lastHealth()` (SRC-17), reset at
+ * the start of each search call.
  */
 export function createMergedSearchProvider(
   providers: [SearchProvider, SearchProvider, ...Array<SearchProvider>],
-): SearchProvider & { readonly providers: Array<SearchProvider> } {
+): SearchProvider & {
+  readonly providers: Array<SearchProvider>;
+  /** Per-provider outcomes of the most recent search call. */
+  lastHealth(): ProviderHealthEntry[];
+} {
   if (providers.length < 2) {
     throw new Error("createMergedSearchProvider needs at least two providers");
   }
@@ -60,16 +78,21 @@ export function createMergedSearchProvider(
   if (new Set(names).size !== names.length) {
     throw new Error("createMergedSearchProvider needs distinct providers");
   }
+  let health: ProviderHealthEntry[] = [];
   return {
     providers,
+    lastHealth: () => health,
     get name() {
       return `merged(${names.join("+")})`;
     },
     async search(query: SearchQuery, limits: SearchLimits, signal?: AbortSignal) {
+      health = [];
       const results = await Promise.all(
-        providers.map(async (provider) => {
+        providers.map(async (provider, index) => {
           try {
-            return { ok: true as const, hits: await provider.search(query, limits, signal) };
+            const hits = await provider.search(query, limits, signal);
+            health[index] = { provider: provider.name, ok: true };
+            return { ok: true as const, hits };
           } catch (e) {
             // cancellation propagates; provider failure degrades to
             // survivors — the per-hit provider provenance shows which
@@ -80,6 +103,11 @@ export function createMergedSearchProvider(
             ) {
               throw e;
             }
+            health[index] = {
+              provider: provider.name,
+              ok: false,
+              error: (e instanceof Error ? e.message : String(e)).slice(0, 200),
+            };
             return { ok: false as const, hits: [] };
           }
         }),

@@ -141,6 +141,8 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
   let search: SearchProvider;
   let fetchPage: (fetchUrl: string) => Promise<PageContent>;
   let extract: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
+  /** SRC-17: set only for merged compositions; single-provider runs stay undefined. */
+  let mergedProvider: ReturnType<typeof createMergedSearchProvider> | undefined;
 
   if (config.searchProviders[0] === "fixture") {
     search = new FakeSearchProvider({ hits: FIXTURE_SEARCH_HITS });
@@ -185,7 +187,9 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     search =
       liveAdapters.length === 1
         ? liveAdapters[0]!
-        : createMergedSearchProvider(liveAdapters as [SearchProvider, SearchProvider]);
+        : (mergedProvider = createMergedSearchProvider(
+            liveAdapters as [SearchProvider, SearchProvider],
+          ));
 
     // SRC-03 extraction: readability over fetched HTML (offline plugin).
     const readability = createReadabilityExtractor();
@@ -307,8 +311,14 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
 
   const server = createResearchServer({
     auth,
-    runResearch: (ownerId, question, onSource): Promise<ResearchRunOutcome> =>
-      runtime.runResearch(ownerId, question, onSource),
+    runResearch: async (ownerId, question, onSource): Promise<ResearchRunOutcome> => {
+      const summary = await runtime.runResearch(ownerId, question, onSource);
+      // SRC-17: surface per-provider sub-search health in the run summary
+      // (merged compositions only) — degradation becomes first-class in
+      // the measurement instead of provenance-only.
+      if (mergedProvider === undefined) return summary;
+      return { ...summary, providerHealth: mergedProvider.lastHealth() };
+    },
     ...(model === undefined
       ? {}
       : {
