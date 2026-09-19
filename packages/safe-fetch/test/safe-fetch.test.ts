@@ -336,3 +336,86 @@ describe("happy path", () => {
     expect(res.text).toBe("<p>ok</p>");
   });
 });
+
+/**
+ * Charset-aware text decode (SRC-20, QUAL run-010 finding): the recorded
+ * page (tedmontgomery.com) serves windows-1252 `<P>•` bullets with NO
+ * charset declaration anywhere (no Content-Type param, no meta) — the
+ * UTF-8-default decode mangled 0x95 to U+FFFD in stored passages. Decode
+ * order is WHATWG: Content-Type charset param, then a meta-charset sniff
+ * (first 1024 bytes, text/html only), then the HTML default
+ * windows-1252; everything else stays UTF-8; an unknown label falls back
+ * to UTF-8 rather than throwing.
+ */
+describe("charset-aware text decode (SRC-20)", () => {
+  /** Serve raw bytes — the windows-1252 shapes cannot be expressed as
+   * UTF-8 Response strings. */
+  function bytesResponse(bytes: Uint8Array, contentType: string): FetchLike {
+    type Body = ConstructorParameters<typeof Response>[0];
+    return makeFetch(
+      () => new Response(bytes as Body, { headers: { "content-type": contentType } }),
+    );
+  }
+
+  // "<P>" + 0x95 (windows-1252 bullet) + " A" — the verbatim run-010 shape
+  const RUN010_PAGE = new Uint8Array([0x3c, 0x50, 0x3e, 0x95, 0x20, 0x41]);
+  // "caf" + 0xe9 (windows-1252 é)
+  const CAFE_1252 = new Uint8Array([0x63, 0x61, 0x66, 0xe9]);
+  // "caf" + 0xc3 0xa9 (UTF-8 é)
+  const CAFE_UTF8 = new Uint8Array([0x63, 0x61, 0x66, 0xc3, 0xa9]);
+
+  it("decodes undeclared text/html as windows-1252 (the recorded run-010 fix)", async () => {
+    const res = await safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({ fetchImpl: bytesResponse(RUN010_PAGE, "text/html") }),
+    );
+    expect(res.text).toBe("<P>\u2022 A"); // • — not U+FFFD
+  });
+
+  it("honors the Content-Type charset param over the default", async () => {
+    const res = await safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({ fetchImpl: bytesResponse(CAFE_UTF8, "text/html; charset=utf-8") }),
+    );
+    expect(res.text).toBe("café");
+  });
+
+  it("honors a meta charset when the header declares none", async () => {
+    const page = new Uint8Array([
+      ...'<html><head><meta charset="iso-8859-1"></head><body>caf'
+        .split("")
+        .map((c) => c.charCodeAt(0)),
+      0xe9,
+    ]);
+    const res = await safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({ fetchImpl: bytesResponse(page, "text/html") }),
+    );
+    expect(res.text).toContain("café");
+  });
+
+  it("keeps undeclared text/plain on UTF-8 (JSON/API path unchanged)", async () => {
+    const res = await safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({ fetchImpl: bytesResponse(CAFE_UTF8, "text/plain") }),
+    );
+    expect(res.text).toBe("café");
+    // and a windows-1252 text/plain stays mangled — the boundary is
+    // honest: WHATWG defaults windows-1252 for text/html only
+    const latin = await safeFetch(
+      `http://${PUBLIC_V4}/y`,
+      makeOptions({ fetchImpl: bytesResponse(CAFE_1252, "text/plain") }),
+    );
+    expect(latin.text).toContain("\uFFFD");
+  });
+
+  it("falls back to UTF-8 on an unknown charset label instead of throwing", async () => {
+    const res = await safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({
+        fetchImpl: bytesResponse(CAFE_UTF8, "text/html; charset=x-not-a-real-charset"),
+      }),
+    );
+    expect(res.text).toBe("café");
+  });
+});

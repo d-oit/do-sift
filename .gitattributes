@@ -1,3 +1,7 @@
 # Line-ending policy: keep shell hook shebangs working under sh on all platforms.
 .githooks/* text eol=lf
 *.sh text eol=lf
+# Repo-wide: normalize all text files to LF (Windows CI runners set
+# core.autocrlf=true, which would otherwise convert the working tree to
+# CRLF and fail the prettier sensor).
+* text=auto eol=lf
