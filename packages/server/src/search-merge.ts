@@ -6,12 +6,14 @@
  *
  * The merge is pure and composition-layer (this is the host's job, not a
  * single plugin's): round-robin interleave in provider order (primary
- * first per round) preserves diversity in the face of a cap; dedup is by
- * exact URL string (SRC-01 canonicalization is still later work —
- * recorded); a provider failure degrades to the survivors rather than
- * failing the run, and the per-hit `provider` provenance keeps that
- * degradation VISIBLE in the receipts (a pool served entirely by one
- * provider shows it) — a typed error only when every provider fails.
+ * first per round) preserves diversity in the face of a cap; dedup is on
+ * the canonical URL key (SRC-19 — scheme/port/fragment/www./tracking
+ * params converge, see canonicalizeUrl; unparseable URLs fall back to
+ * exact-string dedup); a provider failure degrades to the survivors
+ * rather than failing the run, and the per-hit `provider` provenance
+ * keeps that degradation VISIBLE in the receipts (a pool served entirely
+ * by one provider shows it) — a typed error only when every provider
+ * fails.
  */
 import type { SearchHit, SearchLimits, SearchQuery, SearchProvider } from "@do-sift/contracts";
 
@@ -22,11 +24,47 @@ export class MergedSearchError extends Error {
   }
 }
 
+/** Params that never change content — pure tracking. */
+const TRACKING_PARAM = /^(utm_[^=]*|fbclid|gclid)$/iu;
+
 /**
- * Interleave hit lists in provider order (list 0's rank-0 first), dedup by
- * exact URL, cap to `limit`. Original per-hit fields (provider, original
- * rank, source versions) are preserved — the merged order is the pool
- * order, provenance stays per-hit.
+ * Canonical URL key for search-hit dedup (SRC-19). A conservative,
+ * purposeful normalization — merge what is observably the same page for
+ * retrieval, keep everything else distinct: WHATWG parse (undefined when
+ * unparseable), scheme lowercased and http→https, default ports and the
+ * fragment dropped, a leading `www.` stripped, tracking params removed,
+ * remaining search params sorted, one trailing path slash dropped. The
+ * stored `canonicalUrl` provenance keeps the provider's URL verbatim —
+ * this key exists only for the merge. Recorded boundaries: mobile `m.`
+ * hosts stay distinct (some sites serve genuinely different content
+ * there), percent-encoding variants of reserved characters stay distinct
+ * (WHATWG leaves `%27` and `'` apart), and multi-value param order
+ * (`?a=2&a=1`) is not reordered beyond the stable name sort.
+ */
+export function canonicalizeUrl(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  if (parsed.port === (parsed.protocol === "https:" ? "443" : "80")) parsed.port = "";
+  if (parsed.protocol === "http:") parsed.protocol = "https:";
+  parsed.hostname = parsed.hostname.replace(/^www\./u, "");
+  parsed.hash = "";
+  parsed.pathname =
+    parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/u, "") : parsed.pathname;
+  const params = [...parsed.searchParams.entries()].filter(([k]) => !TRACKING_PARAM.test(k));
+  params.sort(([aName], [bName]) => (aName < bName ? -1 : aName > bName ? 1 : 0));
+  parsed.search = params.length > 0 ? `?${new URLSearchParams(params).toString()}` : "";
+  return parsed.href;
+}
+
+/**
+ * Interleave hit lists in provider order (list 0's rank-0 first), dedup on
+ * the canonical URL key, cap to `limit`. Original per-hit fields (provider,
+ * original rank, source versions) are preserved verbatim — the merged
+ * order is the pool order, provenance stays per-hit.
  */
 export function mergeSearchHits(lists: SearchHit[][], limit: number): SearchHit[] {
   const seen = new Set<string>();
@@ -35,8 +73,10 @@ export function mergeSearchHits(lists: SearchHit[][], limit: number): SearchHit[
   for (let rank = 0; rank < maxLen; rank++) {
     for (const list of lists) {
       const hit = list[rank];
-      if (hit === undefined || seen.has(hit.url)) continue;
-      seen.add(hit.url);
+      if (hit === undefined) continue;
+      const key = canonicalizeUrl(hit.url) ?? hit.url;
+      if (seen.has(key)) continue;
+      seen.add(key);
       merged.push(hit);
       if (merged.length >= limit) return merged;
     }

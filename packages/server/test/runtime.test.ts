@@ -116,9 +116,10 @@ describe("createRuntime (RET-04)", () => {
     const runtime = await createRuntime(baseOptions(fakeEmbedder()));
     const first = await runtime.runResearch("owner-a", QUESTION);
     expect(first.embedded).toBe(2);
-    // same search hits fetch the same content: dedup is not wired (SRC-01
-    // canonicalization is later work), so a second run stores NEW passages
-    // (new rows, new ids) and backfills them; existing ones are untouched.
+    // same search hits fetch the same content: cross-RUN store-level dedup
+    // is not wired (merge-level URL canonicalization landed in SRC-19), so
+    // a second run stores NEW passages (new rows, new ids) and backfills
+    // them; existing ones are untouched.
     const second = await runtime.runResearch("owner-a", QUESTION);
     expect(second.passagesStored).toBe(2);
     expect(second.embedded).toBe(2);

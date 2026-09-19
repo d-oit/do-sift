@@ -5,7 +5,12 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SearchHit, SearchProvider } from "@do-sift/contracts";
-import { createMergedSearchProvider, mergeSearchHits, MergedSearchError } from "../src/index.js";
+import {
+  createMergedSearchProvider,
+  canonicalizeUrl,
+  mergeSearchHits,
+  MergedSearchError,
+} from "../src/index.js";
 
 function hit(provider: string, url: string, rank: number): SearchHit {
   return { provider, url, rank };
@@ -44,6 +49,74 @@ describe("mergeSearchHits (pure)", () => {
       "wikipedia",
       "marginalia",
     ]);
+  });
+});
+
+describe("URL canonicalization (SRC-19)", () => {
+  it("canonicalizes the recorded differing-form classes to one key", () => {
+    // scheme + www + default port + fragment + trailing slash + tracking
+    // params + param order all converge; a real param survives, sorted
+    expect(canonicalizeUrl("HTTP://WWW.A.Test:80/Page/?utm_source=x&keep=1&fbclid=y#top")).toBe(
+      "https://a.test/Page?keep=1",
+    );
+    expect(canonicalizeUrl("https://a.test:443/Page/?fbclid=y&keep=1")).toBe(
+      "https://a.test/Page?keep=1",
+    );
+    // idempotent on its own output
+    expect(canonicalizeUrl("https://a.test/Page?keep=1")).toBe("https://a.test/Page?keep=1");
+    // distinct paths stay distinct — never merged
+    expect(canonicalizeUrl("https://a.test/wiki/A")).not.toBe(
+      canonicalizeUrl("https://a.test/wiki/B"),
+    );
+    // a genuine param difference is content, not form — never merged
+    expect(canonicalizeUrl("https://a.test/Page?page=1")).not.toBe(
+      canonicalizeUrl("https://a.test/Page?page=2"),
+    );
+    // unparseable input is reported (no throw)
+    expect(canonicalizeUrl("not-a-url")).toBeUndefined();
+  });
+
+  it("dedups same-page hits whose URL forms differ, keeping the primary's form", () => {
+    const a = [hit("wikipedia", "https://en.wikipedia.org/wiki/SQLite", 0)];
+    const b = [
+      // noise-only deltas: scheme, www., default port, trailing slash,
+      // tracking param, fragment — all converge onto a's canonical key
+      hit("marginalia", "http://www.en.wikipedia.org:80/wiki/SQLite/?utm_source=x#History", 0),
+      hit("marginalia", "https://b.test/unique", 1),
+    ];
+    const merged = mergeSearchHits([a, b], 10);
+    expect(merged.map((h) => h.url)).toEqual([
+      "https://en.wikipedia.org/wiki/SQLite", // primary's form, provenance verbatim
+      "https://b.test/unique",
+    ]);
+    expect(merged.map((h) => h.provider)).toEqual(["wikipedia", "marginalia"]);
+  });
+
+  it("falls back to exact-string dedup for unparseable URLs", () => {
+    const a = [hit("wikipedia", "not-a-url", 0)];
+    const b = [hit("marginalia", "not-a-url", 0), hit("marginalia", "https://b.test/1", 1)];
+    const merged = mergeSearchHits([a, b], 10);
+    expect(merged.map((h) => h.url)).toEqual(["not-a-url", "https://b.test/1"]);
+  });
+
+  it("mobile m.-hosts and percent-encoding variants of reserved chars stay distinct (recorded boundaries)", () => {
+    expect(canonicalizeUrl("https://en.m.wikipedia.org/wiki/X")).not.toBe(
+      canonicalizeUrl("https://en.wikipedia.org/wiki/X"),
+    );
+    expect(canonicalizeUrl("https://a.test/wiki/It%27s")).not.toBe(
+      canonicalizeUrl("https://a.test/wiki/It's"),
+    );
+  });
+
+  it("canonical dedup applies through the composite provider", async () => {
+    const a = stub("wikipedia", async () => [hit("wikipedia", "https://a.test/1#frag", 0)]);
+    const b = stub("marginalia", async () => [
+      hit("marginalia", "https://a.test/1?utm_source=x", 0),
+    ]);
+    const merged = createMergedSearchProvider([a, b]);
+    const hits = await merged.search(QUERY, LIMITS);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.provider).toBe("wikipedia");
   });
 });
 
