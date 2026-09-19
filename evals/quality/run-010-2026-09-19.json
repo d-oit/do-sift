@@ -1,0 +1,443 @@
+{
+  "runId": "run-010",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-19T15:50-15:59Z (driver timestamps; operator-local 2026-09-19)",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": "HEAD a127950 — SRC-18 fragment noise class + SRC-19 canonical URL dedup + SRC-16/17 merged composition lineage; fixture model (harness measured, not model quality)",
+  "scale": { "0": "fail", "1": "pass", "0.5": "partial" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "providerHealthSummary": {
+    "wikipedia": "8/8 sub-searches ok",
+    "marginalia": "5/8 ok; timeouts in cases 01/04/05 ('marginalia search timed out after 10000ms', verbatim in each done event's providerHealth receipt)",
+    "schemaNote": "a 1/8 -> 5/8 swing vs run-009 (2026-09-16) — day-to-day provider variance, now first-class measurement data"
+  },
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "relevanceScore": 0.716, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "relevanceScore": 0.647,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 0,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "marginalia timed out — wikipedia-only pool of 2, the run-009 shape; RDBMS-comparison receipt LOW-marked, out of the pool",
+        "all 5 blocks clean SQLite-article prose including the FTS5 extension passage"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Deep_web", "relevanceScore": 0.666, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 51,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 51,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "Deep_web receipt LOW-marked, out of the pool; marginalia ok but its hits deduped or below the interleave cutoff — no unique contribution visible",
+        "Tim Berners-Lee named directly in block 3; blocks identical in shape to the prior four runs"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "relevanceScore": 0.811, "low": false },
+        {
+          "url": "https://www.universetoday.com/articles/what-causes-aurora",
+          "relevanceScore": 0.865,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F",
+          "relevanceScore": 0.635,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 52,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 52,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "SRC-16 VALUE, LIVE AGAIN: universetoday.com is a Marginalia-only source and the HIGHEST-relevance document of the case (0.865, above floor, honestly unmarked); its block opens the answer ('Aurora are colorful lights in the night sky…')",
+        "the album dopp (What Happened to the Heart?) stored as a LOW receipt, out of the pool — the recurring F3 class"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia",
+          "relevanceScore": 0.849,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees",
+          "relevanceScore": 0.689,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/North_Rhine-Westphalia",
+          "relevanceScore": 0.75,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "SECOND consecutive run: the NRW dopp passed the 0.70 floor (0.750 — the floor measures similarity, not entity correctness) and its 'Operation Marriage' block surfaced in the answer; wrong-entity dopps remain the retrieval plateau's substance",
+        "5/6 blocks on-topic Peace-of-Westphalia prose; the Pyrenees word-match is the article's own aftermath narrative (legitimate, as adjudicated in runs 008/009)"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine",
+          "relevanceScore": 0.682,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough",
+          "relevanceScore": 0.545,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/J._Bart_Classen",
+          "relevanceScore": 0.641,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "PROVIDER-VARIANCE CASE: the mRNA_vaccine page — the above-floor anchor in every prior run — did not make wikipedia's returned set today; J._Bart_Classen (misinformation-adjacent) is NEW, stored as an honest LOW receipt at 0.641",
+        "all three stored sources below the 0.70 floor → ANS-09 scoped-pool fallback fired (fourth live validation); the answer is grounded COVID-19-vaccine-page prose (vaccine-type taxonomy incl. the RNA mechanisms in block 2) — adjacent to the question, clean and honestly cited",
+        "marginalia timed out; smallest wiki-extract harvest of the run (32 passages)"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain",
+          "relevanceScore": 0.803,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "relevanceScore": 0.822, "low": false },
+        {
+          "url": "https://thehimalayanvoice.blogspot.com/2021/12/is-mount-everest-really-tallest.html",
+          "relevanceScore": 0.855,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 40,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 40,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "R-16 REMEDY LIVE A THIRD TIME, and the strongest demonstration yet: the Marginalia-only Everest-class blogspot page stored at 0.855 (above floor, honestly unmarked) AND its block answers directly — 'Mount Everest is the tallest mountain above sea level, while Mauna Kea can certainly claim to be the world's tallest mountain (when sea level isn't taken into account)' — alongside the wiki pool's own Everest blocks",
+        "1 fetch error (a further marginalia-sourced hit refused by the safe-fetch guards — advisory path, run continued)"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "relevanceScore": 0.496,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof",
+          "relevanceScore": 0.57,
+          "low": true
+        },
+        { "url": "https://zkp.science/", "relevanceScore": 0.686, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 45,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 45,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "SRC-18 VERDICT, LIVE: the four verbatim fragment shapes that reached the answer pool in runs 008 AND 009 ('- Academic C++ library…', 'Vitalik Buterin's introduction…part', 'What is a zero-knowledge proof? | Zero-Knowledge Proofs', 'What are they…fast yet?') — ZERO matches across all 46 blocks of this run; zkp.science stored again, and its flagged shapes are gone from the pool",
+        "BUT extraction scores 0.5 honestly: zkp.science's own-rank content surfaced DIFFERENT fragment shapes the SRC-18 rules deliberately do not classify — a truncated bibliography heading ('\"SNARK\" terminology and characterization of existence [BCCT11]'), a marketing line ('Enables zkSNARK computations of up to billions of gates…'), and a mid-derivation fragment ('(x,z)] is a record of the interactions…'); 3/6 blocks solid prose, 3/6 fragment-class — the SRC-12 disclosed residual narrowed, not closed",
+        "every stored source below floor again (0.496/0.570/0.686) → ANS-09 fallback fired (fifth live validation), answer grounded, opening with the Chiesa definition",
+        "1 fetch error (guard refusal on a further marginalia hit — advisory, as runs 008/009)"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall",
+          "relevanceScore": 0.779,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "relevanceScore": 0.652,
+          "low": true
+        },
+        {
+          "url": "https://www.tedmontgomery.com/remarks/14.7-12/Berlin/wall.fall.html",
+          "relevanceScore": 0.766,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the concert dopp LOW receipt keeps the stored set mixed (as every run) → retrieval 0.5; tedmontgomery.com is a NEW Marginalia-only source above floor (0.766) with on-topic content",
+        "extraction 0.5 honestly: tedmontgomery's HTML conversion leaked BULLET GLYPHS as U+FFFD replacement chars into 2 answer blocks (' The formal reunification…', ' A mistake helped lead to the fall of the Wall…'), and a listicle heading ('Nine surprising facts about the fall of the Berlin Wall') surfaced as a passage — a NEW pageHtmlToText wrinkle (glyph → U+FFFD), distinct from the SRC-18 shapes and a candidate for the HTML pre-pass",
+        "block 1 answers directly ('fell on 9 November 1989')"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.75,
+    "extractionCleanliness": 0.875,
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.925
+  },
+  "mechanicalChecks": {
+    "src18VerbatimShapes": "0 matches across all 8 answer files (the four run-008/009 fragment shapes are excluded from the answer pool — zkp.science stored again this run, its flagged shapes gone from the blocks)",
+    "src19LiveObservation": "no cross-provider duplicate URL occurred in this run's captures (marginalia's uniques were genuinely different pages) — canonicalization is unit-pinned (5 tests) but its live demonstration remains pending a run where both providers return the same page",
+    "citationMarkersInBlocks": 0,
+    "wikitextHeadingMarkers": 0,
+    "htmlTagsInBlocks": 0,
+    "templateJsonMarkers": 0,
+    "uFFFDReplacementChars": "present in case-08's answer (2 blocks, bullet glyphs from tedmontgomery's HTML) — new noise shape, recorded",
+    "injectionPatternScan": "0 matches across all 16 capture files",
+    "unCitedBlocks": 0,
+    "blockCitationCount": "46 blocks / 46 citations (1 per block, fixture-model verbatim composition)",
+    "emptyRunCondition": "no case ended with an empty answer; all 8 evidenceFromRun 'run'; zero degradations; zero cached",
+    "f8RateLimit": "0 x 429s; 2 fetch errors (case-06/07, guard refusals on marginalia hits, advisory); >=30s pacing consistent with driver timestamps (15:50:57 first case, 15:59:45 last)",
+    "f7PortProcessHygiene": "port 18121 verified free at startup; boot line documents merged/live composition + fixture model + fastembed. Server boot requires an explicit main() invocation — the bare `npx tsx apps/server/src/main.ts` import exits silently with code 0 (main is exported, never self-invoked); working launch: `npx tsx -e \"import('./apps/server/src/main.ts').then(m => m.main())\"`. Post-run kill-tree executed IMMEDIATELY this run (PID 36956, taskkill //F //T), no LISTEN afterward (only client TIME_WAIT sockets)",
+    "storeProfile": "23 documents / 348 passages stored, 348 embedded, 0 noiseBackfilled (all classified at store time)"
+  },
+  "comparison": {
+    "baseline": "run-009 (2026-09-16, merged composition, SRC-17 under test)",
+    "perDimension": {
+      "retrievalRelevance": "0.6875 -> 0.75 — FIRST break upward in the ten-run 0.6875 plateau: marginalia was healthy (5/8 vs 1/8) and contributed unique ABOVE-floor sources in 3 cases (03 universetoday 0.865, 06 the Everest blogspot 0.855, 08 tedmontgomery 0.766); case-05 moved the other way (the mRNA_vaccine anchor absent from wikipedia's set today) — the plateau's substance is provider behavior, which the health receipt now makes visible per run",
+      "extractionCleanliness": "1 -> 0.875 — first dip in the series, and NOT a pipeline regression: the SRC-18 verbatim shapes are excluded (0 matches); the dips are the disclosed residual class surfacing DIFFERENT shapes (zkp.science bibliography/marketing/mid-formula) plus a NEW U+FFFD glyph leak on the new tedmontgomery content path — second-provider diversity adds extraction variance along with recall",
+      "citationResolution": "1 -> 1",
+      "degradationHonesty": "1 -> 1 (mixed provider health WITHIN one run — 5 ok / 3 timeouts — all reported per-case in the receipts)",
+      "injectionObservation": "1 -> 1"
+    },
+    "meanAll": "0.9375 -> 0.925",
+    "src18Verdict": "THE CHANGE UNDER TEST: WORKING — the four verbatim fragment shapes that reached the answer pool in two consecutive runs are gone from the pool (0/46 blocks); the disclosed residual narrows to shapes the rules deliberately do not classify (caption-like headings, mid-formula, marketing lines)",
+    "src19Verdict": "THE CHANGE UNDER TEST: shipped and unit-pinned; no live duplicate arose this run to demonstrate it — recorded honestly",
+    "r16Note": "case-06's factually complete answer (Everest named, tallest-vs-highest distinction) came from BOTH providers' pools this run — the blogspot page above floor via marginalia — the strongest R-16 demonstration of the series",
+    "provenanceNote": "fresh captures on disk under .do-harness/qual-run-010/ (16 files + server.log + driver.log); executed and scored same-day at HEAD a127950 by the scoring agent"
+  },
+  "findings": [
+    "SRC-18 (declared change): WORKING — the evidenced fragment shapes are excluded from the answer pool live; the residual narrows to deliberately-unclassified shapes",
+    "SRC-19 (declared change): shipped; no live duplicate occurred to exercise it — unit coverage carries it until a run where both providers return one page",
+    "the retrieval plateau (0.6875 for ten runs) broke UPWARD (0.75) on a day marginalia was healthy — the R-16 lever's value is real but conditional on second-provider health, now measurable per run via SRC-17's receipt",
+    "case-05: wikipedia's returned set dropped the mRNA_vaccine anchor source (provider variance); all receipts honest, ANS-09 fallback kept the answer grounded — the case's LOW-marked receipts did their job",
+    "new extraction-noise shapes recorded: zkp.science's bibliography/marketing/mid-formula fragments (SRC-12 disclosed class, unchanged) and the U+FFFD bullet-glyph leak in pageHtmlToText on tedmontgomery.com (candidate small slice for the HTML pre-pass)",
+    "process: the packaged entrypoint silently no-ops when imported without calling main() — the working launch command is recorded in mechanicalChecks for future runs"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated) — same caveat as RET-01",
+    "NOT model quality: the fixture model composes blocks from stored evidence; fluency/completeness/reasoning unmeasured",
+    "Provider behavior on 2026-09-19 — re-run rather than extrapolate (sources.md 90-day rule); marginalia's 5/8 health and wikipedia's case-05 hit set are THAT DAY's behavior",
+    "Extraction scored on answer-level blocks; the 0.5 calls (cases 07/08) are the annotator's judgment against the same 1/0.5 line run-008/009 applied",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ]
+}
