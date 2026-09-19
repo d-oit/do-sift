@@ -322,6 +322,7 @@ const DEFAULT_PAGE = `<!doctype html>
   <button type="submit" id="do-answer">Answer</button>
 </form>
 <p class="status" id="status"></p>
+<p class="status" id="provider-health"></p>
 <div id="cards"></div>
 <div id="answer"></div>
 <script>
@@ -336,6 +337,8 @@ const DEFAULT_PAGE = `<!doctype html>
     const answerBox = document.getElementById("answer");
     cards.replaceChildren();
     answerBox.replaceChildren();
+    // SRC-22: clear the previous run's provider-health receipt up front.
+    document.getElementById("provider-health").textContent = "";
     const question = document.getElementById("question").value;
     const mode = e.submitter && e.submitter.id === "do-answer" ? "answer" : "research";
     status.textContent = mode === "answer" ? "Answering…" : "Researching…";
@@ -393,6 +396,20 @@ const DEFAULT_PAGE = `<!doctype html>
           cards.append(card);
         } else if (type === "done") {
           status.textContent = data.documentsStored + " source(s), " + data.passagesStored + " passage(s).";
+          // SRC-17/SRC-22: per-provider sub-search outcomes are receipts,
+          // rendered — a degraded provider is visible in the UI, not
+          // provenance-only. Provider names and error strings are adapter
+          // data: assigned via textContent (never markup).
+          const health = document.getElementById("provider-health");
+          if (Array.isArray(data.providerHealth) && data.providerHealth.length > 0) {
+            health.textContent =
+              "search providers: " +
+              data.providerHealth
+                .map((h) =>
+                  h.ok ? h.provider + " ok" : h.provider + " FAILED" + (h.error ? " — " + h.error : ""),
+                )
+                .join(", ");
+          }
         } else if (type === "error") {
           status.textContent = "Research failed: " + data.message;
         }
