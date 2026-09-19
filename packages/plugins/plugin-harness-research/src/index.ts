@@ -118,12 +118,17 @@ export function extractPassages(text: string): string[] {
  * heuristic applied per extracted chunk at store time; the class is a
  * receipt, exclusion happens at read time (answer pool only). Shapes are
  * anchored to the verbatim captured evidence in the QUAL run artifacts
- * (see plans/003-004-src-ans.md SRC-12). Precision-over-recall by design:
- * a false flag suppresses real evidence from the answer pool, a miss only
- * leaves one noisy block. Bare table-caption stubs and mid-formula
- * fragments are deliberately NOT classified — by text alone a caption is
- * indistinguishable from a legitimate short fact-bearing sentence
- * (segmentation work, disclosed not fixed).
+ * (see plans/003-004-src-ans.md SRC-12/SRC-18). Precision-over-recall by
+ * design: a false flag suppresses real evidence from the answer pool, a
+ * miss only leaves one noisy block. Bare table-caption stubs and
+ * mid-formula fragments are deliberately NOT classified — by text alone
+ * a caption is indistinguishable from a legitimate short fact-bearing
+ * sentence (segmentation work, disclosed not fixed). SRC-18 added the
+ * `fragment` class for the HTML-conversion chunk shapes that ARE
+ * text-distinguishable and reached the answer pool twice (run-008/009
+ * case-07): short bullet items, pipe-separated page titles, short
+ * unpunctuated truncations ending on a stopword/"part", and standalone
+ * pure questions up to 100 chars.
  */
 export function classifyNoise(text: string): PassageNoiseClass | undefined {
   const trimmed = text.trim();
@@ -145,6 +150,26 @@ export function classifyNoise(text: string): PassageNoiseClass | undefined {
   // stub: a chunk ENDING in a colon is a list lead-in whose list content
   // was split away (the run-005 case-04 shape) — not self-contained prose.
   if (trimmed.endsWith(":")) return "stub";
+  // fragment (SRC-18): segmentation fragments from the raw-HTML
+  // conversion path. Each rule is a length-capped shape a legitimate
+  // chunk essentially never takes: a leading bullet mark (converted list
+  // item), a two-part pipe split (the page <title>), an unpunctuated
+  // truncation ending on a stopword/"part" (a cut-off link title), or a
+  // standalone single question (hero/tagline chrome). Terminal
+  // punctuation or interior sentences keep real prose unflagged; longer
+  // bullet/table/question content stays (disclosed boundary).
+  if (trimmed.startsWith("- ") && trimmed.length <= 200) return "fragment";
+  if (trimmed.length <= 120 && /^[^|]+\|[^|]+$/u.test(trimmed)) return "fragment";
+  if (
+    trimmed.length <= 120 &&
+    !/[.!?…]["'”’)\]]?$/u.test(trimmed) &&
+    /\b(of|and|the|in|for|with|on|to|by|from|at|part)$/iu.test(trimmed)
+  ) {
+    return "fragment";
+  }
+  if (trimmed.length <= 100 && trimmed.endsWith("?") && !/[.!?]/u.test(trimmed.slice(0, -1))) {
+    return "fragment";
+  }
   return undefined;
 }
 

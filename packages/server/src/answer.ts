@@ -184,11 +184,12 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
   const relevanceFloor = options.relevanceFloor ?? DEFAULTS.relevanceFloor;
   const noiseFilter = options.noiseFilter ?? DEFAULTS.noiseFilter;
   const revisions = {
-    // p2: SRC-12 — noise-classified passages are excluded from packing
-    // (answer-pool semantics changed); revision bump invalidates answers
-    // cached under the pre-SRC-12 pool (p1: ANS-08 — retrieval became
-    // question-scoped).
-    policyRevision: options.revisions?.policyRevision ?? "p2",
+    // p3: SRC-18 — the classifier now flags HTML-conversion fragment
+    // chunks, so the packed-passage set can change under an identical
+    // sourceVersions set (same-document residue, D5 conservatism).
+    // (p2: SRC-12 — noise-classified passages excluded from packing;
+    // p1: ANS-08 — retrieval became question-scoped.)
+    policyRevision: options.revisions?.policyRevision ?? "p3",
     // pr1: packing semantics changed in ANS-02 (output budget reserved from
     // the input ceiling) — revision bump invalidates pre-ANS-02 cache rows.
     promptRevision: options.revisions?.promptRevision ?? "pr1",

@@ -75,7 +75,7 @@ export interface DocumentRow {
   relevanceScore?: number | undefined;
 }
 
-export type PassageNoiseClass = "nav-list" | "reference" | "stub";
+export type PassageNoiseClass = "nav-list" | "reference" | "stub" | "fragment";
 
 export interface PassageInput {
   ownerId: string;

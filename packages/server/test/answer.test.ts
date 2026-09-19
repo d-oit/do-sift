@@ -847,7 +847,7 @@ describe("noise-flagged passages never reach the answer pool (SRC-12)", () => {
     expect(model.calls[0]?.passageIds).toContain(cleanId);
     expect(model.calls[0]?.passageIds).not.toContain(noiseId);
     const stored = await repos.answers.get("owner-a", outcome.answerId);
-    expect(stored?.policyRevision).toBe("p2"); // SRC-12: packing semantics changed (D5)
+    expect(stored?.policyRevision).toBe("p3"); // SRC-18: classifier flags fragment chunks (D5; p2 was SRC-12)
   });
 
   it("noiseFilter:false restores the legacy pool (read-time tunable)", async () => {
