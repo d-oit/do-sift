@@ -150,14 +150,26 @@ export function classifyNoise(text: string): PassageNoiseClass | undefined {
   // stub: a chunk ENDING in a colon is a list lead-in whose list content
   // was split away (the run-005 case-04 shape) — not self-contained prose.
   if (trimmed.endsWith(":")) return "stub";
-  // fragment (SRC-18): segmentation fragments from the raw-HTML
-  // conversion path. Each rule is a length-capped shape a legitimate
-  // chunk essentially never takes: a leading bullet mark (converted list
-  // item), a two-part pipe split (the page <title>), an unpunctuated
-  // truncation ending on a stopword/"part" (a cut-off link title), or a
-  // standalone single question (hero/tagline chrome). Terminal
-  // punctuation or interior sentences keep real prose unflagged; longer
-  // bullet/table/question content stays (disclosed boundary).
+  // reference (SRC-21): a chunk ENDING in a bracketed citation marker
+  // ("[BCCT11]", "[GMR85]" — the run-010/011 zkp.science bibliography
+  // heading class) is a bibliography/nav entry, not prose. Spike-verified
+  // against the page's full passage set: 4/4 of the residual set matched,
+  // 0/20 clean-block false positives.
+  if (/\[[A-Za-z]?[A-Z0-9]{2,12}[0-9]{0,4}\]\s*$/u.test(trimmed)) return "reference";
+  // fragment (SRC-18 + SRC-21): segmentation fragments from the raw-HTML
+  // conversion path. Each rule is a length-capped or shape-capped pattern
+  // a legitimate chunk essentially never takes: a leading bullet mark
+  // (converted list item), a two-part pipe split (the page <title>), an
+  // unpunctuated truncation ending on a stopword/"part" (a cut-off link
+  // title), or a standalone single question (hero/tagline chrome). SRC-21
+  // added (spike-verified, 0/20 false positives): a leading code-comment
+  // shard ("-- …" / "// …", the darksi.de class) and a leading-lowercase
+  // mid-sentence shard (paragraph starts are capitalized in real prose;
+  // the cost — losing a lowercase-starting content shard — is bounded and
+  // recorded). Terminal punctuation or interior sentences keep real prose
+  // unflagged; verb-initial marketing lines and mid-formula fragments stay
+  // deliberately UNCLASSIFIED (text-indistinguishable from content — the
+  // SRC-12 disclosure, re-affirmed by the SRC-21 spike).
   if (trimmed.startsWith("- ") && trimmed.length <= 200) return "fragment";
   if (trimmed.length <= 120 && /^[^|]+\|[^|]+$/u.test(trimmed)) return "fragment";
   if (
@@ -170,6 +182,8 @@ export function classifyNoise(text: string): PassageNoiseClass | undefined {
   if (trimmed.length <= 100 && trimmed.endsWith("?") && !/[.!?]/u.test(trimmed.slice(0, -1))) {
     return "fragment";
   }
+  if (/^(--|\/\/)\s*\S/u.test(trimmed)) return "fragment";
+  if (/^[a-z]/u.test(trimmed)) return "fragment";
   return undefined;
 }
 

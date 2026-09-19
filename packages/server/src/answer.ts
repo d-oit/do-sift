@@ -184,12 +184,13 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
   const relevanceFloor = options.relevanceFloor ?? DEFAULTS.relevanceFloor;
   const noiseFilter = options.noiseFilter ?? DEFAULTS.noiseFilter;
   const revisions = {
-    // p3: SRC-18 — the classifier now flags HTML-conversion fragment
-    // chunks, so the packed-passage set can change under an identical
-    // sourceVersions set (same-document residue, D5 conservatism).
-    // (p2: SRC-12 — noise-classified passages excluded from packing;
-    // p1: ANS-08 — retrieval became question-scoped.)
-    policyRevision: options.revisions?.policyRevision ?? "p3",
+    // p4: SRC-21 — the classifier also flags bracketed-citation entries,
+    // code-comment shards, and lowercase-start shards, so the packed
+    // passage set can change under an identical sourceVersions set (D5
+    // conservatism). (p3: SRC-18 — fragment chunks; p2: SRC-12 —
+    // noise-classified passages excluded from packing; p1: ANS-08 —
+    // retrieval became question-scoped.)
+    policyRevision: options.revisions?.policyRevision ?? "p4",
     // pr1: packing semantics changed in ANS-02 (output budget reserved from
     // the input ceiling) — revision bump invalidates pre-ANS-02 cache rows.
     promptRevision: options.revisions?.promptRevision ?? "pr1",

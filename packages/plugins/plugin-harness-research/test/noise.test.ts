@@ -158,3 +158,85 @@ describe("fragment classification (SRC-18)", () => {
     ).toBeUndefined();
   });
 });
+
+/**
+ * SRC-21 spike-adopted rules (2026-09-19 spike, 2 live fetches, exit 0):
+ * shapes measured against the FULL live passage sets of the two
+ * residual-producing pages (zkp.science, darksi.de) with 0/20
+ * false positives on annotated-clean blocks. The REJECTS are pinned too:
+ * verb-initial marketing lines and mid-formula fragments stay
+ * unclassified (text-indistinguishable — the SRC-12 disclosure).
+ */
+describe("SRC-21 spike-adopted and spike-rejected shapes", () => {
+  // verbatim spike hits — zkp.science bibliography set (R1 -> reference)
+  it("flags trailing bracketed-citation entries as reference", () => {
+    expect(classifyNoise("“SNARK” terminology and characterization of existence [BCCT11]")).toBe(
+      "reference",
+    );
+    expect(classifyNoise("Zero-Knowledge Proofs [GMR85]")).toBe("reference");
+    expect(classifyNoise("Succinct Non-Interactive ZK [M94]")).toBe("reference");
+  });
+
+  // verbatim spike hits — darksi.de code-blog shards (R2/R3 -> fragment)
+  it("flags leading code-comment shards as fragment", () => {
+    expect(classifyNoise("-- Output: 'hello world'")).toBe("fragment");
+    expect(classifyNoise('-- (e.g. after ".load signal-fts5-extension.dylib")')).toBe("fragment");
+    expect(classifyNoise("// see the docs for the extension API")).toBe("fragment");
+  });
+
+  it("flags leading-lowercase mid-sentence shards as fragment", () => {
+    expect(
+      classifyNoise(
+        "that provides better support for non-latin languages (Chinese, Japanese, etc) in the Full-Text Search (FTS) via the unicode61 tokenizer",
+      ),
+    ).toBe("fragment");
+    expect(classifyNoise("open-sourced a SQLite extension")).toBe("fragment");
+    expect(classifyNoise("covered by the official documentation")).toBe("fragment");
+    // the accepted cost: a lowercase-starting complete clause is also
+    // flagged (a mid-sentence shard by construction)
+    expect(classifyNoise("so we won't be discussing them much more here.")).toBe("fragment");
+  });
+
+  it("keeps spike-verified clean prose unflagged (0/20 guard set)", () => {
+    // ends with a bracketed WORD IN PROSE, not a citation marker
+    expect(
+      classifyNoise(
+        "What has been established by this treaty [of Westphalia], with the mutual " +
+          "agreement of the parties, concerning certain disputed articles, stands firm.",
+      ),
+    ).toBeUndefined();
+    // capital-start prose with interior colons/questions is content
+    expect(
+      classifyNoise(
+        "Completeness: if the statement is true, then an honest verifier (that is, one " +
+          "following the protocol) will accept the statement.",
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyNoise(
+        "No resulting rows! The reason for that is that the default tokenizer first splits the input.",
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyNoise(
+        "Since FTS5 only supports indexed searches by the start of the term - it cannot find terms in the middle.",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps the spike-REJECTED classes unclassified (disclosed, not fixed)", () => {
+    // verb-initial marketing line: a complete sentence indistinguishable
+    // from content prose (R4: 0 matches even on its target page)
+    expect(
+      classifyNoise(
+        "Enables zkSNARK computations of up to billions of logical gates (100x larger than prior art) at a cost of milliseconds.",
+      ),
+    ).toBeUndefined();
+    // mid-formula fragment (the SRC-12 disclosure stands)
+    expect(
+      classifyNoise(
+        "(x,z)] is a record of the interactions between P(x) and V(x,z). The prover P is modeled as having unbounded power.",
+      ),
+    ).toBeUndefined();
+  });
+});
