@@ -201,11 +201,73 @@ export async function safeFetch(
       const contentType = res.headers.get("content-type") ?? "";
       assertAcceptedMime(contentType, mimes);
       const bytes = await readBodyCapped(res, maxBytes, abort);
-      const text = new TextDecoder().decode(bytes);
+      const text = decodeBody(bytes, contentType);
       return { url: current.toString(), status: res.status, contentType, bytes, text, redirects };
     }
   } finally {
     clearTimeout(timer);
+  }
+}
+
+const CHARSET_PARAM = /charset\s*=\s*"?([A-Za-z0-9._-]+)"?/iu;
+const META_CHARSET = /<meta[^>]+charset\s*=\s*["']?\s*([A-Za-z0-9._-]+)/iu;
+
+/**
+ * The WHATWG windows-1252 index for 0x80–0x9F — the range where the
+ * encoding differs from ISO-8859-1 (€‚ƒ„…†‡ˆ‰Š‹ŒŽ''""•–—˜™š›œžŸ).
+ * Positions 0x81, 0x8D, 0x8F, 0x90, 0x9D are unmapped → U+FFFD. Needed in
+ * code because Node's TextDecoder decodes the windows-1252 LABELS
+ * latin1-style (0x95 → U+0095 control) instead of applying this table.
+ */
+const WINDOWS_1252_HIGH: readonly number[] = [
+  0x20ac, 0xfffd, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039,
+  0x0152, 0xfffd, 0x017d, 0xfffd, 0xfffd, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
+  0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0xfffd, 0x017e, 0x0178,
+];
+
+const WINDOWS_1252_LABELS = new Set(["windows-1252", "cp1252", "iso-8859-1", "latin1"]);
+
+/** WHATWG windows-1252 decode: bytes ≤0x7F and ≥0xA0 are identical to
+ * latin1; only the 0x80–0x9F range uses the table above. */
+function decodeWindows1252(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i] as number;
+    out +=
+      b <= 0x7f || b >= 0xa0
+        ? String.fromCharCode(b)
+        : String.fromCharCode(WINDOWS_1252_HIGH[b - 0x80] as number);
+  }
+  return out;
+}
+
+/**
+ * Charset-aware text decode (SRC-20, QUAL run-010 finding): WHATWG
+ * ordering — the Content-Type charset param wins, then (text/html only) a
+ * meta-charset sniff over the first 1024 bytes, then the HTML default
+ * windows-1252 for undeclared text/html and UTF-8 for everything else.
+ * The windows-1252 family (incl. the iso-8859-1/latin1 aliases, per
+ * WHATWG) uses the table decoder above because Node's TextDecoder does
+ * not implement the high table; an unknown label falls back to UTF-8
+ * rather than throwing. Security guards are untouched: this runs AFTER
+ * mime validation and the byte cap, and changes only how the
+ * already-fetched bytes become text.
+ */
+export function decodeBody(bytes: Uint8Array, contentType: string): string {
+  const mime = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  const param = CHARSET_PARAM.exec(contentType)?.[1];
+  let label = param?.toLowerCase();
+  if (label === undefined && mime === "text/html") {
+    const head = new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(0, 1024));
+    label = META_CHARSET.exec(head)?.[1]?.toLowerCase();
+  }
+  if (label !== undefined && WINDOWS_1252_LABELS.has(label)) return decodeWindows1252(bytes);
+  if (label === undefined && mime === "text/html") return decodeWindows1252(bytes);
+  try {
+    return new TextDecoder(label ?? "utf-8", { fatal: false }).decode(bytes);
+  } catch {
+    // unknown/unsupported label — pre-SRC-20 behavior
+    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
   }
 }
 
