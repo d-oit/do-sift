@@ -12,6 +12,7 @@
  * window that pinning closes (recorded as an open risk in plans/002).
  */
 import { SafeFetchError, assertPublicAddress, assertPublicHttpUrl, parseIpv4 } from "./guards.js";
+import { pinnedRequest } from "./pinned-transport.js";
 
 export interface DnsResolver {
   /** Resolve a hostname to every address the resolver returns. */
@@ -27,7 +28,15 @@ export interface SafeFetchOptions {
   /** Accepted Content-Type prefixes (after stripping parameters); defaults to DEFAULT_MIME_PREFIXES. */
   allowedMimePrefixes?: readonly string[];
   dns: DnsResolver;
-  fetchImpl: FetchLike;
+  /**
+   * Transport override (tests and custom callers). When UNDEFINED — the
+   * production default — safe-fetch uses its own pinned-IP transport
+   * (SRC-23): the socket connects DIRECTLY to an address the guard
+   * validated, closing the R-11 re-resolution window; https SNI and
+   * certificate identity stay the hostname. When PROVIDED, every request
+   * delegates to it and the caller owns re-resolution behavior.
+   */
+  fetchImpl?: FetchLike | undefined;
   /**
    * Per-hop site-policy hook (CORE-10): called with the hostname of the
    * initial URL AND every redirect target before anything is dialed.
@@ -76,14 +85,20 @@ function isIpLiteralHost(hostname: string): boolean {
   return parseIpv4(hostname) !== null;
 }
 
-/** Resolve the host and refuse any non-public answer. IP literals skip DNS. */
-async function resolveAndValidate(url: URL, dns: DnsResolver): Promise<void> {
-  if (isIpLiteralHost(url.hostname)) return; // already validated by assertPublicHttpUrl
+/** Resolve the host and refuse any non-public answer. IP literals skip DNS.
+ * Returns the VALIDATED addresses (SRC-23): the pinned transport connects
+ * directly to one of them instead of re-resolving. */
+async function resolveAndValidate(url: URL, dns: DnsResolver): Promise<readonly string[]> {
+  if (isIpLiteralHost(url.hostname)) {
+    // already validated by assertPublicHttpUrl; bare the IP for the socket
+    return [url.hostname.replace(/^\[|\]$/gu, "")];
+  }
   const addrs = await dns.lookup(url.hostname);
   if (addrs.length === 0) {
     throw new SafeFetchError("dns", `no addresses resolved for ${url.hostname}`);
   }
   for (const addr of addrs) assertPublicAddress(addr);
+  return addrs;
 }
 
 function assertAcceptedMime(contentType: string, allowed: readonly string[]): string {
@@ -96,11 +111,10 @@ function assertAcceptedMime(contentType: string, allowed: readonly string[]): st
 
 /** Fetch with a hard byte cap by consuming the body stream incrementally. */
 async function readBodyCapped(
-  res: Response,
+  body: ReadableStream<Uint8Array> | null,
   maxBytes: number,
   abort: AbortController,
 ): Promise<Uint8Array> {
-  const body = res.body;
   if (!body) return new Uint8Array(0);
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -158,25 +172,45 @@ export async function safeFetch(
       options.checkHost?.(current.hostname);
       await resolveAndValidate(current, options.dns);
 
-      let res: Response;
-      const init: RequestInit = { signal: abort.signal, redirect: "manual" };
-      if (options.headers !== undefined) init.headers = options.headers;
-      try {
-        res = await options.fetchImpl(current.toString(), init);
-      } catch (e) {
-        if (abort.signal.aborted) {
-          throw new SafeFetchError("timeout", `deadline ${timeoutMs}ms exceeded`);
+      // SRC-23: the addresses returned by validation PIN the connection
+      // when the pinned transport is used — the socket never re-resolves.
+      const addresses = await resolveAndValidate(current, options.dns);
+      let status: number;
+      let responseHeaders: Headers;
+      let body: ReadableStream<Uint8Array> | null;
+      if (options.fetchImpl === undefined) {
+        // production default: the stdlib pinned transport (R-11 closure)
+        const pinned = await pinnedRequest(current, {
+          addresses,
+          headers: options.headers ?? {},
+          signal: abort.signal,
+        });
+        status = pinned.status;
+        responseHeaders = pinned.headers;
+        body = pinned.body;
+      } else {
+        try {
+          const init: RequestInit = { signal: abort.signal, redirect: "manual" };
+          if (options.headers !== undefined) init.headers = options.headers;
+          const res = await options.fetchImpl(current.toString(), init);
+          status = res.status;
+          responseHeaders = res.headers;
+          body = res.body;
+        } catch (e) {
+          if (abort.signal.aborted) {
+            throw new SafeFetchError("timeout", `deadline ${timeoutMs}ms exceeded`);
+          }
+          throw e;
         }
-        throw e;
       }
 
-      if (REDIRECT_STATUSES.has(res.status)) {
+      if (REDIRECT_STATUSES.has(status)) {
         if (redirects >= maxRedirects) {
           throw new SafeFetchError("redirect", `more than ${maxRedirects} redirects`);
         }
-        const location = res.headers.get("location");
+        const location = responseHeaders.get("location");
         if (!location) {
-          throw new SafeFetchError("redirect", `redirect ${res.status} without location`);
+          throw new SafeFetchError("redirect", `redirect ${status} without location`);
         }
         let next: URL;
         try {
@@ -188,21 +222,21 @@ export async function safeFetch(
         if (validated.protocol === "http:" && current.protocol === "https:") {
           throw new SafeFetchError("redirect", "refusing https→http downgrade");
         }
-        await res.body?.cancel();
+        await body?.cancel();
         current = validated;
         redirects++;
         continue;
       }
 
-      if (res.status < 200 || res.status > 299) {
-        await res.body?.cancel();
-        throw new SafeFetchError("status", `unexpected status ${res.status} for ${current.host}`);
+      if (status < 200 || status > 299) {
+        await body?.cancel();
+        throw new SafeFetchError("status", `unexpected status ${status} for ${current.host}`);
       }
-      const contentType = res.headers.get("content-type") ?? "";
+      const contentType = responseHeaders.get("content-type") ?? "";
       assertAcceptedMime(contentType, mimes);
-      const bytes = await readBodyCapped(res, maxBytes, abort);
+      const bytes = await readBodyCapped(body, maxBytes, abort);
       const text = decodeBody(bytes, contentType);
-      return { url: current.toString(), status: res.status, contentType, bytes, text, redirects };
+      return { url: current.toString(), status, contentType, bytes, text, redirects };
     }
   } finally {
     clearTimeout(timer);
