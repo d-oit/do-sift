@@ -11,3 +11,5 @@ export {
 } from "./safe-fetch.js";
 export type { SafeFetchFailureKind } from "./safe-fetch.js";
 export type { DnsResolver, FetchLike, SafeFetchOptions, SafeFetchResult } from "./safe-fetch.js";
+export { pinnedRequest } from "./pinned-transport.js";
+export type { PinnedRequestOptions, PinnedResponse } from "./pinned-transport.js";

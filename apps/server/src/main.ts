@@ -228,7 +228,11 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
           maxRedirects: 3,
           headers: { "user-agent": USER_AGENT },
           dns,
-          fetchImpl,
+          // SRC-23 (R-11 closure): no fetchImpl in production — safe-fetch
+          // uses its pinned-IP transport, connecting to an address the
+          // guard validated instead of re-resolving. Injected fetchImpl
+          // (hermetic tests) delegates as before.
+          ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}),
           checkHost: (host) => siteAccess.assertAllowed(host),
         });
         // SRC-15: HTML → text pre-pass (plugin-owned) before the
@@ -249,7 +253,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         // 10 req/min unidentified rate class instead of 200 req/min.
         headers: { "user-agent": USER_AGENT, accept: "application/json" },
         dns,
-        fetchImpl,
+        ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}),
         checkHost: (host) => siteAccess.assertAllowed(host),
       });
       // formatversion=2 (SRC-09): query.pages is an ARRAY. The v1 map

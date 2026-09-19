@@ -20,7 +20,8 @@ export type SafeFetchFailureKind =
   | "status"
   | "mime"
   | "size"
-  | "timeout";
+  | "timeout"
+  | "network";
 
 export class SafeFetchError extends Error {
   constructor(
