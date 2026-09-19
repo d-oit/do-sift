@@ -1,0 +1,429 @@
+{
+  "runId": "run-011",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-19T17:10-17:21Z (driver timestamps; operator-local 2026-09-19)",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": "HEAD 1041595 — SRC-20 charset-aware decode + SRC-18/19 + SRC-16/17 merged composition lineage; fixture model (harness measured, not model quality)",
+  "scale": { "0": "fail", "1": "pass", "0.5": "partial" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "providerHealthSummary": {
+    "wikipedia": "8/8 sub-searches ok",
+    "marginalia": "6/8 ok (timeouts cases 05/08, verbatim in the receipts)",
+    "schemaNote": "third consecutive run with the health receipt; marginalia: 1/8 (run-009) -> 5/8 (run-010) -> 6/8 (run-011) — day-to-day variance, now measured per run"
+  },
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "relevanceScore": 0.716, "low": false },
+        {
+          "url": "https://darksi.de/13.sqlite-fts5-structure/",
+          "relevanceScore": 0.763,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "relevanceScore": 0.647,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 52,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 52,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "FIRST TIME this case has 3 sources: darksi.de (a SQLite FTS5 internals post) is a Marginalia-only source ABOVE floor (0.763) — the case previously never had marginalia help (runs 008/009: timeout; run-010: timeout)",
+        "extraction 0.5 honestly: the darksi.de code-blog content produces fragment-class blocks — a shell-comment shard ('-- (e.g. after \".load signal-fts5-extension.dylib\")') and a mid-sentence shard ('that provides better support for non-latin languages…') — the SRC-12 disclosed residual on a THIRD content shape (markdown/code blog), distinct from both the SRC-18 shapes and the zkp.science set",
+        "4/6 blocks solid (SQLite wiki prose + FTS5 tokenizers/internals prose); FTS5 named directly"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Deep_web", "relevanceScore": 0.666, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 51,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 51,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "Deep_web LOW receipt keeps the set mixed (as every run); Tim Berners-Lee named directly; marginalia ok but no unique contribution visible"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "relevanceScore": 0.811, "low": false },
+        {
+          "url": "https://www.universetoday.com/articles/what-causes-aurora",
+          "relevanceScore": 0.865,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F",
+          "relevanceScore": 0.635,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 52,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 52,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "universetoday (0.865, the case's highest-relevance document) stored and opening the answer for the second consecutive run — the Marginalia-only contribution is now STABLE across runs, not a one-off"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia",
+          "relevanceScore": 0.849,
+          "low": false
+        },
+        {
+          "url": "https://cryptiana.web.fc2.com/docs/west_eng.htm",
+          "relevanceScore": 0.741,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees",
+          "relevanceScore": 0.689,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "CASE HIGHLIGHT — THE NRW DOPP IS GONE FROM THE POOL: with marginalia healthy, its cryptiana treaty-text source (0.741, above floor) took the third fetch slot and the North Rhine-Westphalia dopp (0.750, passed the floor in runs 009/010, surfaced its block twice) was displaced at the maxFetches cap — the first run where the merged composition's diversity actively REMOVED a wrong-entity dopp instead of only adding sources",
+        "cryptiana's blocks are the actual treaty English text ('Article XVII…', the quoted treaty passage) plus a definitive lead block ('The Treaty of Westphalia is the peace treaty which concluded the Thirty Years' War…') — substantive primary-source-adjacent content",
+        "Pyrenees LOW receipt unchanged"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine",
+          "relevanceScore": 0.682,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough",
+          "relevanceScore": 0.545,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/MRNA_vaccine",
+          "relevanceScore": 0.85,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the mRNA_vaccine anchor is BACK (absent in run-010's wikipedia set — provider variance both directions); all 6 blocks are its prose; the two misleading-adjacent receipts (COVID_vaccine, McCullough) stay honest LOW and out of the pool",
+        "marginalia timed out — wikipedia-only pool"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain",
+          "relevanceScore": 0.803,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "relevanceScore": 0.822, "low": false },
+        {
+          "url": "https://thehimalayanvoice.blogspot.com/2021/12/is-mount-everest-really-tallest.html",
+          "relevanceScore": 0.855,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 40,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 40,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "R-16 remedy STABLE: the Marginalia-only Everest-class blogspot (0.855) stored for the third run in a row (008: first, 010: strongest, 011: again) and its Mauna-Kea block answers directly alongside the wiki pool's Everest blocks",
+        "1 fetch error (guard refusal on a further marginalia hit — the recurring advisory class)"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "relevanceScore": 0.496,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof",
+          "relevanceScore": 0.57,
+          "low": true
+        },
+        { "url": "https://zkp.science/", "relevanceScore": 0.686, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 45,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 45,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "identical shape to run-010: all sources below floor -> ANS-09 fallback (sixth live validation); SRC-18's four verbatim shapes stay excluded (0 matches); the SAME three residual fragments surfaced ('[BCCT11]' bibliography heading, the zkSNARK marketing line, the '(x,z)]' mid-derivation shard) — 3/6 noisy, 0.5 recorded consistently with run-010",
+        "1 fetch error (guard refusal, advisory)"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall",
+          "relevanceScore": 0.779,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "relevanceScore": 0.652,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Berlin_Wall",
+          "relevanceScore": 0.793,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 49,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "marginalia timed out -> wiki-only pool: tedmontgomery.com (run-010's U+FFFD source) was NOT fetched this run, so the SRC-20 windows-1252 fix could not be re-observed live — recorded honestly; the run-level mechanical U+FFFD scan is 0 matches across all 47 blocks",
+        "the run-008-shaped block set returned (fall narrative, dismantling, Jäger, anniversary, Thatcher context) — all clean wiki prose; concert dopp LOW receipt unchanged"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.8125,
+    "extractionCleanliness": 0.875,
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.9375
+  },
+  "mechanicalChecks": {
+    "uFFFDReplacementChars": "0 matches across all 8 answer files (SRC-20 could not be re-observed at its origin case — tedmontgomery not fetched this run — but no replacement chars anywhere in the pool)",
+    "src18VerbatimShapes": "0 matches across all 8 answer files (second consecutive run)",
+    "citationMarkersInBlocks": 0,
+    "wikitextHeadingMarkers": 0,
+    "htmlTagsInBlocks": 0,
+    "injectionPatternScan": "0 matches across all 16 capture files",
+    "unCitedBlocks": 0,
+    "blockCitationCount": "47 blocks / 47 citations (1 per block, fixture-model verbatim composition)",
+    "doppContentAnswerBlocks": "0 genuine dopp blocks this run — the NRW dopp was displaced from the fetch set in case-04 (first time); word-match adjudications: none needed beyond the recurring legitimate prose",
+    "emptyRunCondition": "no case ended with an empty answer; all 8 evidenceFromRun 'run'; zero degradations; zero cached",
+    "f8RateLimit": "0 x 429s; 2 fetch errors (case-06/07 guard refusals, advisory); >=30s pacing per driver timestamps (17:10:07 first case, 17:21:04 done)",
+    "f7PortProcessHygiene": "port 18122 verified free pre-run; post-run kill-tree executed IMMEDIATELY (both tree PIDs killed, no listener afterward); server launch required the explicit main() invocation (recorded in run-010's mechanicalChecks)",
+    "storeProfile": "24 documents / 385 passages stored, 385 embedded, 0 noiseBackfilled (all classified at store time)"
+  },
+  "comparison": {
+    "baseline": "run-010 (2026-09-19, SRC-18/19 under test)",
+    "perDimension": {
+      "retrievalRelevance": "0.75 -> 0.8125 — SECOND consecutive rise (plateau was 0.6875 for ten runs): marginalia 6/8 healthy, its uniques on-topic AND above floor (darksi.de 0.763, cryptiana 0.741), and in case-04 the merged composition's diversity DISPLACED the NRW dopp from the fetch set — the plateau's substance (wrong-entity dopps) shrank for the first time by pipeline means rather than provider luck alone",
+      "extractionCleanliness": "0.875 -> 0.875 — same two 0.5 calls for the same structural reason: the disclosed segmentation residual now spans THREE content shapes (zkp.science fragments, darksi.de code-blog shards, mid-formula); SRC-18's shapes remain excluded",
+      "citationResolution": "1 -> 1",
+      "degradationHonesty": "1 -> 1 (2 marginalia timeouts within the run, all reported per-case)",
+      "injectionObservation": "1 -> 1"
+    },
+    "meanAll": "0.925 -> 0.9375 (back to the series-high line, now carried by retrieval gains rather than the old plateau)",
+    "src20Verdict": "no live re-observation was possible (the origin source was not served this run); the run-level U+FFFD scan is clean and the fix remains unit-pinned — recorded without overclaiming",
+    "r16Note": "the Everest-class blogspot is now a STABLE above-floor contributor (3 of the last 4 runs), and case-01 gained a topical FTS5 source the wiki pool never had",
+    "provenanceNote": "fresh captures on disk under .do-harness/qual-run-011/ (16 files + server.log + driver.log); executed and scored same-day at HEAD 1041595 by the scoring agent"
+  },
+  "findings": [
+    "the retrieval trend is now UP two runs in a row (0.6875 x10 -> 0.75 -> 0.8125), and for the first time the mechanism is not only 'more sources': the merged composition displaced a wrong-entity dopp at the fetch cap (case-04)",
+    "marginalia's unique contributions are consistently on-topic and above floor when healthy (darksi.de, universetoday, cryptiana, blogspot) — its day-to-day availability is the binding constraint, which the health receipt measures per run",
+    "the extraction residual (0.875) is stable and structural: three disclosed fragment shapes remain (zkp.science set, code-blog shards, mid-formula) — all in the deliberately-unclassified SRC-12 class; a fourth run reproduces the same [BCCT11]/marketing/mid-formula trio",
+    "SRC-20 could not be re-observed live (its origin source wasn't served); U+FFFD scan clean at 0",
+    "case-05's provider-variance flip (mRNA_vaccine back) confirms run-010's case-05 was provider-day behavior, not pipeline drift"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated) — same caveat as RET-01",
+    "NOT model quality: the fixture model composes blocks from stored evidence; fluency/completeness/reasoning unmeasured",
+    "Provider behavior on 2026-09-19 — re-run rather than extrapolate (sources.md 90-day rule)",
+    "Extraction scored on answer-level blocks; the two 0.5 calls follow the same 1/0.5 line applied in runs 008-010",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ]
+}
