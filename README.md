@@ -69,10 +69,25 @@ loopback or a TLS-terminating reverse proxy. See
 [docs/deployment.md](docs/deployment.md) for configuration, auth, backup
 cadence, and known limits.
 
+## Quality gate
+
+The research/evidence pipeline is measured by a repeatable manual protocol
+([docs/quality-gate.md](docs/quality-gate.md)): 8 fixed questions over the
+live search path, scored per dimension (retrieval relevance, extraction
+cleanliness, citation resolution, degradation honesty, injection
+observation) with all limits stated. Versioned run artifacts live in
+`evals/quality/` — twelve recorded runs, including per-provider search
+health receipts and live validation of the noise classifier, merged-search
+composition, and charset-aware decode. No quality claim cites a run without
+repeating its limits.
+
 ## Status
 
-Pre-alpha. FND, CORE, SRC, ANS, BRW, and CMP milestones are complete (see
-`plans/`); OPS in progress (`plans/005-007-brw-cmp-later.md`).
+Pre-alpha. FND, CORE, SRC, ANS, BRW, CMP, OPS, and the QUAL gate protocol
+milestones are complete (see `plans/`); the last recorded live run is
+`evals/quality/run-012-2026-09-19.json` (meanAll 0.9625, series high, with
+limits). Owner-gated next steps: Marginalia api2 key and a live model
+adapter.
 
 ## License
 
