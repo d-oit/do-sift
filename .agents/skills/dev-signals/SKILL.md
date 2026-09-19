@@ -33,6 +33,14 @@ status, not unverified memory.
    fingerprint). Reference it in task evidence instead of restating results
    from memory. Partial reruns: `npm run signals -- verify --only <sensor>`
    refreshes one sensor (it must belong to the chosen set).
+5. The upstream Rust `do-harness` CLI (ADR 0008; `do-harness.toml`; v0.1.1,
+   Windows and WSL) runs the same sensors: `do-harness verify --set
+<feedback|verification> [--record]`, `status --set <set>`, `doctor`. Its
+   state sits beside ours under `.do-harness/` (`agent_state.db`,
+   `evidence-rust-*.json`); neither runner reads the other, and `npm run
+signals` stays the enforced receipt path. On Windows `DO_HARNESS_BIN`
+   must point at the exe (upstream's PATH lookup misses `.exe`); record
+   green runs only — a recorded FAIL bumps the 3-strike signature.
 
 ## Rules
 

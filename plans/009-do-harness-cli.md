@@ -199,3 +199,57 @@ consistent with the WSL findings. The checkout stays as the standing
 Linux verification environment; refresh = re-run the same tar copy +
 `npm install` + `init-db` (commands recorded here). Windows-side tree and
 its enforced first-party runner are untouched by this verification.
+
+## Addendum — native Windows adoption via the v0.1.1 prebuilt (2026-09-19, agent)
+
+Upstream v0.1.1 (2026-09-15) shipped official Windows x86_64 support
+(release zip; upstream PR #76), closing DHC-04's documented platform gap
+without the MSVC+LLVM source-build remedy. Installed per machine, not in
+the repo: `do-harness-v0.1.1-x86_64-pc-windows-msvc.zip` from the release,
+SHA-256 verified against `checksums.txt`, exe placed at
+`~/.local/bin/do-harness.exe` (on PATH). The WSL binary is also v0.1.1
+(`32120c3 2026-09-15`).
+
+**Upstream Windows bug found:** `resolve_binary_with`
+(`crates/do-harness/src/hook_script.rs`) probes PATH for extensionless
+`do-harness` only, and the repo fallback lacks the `.exe` Cargo appends —
+`doctor` failed with "binary missing at target/release/do-harness" though
+the CLI was installed. Workaround until fixed: user-level
+`DO_HARNESS_BIN=C:\Users\doswa\.local\bin\do-harness.exe`. With it set,
+`doctor` → exit 0 (3 hook WARNs are the by-design ADR 0008 split);
+`do-harness init-db` applied 5 new v0.1.1 migrations (12 → 17) to the
+shared gitignored `.do-harness/agent_state.db` — no WSL skew.
+
+**Native Windows proof:** `list` → 8 sensors from the committed toml;
+`verify --set feedback` → all 5 PASS; `verify --set verification` → first
+run FAILed only `tests` (vitest 10s `beforeAll` timeout launching
+Playwright chromium in packages/browser-driver; all 493 executed tests
+passed; TS receipt green 30 min earlier; bare verify → no strike).
+Self-correction: `--only tests` PASS, full-set retry → **all 7 PASS,
+exit 0**; recorded the green full set (`--record`), `status --set
+verification` → green. Bare `status` errors on the nonexistent `(default)`
+set — always pass `--set`.
+
+**Files:** `AGENTS.md` (Rust-CLI lines → v0.1.1/Windows+WSL,
+`DO_HARNESS_BIN` note, `status --set verification`),
+`.agents/skills/dev-signals/SKILL.md` (procedure step 5: upstream runner,
+state layout, record-green-only rule), this plan. No product code, sensor
+argv, `do-harness.toml`, or CI touched.
+
+**Upstream fix contributed:** the resolver bug is now upstream PR
+d-o-hub/do-harness#133 (`fix/windows-exe-resolution`): `binary_names()`
+probes extensionless-then-`.exe` (the hook template's order), the repo
+fallback takes Cargo's platform output name, and
+`resolve_binary_with_names()` keeps the Windows path testable
+cross-platform. First push failed upstream's `loc` sensor (hook_script.rs
+at 562 lines over its 500-line cap) — repaired by moving binary
+resolution into a new `binary.rs` module (288 lines; hook_script 287,
+re-exports keep hooks/doctor import paths). All 9 upstream CI checks
+green on the PR, including `verify` and `windows`. Drop the
+`DO_HARNESS_BIN` note from AGENTS.md once a release carries #133.
+
+**Provenance note:** these doc edits were wiped twice the same evening by
+a concurrent session's `git reset --hard origin/main` (uncommitted
+working-tree state, SRC-22/README then SRC-23 flows) and re-applied
+verbatim from session context each time; they are now on a branch + PR so
+a third reset cannot silently discard them.

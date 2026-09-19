@@ -69,16 +69,18 @@ npm run policy        # repo policy checks alone
 npx vitest run <file> # single test file
 npm run signals -- verify --set feedback  # dev-signal feedback loop before handoff
 npm run signals -- status                 # dev-signal receipt state
-do-harness verify --set feedback  # optional Rust harness in WSL Ubuntu (prebuilt v0.1.0, ADR 0008)
-do-harness status                 # upstream evidence freshness (WSL; needs full-set --record)
+do-harness verify --set feedback  # upstream Rust CLI, same sensors (v0.1.1, ADR 0008)
+do-harness status --set verification  # upstream freshness (needs green --record)
 ```
 
 Dev signals are computational receipts for the development loop (plan 008,
 ADR 0007; CLI home `scripts/dev-harness/` since plan 009 — workflow tooling,
 not a package): run the feedback set before claiming a task done. The
 upstream Rust `do-harness` CLI (ADR 0008, configured in `do-harness.toml`)
-drives the same sensors for agents with the toolchain; `npm run signals`
-stays the enforced hook/CI path. If a sensor is halted after 3 consecutive
+drives the same sensors natively on Windows and in WSL (v0.1.1 prebuilt in
+`~/.local/bin`; on Windows `DO_HARNESS_BIN` must point at the exe —
+upstream's PATH lookup misses `.exe`); `npm run signals` stays the enforced
+hook/CI path. If a sensor is halted after 3 consecutive
 failures, fix the cause first, then clear it with
 `npm run signals -- errors clear --sensor <name>` — never clear a strike
 before the fix, and never weaken a sensor or edit its argv to make it pass.
