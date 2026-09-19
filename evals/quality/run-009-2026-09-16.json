@@ -1,0 +1,464 @@
+{
+  "runId": "run-009",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-16T08:28-08:38Z (capture mtimes on disk; server.log boot line on port 18120; operator-local 2026-09-16). Scored 2026-09-19 from the on-disk captures — HEAD unchanged (7bc9fee) between run and scoring",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": "HEAD 7bc9fee — SRC-17 search-health receipt + SRC-16 merged search composition (wikipedia+marginalia fan-out) + SRC-11/ANS-08/ANS-09/SRC-12/SRC-13/SRC-14 lineage; fixture model (harness measured, not model quality)",
+  "scale": { "0": "fail", "1": "pass", "0.5": "partial" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "providerHealthSummary": {
+    "wikipedia": "8/8 sub-searches ok",
+    "marginalia": "1/8 ok (case-07 only); 7/8 failed with 'marginalia search timed out after 10000ms', reported verbatim in each done event's providerHealth receipt",
+    "schemaNote": "per-case providerHealth is NEW this run — SRC-17 shipped the receipt between run-008 and run-009; it is the declared change under test"
+  },
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "relevanceScore": 0.716, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "relevanceScore": 0.647,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 0,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "SRC-17 receipt live from the first case: the marginalia sub-search timeout is IN the done event, not inferred from provenance — the run degraded to the wikipedia survivor by design and says so",
+        "RDBMS-comparison page stored as a receipt, MARKED LOW at 0.647, absent from the 5 answer blocks (mirrors run-008 case-01)",
+        "FTS5 named in block 1's on-topic prose ('full-text search through its FTS5 loadable extension'); all 5 blocks clean SQLite-article prose"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Deep_web", "relevanceScore": 0.667, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 51,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 51,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "retrieval 0.5 mirrors run-008: the Deep_web document makes the stored source set mixed (adjacent-receipt, not wrong-entity) — MARKED LOW at 0.667, absent from blocks",
+        "Tim Berners-Lee named directly in block 3 ('The Web was invented by English computer scientist Tim Berners-Lee while working at CERN'); two near-parallel definition blocks are the two wiki pages' leads, both honestly cited",
+        "marginalia timed out — wikipedia-only pool of 6 hits, 3 fetched, 3 skippedBudget (stored-free receipts)"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "relevanceScore": 0.811, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F",
+          "relevanceScore": 0.636,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Aurora_(singer)",
+          "relevanceScore": 0.674,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 50,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 50,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "both wrong-entity dopps (the singer and an album) stored as receipts, MARKED LOW, zero block content — the recurring F3 class, unchanged",
+        "all 6 blocks are natural-phenomenon aurora prose (charged-particle cause, STEVE, dune aurora, AKR) — answers the question",
+        "marginalia timed out — wikipedia-only pool"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia",
+          "relevanceScore": 0.849,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees",
+          "relevanceScore": 0.69,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/North_Rhine-Westphalia",
+          "relevanceScore": 0.75,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "CASE HIGHLIGHT — the NRW dopp PASSED the 0.70 relevance floor at 0.750 (honestly unmarked: the floor measures question-extract similarity, not entity correctness) and its 'Operation Marriage, 23 August 1946' block SURFACED in this run's answer — run-008 stored the same document but its blocks stayed out of the pool; a block-level consequence of the known F3 class, recorded as the segmentation/relevance residual it is",
+        "5/6 blocks are on-topic Peace-of-Westphalia prose (treaties signed 1648, IR principles, treaty text, aftermath); the Pyrenees word-match in block 5 is the article's own Thirty Years' War aftermath narrative — same legitimate adjudication as run-008",
+        "Pyrenees stored as a receipt, MARKED LOW at 0.690, out of the pool; honesty unaffected — every block cites its real stored passage"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine",
+          "relevanceScore": 0.682,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough",
+          "relevanceScore": 0.545,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/MRNA_vaccine",
+          "relevanceScore": 0.85,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "mirrors run-008: McCullough (misinformation-adjacent) stored as a receipt, MARKED LOW at 0.545, zero content in blocks; COVID-19_vaccine at the 0.682 boundary, receipts kept, out of the pool",
+        "all 6 blocks are mRNA-vaccine-page prose (naked-mRNA delivery, reactogenicity x2, mechanism definition, immune-response goal, advantages over traditional vaccines)",
+        "marginalia timed out — wikipedia-only pool"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain",
+          "relevanceScore": 0.803,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "relevanceScore": 0.823, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/Summits_farthest_from_the_Earth's_center",
+          "relevanceScore": 0.756,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 23,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 23,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "R-16 answer HELD under full second-provider degradation: run-008's Everest-class page came from marginalia, which timed out this run — yet the WIKI-ONLY pool still names Everest ('Mount Everest is the highest mountain on Earth, at 8,848 metres', the tallest-vs-highest superlative discussion, and the Chimborazo farthest-from-Earth's-center block). Provider day-to-day variance on the wikipedia side (runs 001-007 never surfaced this shape); the SRC-16 structural remedy remains the run-008 demonstration",
+        "all three sources on-topic and above floor, honestly unmarked; smallest passage pool of the run (23 — short pages)",
+        "the Chimborazo word-match in the block scan is the legitimate tallest-vs-highest prose, not dopp content"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "relevanceScore": 0.496,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof",
+          "relevanceScore": 0.57,
+          "low": true
+        },
+        { "url": "https://zkp.science/", "relevanceScore": 0.686, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 45,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 45,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the ONLY case where marginalia answered (ok:true) — and it again delivered zkp.science, the Marginalia-only ZKP research site, stored below floor and honestly LOW-marked",
+        "ANS-09 scoped-pool fallback exercised live for the THIRD time: every stored source below the 0.70 floor today (0.496/0.570/0.686 — provider content variance), the floored scoped pool emptied, the fallback refilled it unfloored, and the answer is grounded (6 blocks, opening with the Chiesa zk-SNARK definition)",
+        "the 4 short fragment blocks (list item '- Academic C++ library for IOP-based zk-SNARKs.', truncated link titles, page title, subtitle) recur EXACTLY as in run-008's capture of the same page — the disclosed SRC-12 segmentation-residual class (caption-stub/nav-list shape); scored 1 consistent with run-008's annotation line (2 solid prose blocks carry the answer), with this recurrence recorded as the standing candidate for the next SRC-12 slice",
+        "1 fetch error: a further marginalia-sourced hit refused by the safe-fetch guards — advisory path, run continued (same class as run-008)"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall",
+          "relevanceScore": 0.78,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "relevanceScore": 0.653,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Berlin_Wall",
+          "relevanceScore": 0.794,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 49,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        {
+          "provider": "marginalia",
+          "ok": false,
+          "error": "marginalia search timed out after 10000ms"
+        }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the concert dopp (Roger Waters) stored as a receipt, MARKED LOW at 0.653, zero block content — recurring F3 class, unchanged",
+        "block 1 answers directly ('The Berlin Wall fell on 9 November 1989 during the Peaceful Revolution'); the Thatcher 'We do not want a united Germany' block is the Fall-of-the-Wall article's reaction context — on-topic",
+        "marginalia timed out — wikipedia-only pool"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.6875,
+    "extractionCleanliness": 1,
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.9375
+  },
+  "mechanicalChecks": {
+    "citationMarkersInBlocks": 0,
+    "wikitextHeadingMarkers": 0,
+    "htmlTagsInBlocks": 0,
+    "templateJsonMarkers": 0,
+    "injectionPatternScan": "0 matches across all 16 capture files (case-0N-research.txt + case-0N-answer.json)",
+    "unCitedBlocks": 0,
+    "blockCitationCount": "46 blocks / 46 citations (1 per block, fixture-model verbatim composition)",
+    "doppContentAnswerBlocks": "1 genuine dopp block surfaced (case-04, NRW 'Operation Marriage' — above-floor at 0.750, floor cannot see entity correctness); word-match adjudications: Pyrenees-in-Westphalia-aftermath (legitimate, as run-008), Chimborazo-in-tallest-vs-highest (legitimate)",
+    "src17LiveValidation": "providerHealth receipt present in EVERY done event (8/8); 7 marginalia timeouts reported with the exact error string, 1 ok — per-provider sub-search degradation is first-class measurement data, closing the run-008 observability gap",
+    "providerDegradationBehavior": "the composite degraded to the wikipedia survivor in 7/8 cases BY DESIGN; every run completed, all 8 answers grounded from their own run, zero false groundedness claims, zero 429s",
+    "emptyRunCondition": "no case ended with an empty answer; all 8 evidenceFromRun 'run'; zero degradations; zero cached",
+    "f8RateLimit": "0 x 429s observed in captures; 1 fetch error total (case-07, guard refusal on a marginalia hit, advisory); >=30s inter-phase pacing consistent with capture timestamps (first answer 10:29, last 10:38)",
+    "f7PortProcessHygiene": "server.log records port 18120 + merged/live composition + fixture model + fastembed. HONEST HYGIENE RECORD: the prior session did NOT perform post-run cleanup — listener PID 32428 was found still listening on 18120 at scoring time (2026-09-19), killed via taskkill //F //T (SUCCESS), port verified clear afterward. The protocol's kill-the-tree step must not be skipped again",
+    "storeProfile": "23 documents / 346 passages stored, 346 embedded, 0 noiseBackfilled (all classified at store time via store-with-flag)"
+  },
+  "comparison": {
+    "baseline": "run-008 (2026-09-15, merged composition, SRC-16 under test)",
+    "perDimension": {
+      "retrievalRelevance": "0.6875 -> 0.6875 (ninth consecutive run — the dopps are still what the providers return; the plateau is a provider-recall property, not a pipeline regression)",
+      "extractionCleanliness": "1 -> 1 (zero noise-shaped or markup-bearing blocks across 46 blocks; zkp.science fragment blocks recur per run-008's annotation line)",
+      "citationResolution": "1 -> 1",
+      "degradationHonesty": "1 -> 1 (strengthened: degradation is now REPORTED, not just behaved)",
+      "injectionObservation": "1 -> 1"
+    },
+    "meanAll": "0.9375 -> 0.9375 (third consecutive run at 0.9375)",
+    "src17Verdict": "THE CHANGE UNDER TEST: WORKING — the health receipt is in every done event, making the 7/8 marginalia degradation measurable per run instead of provenance-only; run-008's suggested follow-up ('a per-provider search receipt event so run summaries can report provider state; a live QUAL run-009 after that') is closed exactly as specified",
+    "r16Note": "case-06's factually complete answer held via the WIKI-ONLY pool this run (marginalia down) — provider variance day-to-day on the wikipedia side; the R-16 remedy (second provider) was demonstrated live in run-008 and remains structural",
+    "provenanceNote": "captures + server.log on disk under .do-harness/qual-run-009/ (16 capture files, mtimes 2026-09-16 10:29-10:38); the run was executed 2026-09-16 at HEAD 7bc9fee by a prior session; scoring performed 2026-09-19 from those captures with HEAD unchanged — no re-run was needed, and none of the scores extrapolate beyond the capture date"
+  },
+  "findings": [
+    "SRC-17 (the declared change under test): verdict WORKING — every done event carries providerHealth; the 7/8 marginalia timeout degradation is first-class in the measurement; the run-008 observability gap is closed",
+    "provider degradation is handled by design and now PROVEN live at scale: 7/8 sub-search failures, zero run failures, zero honesty failures — the strongest degradation-honesty evidence in the series",
+    "case-04: the NRW dopp passed the relevance floor (0.750 > 0.70) and its block surfaced in the answer — the floor measures similarity, not entity correctness; wrong-entity dopps remain the retrieval plateau's substance (candidate for an entity-aware relevance lever if the owner wants F3 pushed further)",
+    "ANS-09 fallback live-validated a third time (case-07); marginalia was up for exactly that case and again delivered its unique source",
+    "zkp.science fragment blocks recur (SRC-12 disclosed residual class) — standing candidate for the next segmentation slice",
+    "process hygiene: the prior session skipped post-run cleanup (listener alive 3 days) — killed and verified at scoring time; recorded to keep the protocol honest"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated) — same caveat as RET-01",
+    "NOT model quality: the fixture model composes blocks from stored evidence; fluency/completeness/reasoning unmeasured",
+    "Provider behavior on 2026-09-16 — re-run rather than extrapolate (sources.md 90-day rule); marginalia's 7/8 timeout is THAT DAY's behavior, not a stable property (run-008 same week: 8/8 ok except the two run-008-class fetch notes)",
+    "Scores annotated 2026-09-19 from the on-disk captures; HEAD unchanged (7bc9fee) between execution and scoring — no pipeline drift, but the annotator is the scoring-day agent",
+    "Extraction scored on answer-level blocks; store-level passage profile not directly observable from captures",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ]
+}
