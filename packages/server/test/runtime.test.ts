@@ -112,17 +112,34 @@ describe("createRuntime (RET-04)", () => {
     expect(hits).toHaveLength(0); // nothing was embedded
   });
 
-  it("embeds only new passages on repeated research runs", async () => {
-    const runtime = await createRuntime(baseOptions(fakeEmbedder()));
+  it("reuses stored URLs on repeated runs: no re-fetch, no re-store, no re-embed (SRC-25)", async () => {
+    let fetchCalls = 0;
+    const runtime = await createRuntime({
+      ...baseOptions(fakeEmbedder()),
+      fetchPage: async () => {
+        fetchCalls++;
+        return { text: [KEYWORD_A, KEYWORD_B].join("\n\n"), contentType: "text/html" };
+      },
+    });
     const first = await runtime.runResearch("owner-a", QUESTION);
     expect(first.embedded).toBe(2);
-    // same search hits fetch the same content: cross-RUN store-level dedup
-    // is not wired (merge-level URL canonicalization landed in SRC-19), so
-    // a second run stores NEW passages (new rows, new ids) and backfills
-    // them; existing ones are untouched.
+    expect(first.documentsStored).toBe(1);
+    expect(fetchCalls).toBe(1);
+    // SRC-25: the second run's hit URL is already stored for this owner —
+    // it is REUSED: no fetch, no new document/passage rows, no re-embed,
+    // and the reuse is counted in the summary.
     const second = await runtime.runResearch("owner-a", QUESTION);
-    expect(second.passagesStored).toBe(2);
-    expect(second.embedded).toBe(2);
+    expect(second.documentsReused).toBe(1);
+    expect(second.documentsStored).toBe(0);
+    expect(second.passagesStored).toBe(0);
+    expect(second.embedded).toBe(0);
+    expect(fetchCalls).toBe(1); // the transport was never touched again
+    // the answer stays grounded from the question's runs (the reused
+    // document links to the first run's request, which ANS-08 scoped
+    // retrieval still covers)
+    const answer = await runtime.answerResponse("owner-a", QUESTION);
+    expect(answer.evidenceFromRun).toBe("run");
+    expect(answer.evidenceOnly).toBe(false);
   });
 });
 

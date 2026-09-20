@@ -77,6 +77,8 @@ export interface ResearchRunSummary {
   fetchErrors: number;
   skippedBudget: number;
   documentsStored: number;
+  /** SRC-25: stored URLs reused instead of re-fetched this run. */
+  documentsReused: number;
   passagesStored: number;
   budgetReservationId?: string | undefined;
   /** Newly embedded passages (RET-03); undefined with no embedder or on failure. */
@@ -231,6 +233,7 @@ export function createResearchHarness(
         fetchErrors: 0,
         skippedBudget: 0,
         documentsStored: 0,
+        documentsReused: 0,
         passagesStored: 0,
         budgetReservationId: undefined,
       };
@@ -282,6 +285,31 @@ export function createResearchHarness(
             if (isSiteDenied(host)) {
               summary.denied++;
               continue; // never fetched
+            }
+            // SRC-25 cross-run store-level dedup: a URL the owner already
+            // has stored is REUSED, not re-fetched or re-stored — no new
+            // document/passage rows, no external fetch, no re-embedding.
+            // The receipt still emits, with the STORED passage count and
+            // relevance score. Freshness boundary (recorded): reuse is by
+            // URL regardless of age; answers stay honest because the
+            // exact-answer cache keys on stored content hashes. A TTL is
+            // future work.
+            const existing = await deps.repositories.documents.findByUrl(task.ownerId, hit.url);
+            if (existing !== undefined) {
+              summary.documentsReused++;
+              const existingPassages = await deps.repositories.passages.countByDocument(
+                task.ownerId,
+                existing.id,
+              );
+              deps.onSource?.({
+                url: hit.url,
+                title: existing.title ?? hit.title ?? undefined,
+                passageCount: existingPassages,
+                ...(existing.relevanceScore === undefined
+                  ? {}
+                  : { relevanceScore: existing.relevanceScore }),
+              });
+              continue;
             }
             try {
               const page = await deps.fetchPage(hit.url);
