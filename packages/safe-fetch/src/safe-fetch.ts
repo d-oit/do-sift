@@ -51,6 +51,22 @@ export interface SafeFetchOptions {
    * ever depends on these.
    */
   headers?: Record<string, string>;
+  /**
+   * External cancellation (SRC-24): aborted by the caller (e.g. an
+   * adapter's AbortSignal.any envelope) in addition to the internal
+   * deadline. The surface that fires is distinguishable via the thrown
+   * error in the pinnedFetch wrapper; inside safeFetch both map to the
+   * timeout kind as before.
+   */
+  signal?: AbortSignal | undefined;
+  /**
+   * Transport-only mode (SRC-24): when FALSE, non-2xx statuses and
+   * unaccepted MIME types are RETURNED instead of thrown — for callers
+   * that own their own status envelopes (the search adapters' 429/502/503/
+   * 504 retry logic and JSON validation). Every pre-response guard
+   * (scheme/IP/DNS/redirect/site-policy/size/time) stays enforced.
+   */
+  enforceResponsePolicy?: boolean | undefined;
 }
 
 export const DEFAULT_MIME_PREFIXES: readonly string[] = Object.freeze([
@@ -68,6 +84,8 @@ export interface SafeFetchResult {
   url: string;
   status: number;
   contentType: string;
+  /** Response headers of the final hop (SRC-24: e.g. retry-after for callers with status envelopes). */
+  headers: Headers;
   bytes: Uint8Array;
   text: string;
   redirects: number;
@@ -159,6 +177,13 @@ export async function safeFetch(
   const mimes = options.allowedMimePrefixes ?? DEFAULT_MIME_PREFIXES;
 
   const abort = new AbortController();
+  // SRC-24: an external signal (an adapter's envelope) aborts alongside
+  // the internal deadline; both surface through the same controller.
+  const external = options.signal;
+  if (external !== undefined) {
+    if (external.aborted) abort.abort();
+    else external.addEventListener("abort", () => abort.abort(), { once: true });
+  }
   const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
     let current = assertPublicHttpUrl(rawUrl);
@@ -189,10 +214,23 @@ export async function safeFetch(
         responseHeaders = pinned.headers;
         body = pinned.body;
       } else {
+        let rejectAbort: ((e: SafeFetchError) => void) | undefined;
+        const onAbort = (): void =>
+          rejectAbort?.(new SafeFetchError("timeout", `deadline ${timeoutMs}ms exceeded`));
         try {
           const init: RequestInit = { signal: abort.signal, redirect: "manual" };
           if (options.headers !== undefined) init.headers = options.headers;
-          const res = await options.fetchImpl(current.toString(), init);
+          // Race the transport against the abort controller: an injected
+          // fetchImpl may never settle, so the abort must REJECT the await
+          // itself (SRC-24 external-signal semantics).
+          const abortPromise = new Promise<never>((_, reject) => {
+            rejectAbort = reject;
+          });
+          if (abort.signal.aborted) onAbort();
+          else abort.signal.addEventListener("abort", onAbort, { once: true });
+          const fetchPromise = options.fetchImpl(current.toString(), init);
+          void fetchPromise.catch(() => {}); // the loser of the race must not crash the process
+          const res = await Promise.race([fetchPromise, abortPromise]);
           status = res.status;
           responseHeaders = res.headers;
           body = res.body;
@@ -201,6 +239,8 @@ export async function safeFetch(
             throw new SafeFetchError("timeout", `deadline ${timeoutMs}ms exceeded`);
           }
           throw e;
+        } finally {
+          abort.signal.removeEventListener("abort", onAbort);
         }
       }
 
@@ -229,14 +269,38 @@ export async function safeFetch(
       }
 
       if (status < 200 || status > 299) {
-        await body?.cancel();
-        throw new SafeFetchError("status", `unexpected status ${status} for ${current.host}`);
+        // transport-only mode (SRC-24) returns the status instead — the
+        // caller owns its status envelope; body still capped and discarded
+        if (options.enforceResponsePolicy !== false) {
+          await body?.cancel();
+          throw new SafeFetchError("status", `unexpected status ${status} for ${current.host}`);
+        }
+        const bytesOnly = await readBodyCapped(body, maxBytes, abort);
+        return {
+          url: current.toString(),
+          status,
+          contentType: responseHeaders.get("content-type") ?? "",
+          headers: responseHeaders,
+          bytes: bytesOnly,
+          text: "",
+          redirects,
+        };
       }
       const contentType = responseHeaders.get("content-type") ?? "";
-      assertAcceptedMime(contentType, mimes);
+      if (options.enforceResponsePolicy !== false) {
+        assertAcceptedMime(contentType, mimes);
+      }
       const bytes = await readBodyCapped(body, maxBytes, abort);
       const text = decodeBody(bytes, contentType);
-      return { url: current.toString(), status, contentType, bytes, text, redirects };
+      return {
+        url: current.toString(),
+        status,
+        contentType,
+        headers: responseHeaders,
+        bytes,
+        text,
+        redirects,
+      };
     }
   } finally {
     clearTimeout(timer);
@@ -315,3 +379,63 @@ export {
   parseIpv4,
 } from "./guards.js";
 export type { SafeFetchFailureKind } from "./guards.js";
+
+export interface PinnedFetchOptions {
+  maxBytes?: number | undefined;
+  timeoutMs?: number | undefined;
+  maxRedirects?: number | undefined;
+  dns: DnsResolver;
+  /** Per-hop site-policy hook, same semantics as safeFetch's. */
+  checkHost?: ((host: string) => void) | undefined;
+  headers?: Record<string, string> | undefined;
+}
+
+/**
+ * A FetchLike on the pinned-IP pipeline (SRC-24): every request runs the
+ * full guard pipeline (scheme/IP/DNS/site-policy per hop, pinned connect,
+ * redirects, size and deadline caps) in TRANSPORT-ONLY mode — non-2xx
+ * statuses and unaccepted MIME are RETURNED as a real Response so callers
+ * with their own status envelopes (the search adapters' 429/502/503/504
+ * retry logic and JSON validation) keep working unchanged.
+ *
+ * Error-name mapping preserves the adapters' envelopes exactly: the
+ * internal deadline OR an external `AbortSignal.timeout` surface as an
+ * Error named "TimeoutError"; a plain caller abort surfaces as "AbortError";
+ * guard refusals (private answer, denied host, …) propagate as SafeFetchError.
+ */
+export function pinnedFetch(options: PinnedFetchOptions): FetchLike {
+  return async (url, init) => {
+    const external = init?.signal ?? undefined;
+    try {
+      const result = await safeFetch(url, {
+        maxBytes: options.maxBytes ?? 1_000_000,
+        timeoutMs: options.timeoutMs ?? 15_000,
+        maxRedirects: options.maxRedirects ?? 3,
+        dns: options.dns,
+        ...(options.checkHost !== undefined ? { checkHost: options.checkHost } : {}),
+        ...(options.headers !== undefined ? { headers: options.headers } : {}),
+        ...(external !== undefined ? { signal: external } : {}),
+        enforceResponsePolicy: false,
+      });
+      return new Response(result.bytes, {
+        status: result.status,
+        headers: result.headers,
+      });
+    } catch (e) {
+      if (external !== undefined && external.aborted) {
+        // distinguish the envelope's timeout signal from a plain cancel:
+        // AbortSignal.timeout sets reason.name to "TimeoutError"
+        const reasonName = (external.reason as { name?: string } | undefined)?.name;
+        const err: Error & { name: string } =
+          reasonName === "TimeoutError"
+            ? Object.assign(new Error(`deadline exceeded`), { name: "TimeoutError" })
+            : Object.assign(new Error(`aborted`), { name: "AbortError" });
+        throw err;
+      }
+      if (e instanceof SafeFetchError && e.kind === "timeout") {
+        throw Object.assign(new Error(e.message), { name: "TimeoutError" });
+      }
+      throw e;
+    }
+  };
+}
