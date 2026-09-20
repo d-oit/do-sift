@@ -403,6 +403,32 @@ export interface PinnedFetchOptions {
  * Error named "TimeoutError"; a plain caller abort surfaces as "AbortError";
  * guard refusals (private answer, denied host, …) propagate as SafeFetchError.
  */
+/**
+ * Merge the factory-level headers with the CALLER's per-request headers
+ * (SRC-24 regression fix: RequestInit.headers — Headers, entries array,
+ * or record — must reach the transport; the adapters' User-Agent arrives
+ * per-request and Wikimedia's API 403s without it).
+ */
+export function mergeRequestHeaders(
+  factory: Record<string, string> | undefined,
+  init: RequestInit | undefined,
+): Record<string, string> {
+  const merged: Record<string, string> = { ...(factory ?? {}) };
+  const initHeaders = init?.headers;
+  if (initHeaders === undefined || initHeaders === null) return merged;
+  if (initHeaders instanceof Headers) {
+    initHeaders.forEach((value, key) => {
+      merged[key] = value;
+    });
+    return merged;
+  }
+  if (Array.isArray(initHeaders)) {
+    for (const [key, value] of initHeaders) merged[key] = value;
+    return merged;
+  }
+  return { ...merged, ...(initHeaders as Record<string, string>) };
+}
+
 export function pinnedFetch(options: PinnedFetchOptions): FetchLike {
   return async (url, init) => {
     const external = init?.signal ?? undefined;
@@ -413,7 +439,7 @@ export function pinnedFetch(options: PinnedFetchOptions): FetchLike {
         maxRedirects: options.maxRedirects ?? 3,
         dns: options.dns,
         ...(options.checkHost !== undefined ? { checkHost: options.checkHost } : {}),
-        ...(options.headers !== undefined ? { headers: options.headers } : {}),
+        headers: mergeRequestHeaders(options.headers, init),
         ...(external !== undefined ? { signal: external } : {}),
         enforceResponsePolicy: false,
       });

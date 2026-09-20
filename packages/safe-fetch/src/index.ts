@@ -15,3 +15,4 @@ export { pinnedRequest } from "./pinned-transport.js";
 export type { PinnedRequestOptions, PinnedResponse } from "./pinned-transport.js";
 export { pinnedFetch } from "./safe-fetch.js";
 export type { PinnedFetchOptions } from "./safe-fetch.js";
+export { mergeRequestHeaders } from "./safe-fetch.js";
