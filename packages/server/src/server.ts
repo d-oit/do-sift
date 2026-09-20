@@ -31,6 +31,8 @@ export interface SourceCard {
 export interface ResearchRunOutcome {
   hits: number;
   documentsStored: number;
+  /** SRC-25: stored URLs reused instead of re-fetched this run. */
+  documentsReused?: number | undefined;
   passagesStored: number;
   denied: number;
   fetchErrors: number;
@@ -395,7 +397,10 @@ const DEFAULT_PAGE = `<!doctype html>
           }
           cards.append(card);
         } else if (type === "done") {
-          status.textContent = data.documentsStored + " source(s), " + data.passagesStored + " passage(s).";
+          // SRC-25: reused sources are shown honestly alongside new stores.
+          const reused = data.documentsReused > 0 ? " (" + data.documentsReused + " reused)" : "";
+          status.textContent =
+            data.documentsStored + " source(s)" + reused + ", " + data.passagesStored + " passage(s).";
           // SRC-17/SRC-22: per-provider sub-search outcomes are receipts,
           // rendered — a degraded provider is visible in the UI, not
           // provenance-only. Provider names and error strings are adapter

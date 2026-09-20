@@ -49,7 +49,7 @@ const PAGE_A = [
 const PAGE_B =
   "Gamma is the only paragraph of page B and it is long enough to qualify as evidence here.";
 
-function makeDeps(
+async function makeDeps(
   overrides: {
     fetchPage?: (url: string) => Promise<{ text: string; contentType: string }>;
     maxHits?: number;
@@ -58,6 +58,9 @@ function makeDeps(
     embedder?: TextEmbedder;
     onEvent?: (name: string, payload?: unknown) => void;
     onSource?: (source: { url: string; title?: string | undefined; passageCount: number }) => void;
+    /** SRC-25: a fresh owner isolates a test from earlier tests' stored
+     * URLs now that cross-run dedup reuses them. */
+    ownerId?: string;
   } = {},
 ) {
   const fetchLog: string[] = [];
@@ -99,12 +102,18 @@ function makeDeps(
       ...(overrides.onSource === undefined ? {} : { onSource: overrides.onSource }),
     },
   );
-  return { harness, fetchLog };
+  if (overrides.ownerId !== undefined) {
+    await client.execute({
+      sql: "INSERT INTO owners (id, display_name, created_at) VALUES (?, ?, '2026-09-09T00:00:00Z') ON CONFLICT(id) DO NOTHING",
+      args: [overrides.ownerId, overrides.ownerId],
+    });
+  }
+  return { harness, fetchLog, ownerId: overrides.ownerId ?? "owner-a" };
 }
 
 describe("research pipeline (SRC-01)", () => {
   it("stores evidence with provenance for every fetched source, zero model calls", async () => {
-    const { harness } = makeDeps();
+    const { harness } = await makeDeps();
     await harness.activate({
       events: { emit: () => {} },
       config: { maxHits: 6, maxFetches: 2 },
@@ -139,7 +148,7 @@ describe("research pipeline (SRC-01)", () => {
   });
 
   it("never fetches default-deny sites", async () => {
-    const { harness, fetchLog } = makeDeps();
+    const { harness, fetchLog } = await makeDeps();
     await harness.activate({
       events: { emit: () => {} },
       config: { maxHits: 6, maxFetches: 3 },
@@ -149,7 +158,8 @@ describe("research pipeline (SRC-01)", () => {
   });
 
   it("continues past fetch failures and records them", async () => {
-    const { harness } = makeDeps({
+    const { harness, ownerId } = await makeDeps({
+      ownerId: "owner-fail",
       fetchPage: async (url) => {
         if (url !== "https://b.test/page") throw new Error("boom");
         return { text: PAGE_B, contentType: "text/plain" };
@@ -159,22 +169,23 @@ describe("research pipeline (SRC-01)", () => {
       events: { emit: () => {} },
       config: { maxHits: 6, maxFetches: 2 },
     } as unknown as Parameters<typeof createResearchHarness>[0]);
-    const summary = await harness.run({ ownerId: "owner-a", question: "q" });
+    const summary = await harness.run({ ownerId, question: "q" });
     expect(summary).toMatchObject({ fetchErrors: 2, documentsStored: 1 });
   });
 
   it("reserves budget before and settles actual fetches after", async () => {
-    const { harness } = makeDeps({ budget: budgets });
+    const { harness, ownerId } = await makeDeps({ ownerId: "owner-budget", budget: budgets });
     await harness.activate({
       events: { emit: () => {} },
       config: { maxHits: 6, maxFetches: 2 },
     } as unknown as Parameters<typeof createResearchHarness>[0]);
-    const summary = await harness.run({ ownerId: "owner-a", question: "q" });
+    const summary = await harness.run({ ownerId, question: "q" });
     expect(summary.budgetReservationId).toBeDefined();
 
-    const rows = await client.execute(
-      "SELECT kind, state, search_calls, fetches FROM usage_ledger WHERE owner_id = 'owner-a' ORDER BY kind",
-    );
+    const rows = await client.execute({
+      sql: "SELECT kind, state, search_calls, fetches FROM usage_ledger WHERE owner_id = ? ORDER BY kind",
+      args: [ownerId],
+    });
     const kinds = rows.rows.map((r) => `${String(r.kind)}:${String(r.state)}`);
     expect(kinds).toEqual(["reservation:settled", "settlement:settled"]);
     const settlement = rows.rows.find((r) => String(r.kind) === "settlement");
@@ -183,7 +194,7 @@ describe("research pipeline (SRC-01)", () => {
   });
 
   it("refuses to run before activation", async () => {
-    const { harness } = makeDeps();
+    const { harness } = await makeDeps();
     await expect(harness.run({ ownerId: "owner-a", question: "q" })).rejects.toThrow(
       /not activated/,
     );
@@ -195,7 +206,7 @@ describe("research pipeline (SRC-01)", () => {
     await client.execute({
       sql: "INSERT INTO owners (id, display_name, created_at) VALUES ('owner-extract', 'Extract', '2026-09-09T00:00:00Z') ON CONFLICT(id) DO NOTHING",
     });
-    const { harness } = makeDeps({
+    const { harness } = await makeDeps({
       extract: (text) =>
         text
           .split(/\r?\n\r?\n+/u)
@@ -279,7 +290,7 @@ describe("embedding indexing (RET-03)", () => {
         return [1, 0, 0.5];
       },
     };
-    const { harness } = makeDeps({ embedder });
+    const { harness } = await makeDeps({ embedder });
     await harness.activate(ACTIVATE);
 
     const summary = await harness.run({ ownerId: "owner-emb", question: "what is alpha?" });
@@ -303,13 +314,14 @@ describe("embedding indexing (RET-03)", () => {
         throw new Error("onnx hiccup");
       },
     };
-    const { harness } = makeDeps({
+    const { harness, ownerId } = await makeDeps({
+      ownerId: "owner-embed-fail",
       embedder,
       onEvent: (name) => events.push(name),
     });
     await harness.activate(ACTIVATE);
 
-    const summary = await harness.run({ ownerId: "owner-a", question: "what is alpha?" });
+    const summary = await harness.run({ ownerId, question: "what is alpha?" });
     expect(summary.fetches).toBe(2);
     expect(summary.documentsStored).toBe(2);
     expect(summary.embedded).toBeUndefined(); // degraded, not failed
@@ -320,7 +332,7 @@ describe("embedding indexing (RET-03)", () => {
 describe("evidence linkage (ANS-07, R-15/F9)", () => {
   it("records a completed search request row and stamps stored documents with its id", async () => {
     await repos.owners.ensure("owner-link", "Link Owner");
-    const { harness } = makeDeps();
+    const { harness } = await makeDeps();
     await harness.activate({
       events: { emit: () => {} },
       config: { maxHits: 6, maxFetches: 2 },
@@ -407,7 +419,7 @@ describe("evidence relevance (SRC-11)", () => {
         return [1, 0, 0];
       },
     };
-    const { harness } = makeDeps({ embedder });
+    const { harness } = await makeDeps({ embedder });
     await harness.activate(ACTIVATE);
 
     const summary = await harness.run({ ownerId: "owner-rel", question: "what is alpha?" });
@@ -433,7 +445,7 @@ describe("evidence relevance (SRC-11)", () => {
         throw new Error("onnx hiccup");
       },
     };
-    const { harness } = makeDeps({
+    const { harness } = await makeDeps({
       embedder,
       onEvent: (name) => events.push(name),
     });
@@ -472,7 +484,7 @@ describe("noise classification at store time (SRC-12)", () => {
       "Mount Everest is the highest mountain above sea level, at 8,848 metres, and it is " +
         "not the summit farthest from the Earth's center.",
     ].join("\n\n");
-    const { harness } = makeDeps({
+    const { harness } = await makeDeps({
       fetchPage: async (url) =>
         url === "https://a.test/page"
           ? { text: NOISE_PAGE, contentType: "text/html" }
@@ -526,7 +538,7 @@ describe("legacy noise-class backfill at run time (SRC-13)", () => {
         "List of highest mountains on Earth",
       extractionStatus: "ok",
     });
-    const { harness } = makeDeps();
+    const { harness } = await makeDeps();
     await harness.activate(ACTIVATE);
     const summary = await harness.run({ ownerId: "owner-backfill", question: "tallest mountain" });
     expect(summary.noiseBackfilled).toBe(1);
@@ -550,7 +562,7 @@ describe("source-card relevance receipt (SRC-14)", () => {
   it("onSource carries the raw relevanceScore receipt (undefined without an embedder)", async () => {
     await ensureOwner("owner-card");
     const seen: Array<Record<string, unknown>> = [];
-    const { harness } = makeDeps({
+    const { harness } = await makeDeps({
       embedder: {
         modelId: "fake-card-1",
         async embedPassages(texts) {
@@ -572,7 +584,7 @@ describe("source-card relevance receipt (SRC-14)", () => {
 
     await ensureOwner("owner-card2");
     const plain: Array<Record<string, unknown>> = [];
-    const { harness: plainHarness } = makeDeps({
+    const { harness: plainHarness } = await makeDeps({
       onSource: (source) => plain.push(source as Record<string, unknown>),
     });
     await plainHarness.activate(ACTIVATE);

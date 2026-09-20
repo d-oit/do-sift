@@ -240,6 +240,8 @@ describe("other routes", () => {
     expect(html).toContain('id="answer"');
     // ANS-07: the UI states the evidence basis honestly.
     expect(html).toContain("this question's research run");
+    // SRC-25: reused sources are counted honestly in the status line.
+    expect(html).toContain(" reused)");
     // SRC-22: the done event's providerHealth receipt is rendered as a
     // status line (per-provider ok/FAILED), cleared on each new submit.
     expect(html).toContain('id="provider-health"');

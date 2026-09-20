@@ -351,6 +351,16 @@ export class Repositories {
       const row = res.rows[0];
       return row ? documentFromRow(row) : undefined;
     },
+    /** SRC-25 cross-run dedup: the owner's most recent document for this
+     * URL (canonical or original), undefined when none is stored. */
+    findByUrl: async (ownerId: string, url: string): Promise<DocumentRow | undefined> => {
+      const res = await this.client.execute({
+        sql: "SELECT * FROM documents WHERE owner_id = ? AND (canonical_url = ? OR original_url = ?) ORDER BY created_at DESC LIMIT 1",
+        args: [ownerId, url, url],
+      });
+      const row = res.rows[0];
+      return row ? documentFromRow(row) : undefined;
+    },
     list: async (ownerId: string, limit = 50): Promise<DocumentRow[]> => {
       const res = await this.client.execute({
         sql: "SELECT * FROM documents WHERE owner_id = ? ORDER BY created_at DESC LIMIT ?",
@@ -432,6 +442,15 @@ export class Repositories {
         args: [ownerId, documentId],
       });
       return res.rows.map(passageFromRow);
+    },
+    /** SRC-25 cross-run dedup: how many passages the owner has for a document. */
+    countByDocument: async (ownerId: string, documentId: string): Promise<number> => {
+      const res = await this.client.execute({
+        sql: "SELECT COUNT(*) AS n FROM passages WHERE owner_id = ? AND document_id = ?",
+        args: [ownerId, documentId],
+      });
+      const row = res.rows[0];
+      return row ? Number(row.n) : 0;
     },
   };
 
