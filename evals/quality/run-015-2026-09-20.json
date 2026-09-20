@@ -1,0 +1,409 @@
+{
+  "runId": "run-015",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-20T18:07-18:16Z (driver timestamps; operator-local 2026-09-20)",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": "HEAD 0e4a4b9 — SRC-24 fix (pinnedFetch forwards per-request headers) + full pinned pipeline for adapters AND content fetches; fixture model (harness measured, not model quality)",
+  "scale": { "0": "fail", "1": "pass", "0.5": "partial" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "providerHealthSummary": {
+    "wikipedia": "8/8 sub-searches ok — every call through the pinnedFetch pipeline with the User-Agent fix",
+    "marginalia": "2/8 ok (cases 03/06) — the series: 1/8, 5/8, 6/8, 7/8, 1/8, 2/8 across six measured runs",
+    "schemaNote": "THE FIX VALIDATION: after run-014's total outage, every adapter API call and every content fetch succeeded through the fully pinned pipeline"
+  },
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "relevanceScore": 0.716, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "relevanceScore": 0.647,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 0,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["wiki-only shape; clean SQLite prose; marginalia timed out"]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Deep_web", "relevanceScore": 0.666, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 51,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 51,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["the Deep_web LOW receipt; Tim named directly"]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "relevanceScore": 0.811, "low": false },
+        {
+          "url": "https://www.universetoday.com/articles/what-causes-aurora",
+          "relevanceScore": 0.865,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F",
+          "relevanceScore": 0.635,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 52,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 52,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "universetoday (0.865) opens the answer — the Marginalia-only contribution lands through the ADAPTER's pinned pipeline (SRC-24's search-call path), fourth run in the series"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia",
+          "relevanceScore": 0.849,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees",
+          "relevanceScore": 0.689,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/North_Rhine-Westphalia",
+          "relevanceScore": 0.75,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "with marginalia down the NRW dopp reclaims its slot and its block surfaces — the mechanism's third direct demonstration (runs 009/010 surfaced, 011/012 displaced, 013/015 surfaced again), always tracking second-provider health"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/J._Bart_Classen",
+          "relevanceScore": 0.641,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough",
+          "relevanceScore": 0.545,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/MRNA_vaccine",
+          "relevanceScore": 0.85,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the mRNA_vaccine anchor carries all 6 clean blocks; McCullough + Classen as honest LOW receipts"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain",
+          "relevanceScore": 0.803,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "relevanceScore": 0.822, "low": false },
+        {
+          "url": "https://thehimalayanvoice.blogspot.com/2021/12/is-mount-everest-really-tallest.html",
+          "relevanceScore": 0.855,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 40,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 40,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the R-16 remedy again: the Marginalia-only Everest blogspot (0.855, fetched through the pinned content path) with the Mauna-Kea block answering directly",
+        "1 fetch error (guard refusal on a further marginalia hit — the recurring advisory class)"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "relevanceScore": 0.496,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof",
+          "relevanceScore": 0.57,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Firo_(cryptocurrency)",
+          "relevanceScore": 0.466,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 37,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 37,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "same shape as run-013: Firo receipt LOW-marked out of the pool, all 5 blocks clean ZKP prose, ANS-09 fallback (all sources below floor)"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall",
+          "relevanceScore": 0.779,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "relevanceScore": 0.652,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Berlin_Wall",
+          "relevanceScore": 0.793,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 49,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["the concert dopp LOW receipt; block 1 answers directly"]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.75,
+    "extractionCleanliness": 1,
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.95
+  },
+  "mechanicalChecks": {
+    "src24FixValidation": "THE DECLARED VALIDATION: after run-014's total outage, ALL search API calls (both providers, all 8 cases) and ALL content fetches succeeded through the fully pinned pipeline — the header fix restored the adapters' User-Agent (wikipedia 8/8 ok proves it: the 403 wall is gone) and zero transport/cert/SNI failures occurred anywhere",
+    "uFFFDReplacementChars": "0 matches across all 8 answer files",
+    "src21Classifiers": "[BCCT11]-class: 0; lowercase/code-comment block starts: 0 (precise block-start scan)",
+    "injectionPatternScan": "0 matches across all 16 capture files",
+    "unCitedBlocks": 0,
+    "blockCitationCount": "45 blocks / 45 citations (1 per block, fixture-model verbatim composition)",
+    "emptyRunCondition": "no case ended with an empty answer; all 8 evidenceFromRun 'run'; zero degradations; zero cached",
+    "f8RateLimit": "0 x 429s; 1 fetch error (case-06 guard refusal, advisory); >=30s pacing per driver timestamps (18:07:15 first case, 18:16:44 done)",
+    "f7PortProcessHygiene": "port 18126 verified free pre-run; post-run kill-tree immediate (both tree PIDs killed, no listener); server launched with the explicit main() invocation",
+    "storeProfile": "23 documents / 341 passages stored, 341 embedded, 0 noiseBackfilled (all classified at store time)"
+  },
+  "comparison": {
+    "baseline": "run-014 (regression record, meanAll 0.4) and run-013 (last healthy measurement, 0.9375)",
+    "recovery": "0.4 -> 0.95: the pipeline is fully restored and carrying the SRC-23/24 pinned transports everywhere",
+    "perDimension": {
+      "retrievalRelevance": "0.6875 (run-013, 1/8 marginalia) -> 0.75 (this run, 2/8 marginalia) — the health-driven mechanism continues to track exactly; universetoday and the blogspot landed in the two cases marginalia answered",
+      "extractionCleanliness": "1.0 held (the classifier steady state across compositions)",
+      "citationResolution": "1 -> 1",
+      "degradationHonesty": "1 -> 1 (6 marginalia timeouts reported per-case)",
+      "injectionObservation": "1 -> 1"
+    },
+    "src24Verdict": "WORKING — with the header fix, the complete pinned pipeline (adapters + content fetches) is validated live end to end; R-11 closure confirmed under real traffic",
+    "provenanceNote": "fresh captures on disk under .do-harness/qual-run-015/ (16 files + server.log + driver.log); executed and scored same-day at HEAD 0e4a4b9 by the scoring agent"
+  },
+  "findings": [
+    "the run-014 regression is fully remediated and live-validated: 8/8 cases grounded, every provider call and content fetch through the pinned pipeline",
+    "marginalia's six-run health series (1/8, 5/8, 6/8, 7/8, 1/8, 2/8) continues to be the binding constraint on retrieval — the strongest quantitative case for the api2 key",
+    "the NRW dopp mechanism tracked provider health for the third time (surfaced when marginalia's slot vanished)",
+    "extraction 1.0 and all classifier classes excluded across yet another pool composition"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated) — same caveat as RET-01",
+    "NOT model quality: the fixture model; fluency/completeness/reasoning unmeasured",
+    "Provider behavior on 2026-09-20 — re-run rather than extrapolate (sources.md 90-day rule)",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ]
+}
