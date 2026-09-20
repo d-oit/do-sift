@@ -37,13 +37,24 @@ Exit: replay test passes; bypass test fails closed.
 
 ### OPS task table
 
-| ID     | Task                                                                                                        | Status |
-| ------ | ----------------------------------------------------------------------------------------------------------- | ------ |
-| OPS-01 | Backup/restore rehearsal: local libSQL snapshot + verify (Turso procedure documented, not executed)         | done   |
-| OPS-02 | Deployment documentation: env config, local file vs Turso, reverse proxy, backup cadence                    | done   |
-| OPS-03 | Container image: Dockerfile, non-root, healthcheck, offline checks inside                                   | done   |
-| OPS-04 | Release candidate 0.1.0 via prepare-release skill (validate only; never publish)                            | done   |
-| OPS-05 | Packaged server entrypoint under `apps/` (env-configured composition; turns the image into a service image) | done   |
+| ID     | Task                                                                                                                                                                                                                                                                      | Status      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| OPS-01 | Backup/restore rehearsal: local libSQL snapshot + verify (Turso procedure documented, not executed)                                                                                                                                                                       | done        |
+| OPS-02 | Deployment documentation: env config, local file vs Turso, reverse proxy, backup cadence                                                                                                                                                                                  | done        |
+| OPS-03 | Container image: Dockerfile, non-root, healthcheck, offline checks inside                                                                                                                                                                                                 | done        |
+| OPS-04 | Release candidate 0.1.0 via prepare-release skill (validate only; never publish)                                                                                                                                                                                          | done        |
+| OPS-05 | Packaged server entrypoint under `apps/` (env-configured composition; turns the image into a service image)                                                                                                                                                               | done        |
+| OPS-06 | Dependency majors (held Dependabot PRs), each gated by the full suite, ordered least runtime risk first: vitest 3→5 (#4) — DONE, 514/514 unchanged, zero config changes; eslint 9→10 (#6) next; then zod 3→4 (#3), setup-node 4→7 CI check (#8), typescript 5→7 (#2) last | in-progress |
+
+### OPS-06 evidence (2026-09-20, agent) — vitest 5
+
+`npm install --save-dev vitest@^5.0.1`; the full suite ran green
+(514/514) UNCHANGED on the first run — no vitest.config.ts or test-file
+changes needed; `npm run check` 7/7 and the verification receipt green.
+Process note (honest): the first attempt was wiped by my own
+`reset --hard` after a pre-commit format rejection (a plan-row note
+inserted via a script wasn't prettier-canonical) — redone with the Edit
+tool and formatting upfront.
 
 ### QUAL task table
 
