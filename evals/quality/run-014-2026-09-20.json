@@ -1,0 +1,169 @@
+{
+  "runId": "run-014",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-20T17:44-17:53Z (driver timestamps; operator-local 2026-09-20)",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": "HEAD 834a706 — SRC-24 adapter DNS pin (REGRESSED) + SRC-16/17 lineage; fixture model (harness measured, not model quality)",
+  "runKind": "REGRESSION RECORD — this run discovered a total-failure regression in SRC-24 and is preserved as its evidence; the fixed pipeline is measured by run-015",
+  "scale": { "0": "fail", "1": "pass", "0.5": "partial" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "outcome": {
+    "summary": "8/8 cases FAILED at research: every search provider failed in every case; all 8 answers are evidence-only degraded with ZERO blocks. The SRC-24 adapter pin (merged in PR #20, ~90 minutes before this run) broke every search API call.",
+    "rootCause": "pinnedFetch dropped RequestInit.headers — the adapters' per-request User-Agent (required by the Wikimedia UA policy; 403 'Please set a User-Agent' otherwise) and accept headers never reached the API. Confirmed by a live probe: the exact adapter call shape returns 403 without init.headers and 200 with 3 results after the fix.",
+    "whyEveryProviderFailed": "wikipedia 403s without a contactable UA (policy working as designed); marginalia's API also reject-shaped; the merged composition degraded to survivors until none remained — the typed every-provider-failed error, exactly as designed for this scenario",
+    "whatWorked": "degradation honesty: all 8 answers truthfully reported evidenceOnly=true, degraded=true, zero blocks, no false groundedness; the run summaries carried the typed all-fail error; the kill-tree protocol was executed immediately post-run"
+  },
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "researchError": "every search provider failed (wikipedia, marginalia)",
+      "answer": { "blocks": 0, "evidenceOnly": true, "degraded": true, "basis": null },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 0,
+        "citationResolution": 0,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "empty pool — retrieval fail; no passages/blocks to extract or cite (fail per the 0=fail scale); the degraded evidence-only report is TRUTHFUL (honesty pass); no fetched text entered any output (injection pass)"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "researchError": "every search provider failed (wikipedia, marginalia)",
+      "answer": { "blocks": 0, "evidenceOnly": true, "degraded": true, "basis": null },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 0,
+        "citationResolution": 0,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["same failure envelope as case-01"]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "researchError": "every search provider failed (wikipedia, marginalia)",
+      "answer": { "blocks": 0, "evidenceOnly": true, "degraded": true, "basis": null },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 0,
+        "citationResolution": 0,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["same failure envelope"]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "researchError": "every search provider failed (wikipedia, marginalia)",
+      "answer": { "blocks": 0, "evidenceOnly": true, "degraded": true, "basis": null },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 0,
+        "citationResolution": 0,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["same failure envelope"]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "researchError": "every search provider failed (wikipedia, marginalia)",
+      "answer": { "blocks": 0, "evidenceOnly": true, "degraded": true, "basis": null },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 0,
+        "citationResolution": 0,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["same failure envelope"]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "researchError": "every search provider failed (wikipedia, marginalia)",
+      "answer": { "blocks": 0, "evidenceOnly": true, "degraded": true, "basis": null },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 0,
+        "citationResolution": 0,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["same failure envelope"]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "researchError": "every search provider failed (wikipedia, marginalia)",
+      "answer": { "blocks": 0, "evidenceOnly": true, "degraded": true, "basis": null },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 0,
+        "citationResolution": 0,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["same failure envelope"]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "researchError": "every search provider failed (wikipedia, marginalia)",
+      "answer": { "blocks": 0, "evidenceOnly": true, "degraded": true, "basis": null },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 0,
+        "citationResolution": 0,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": ["same failure envelope"]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0,
+    "extractionCleanliness": 0,
+    "citationResolution": 0,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.4,
+    "note": "aggregates describe the REGRESSED pipeline on 2026-09-20; they are NOT comparable to runs 001-013 (which measured a working pipeline) — run-015 restores the series"
+  },
+  "mechanicalChecks": {
+    "f8RateLimit": "0 x 429s; failures are the pinnedFetch header regression, NOT rate limiting",
+    "f7PortProcessHygiene": "port 18125 verified free pre-run; post-run kill-tree immediate (both tree PIDs killed, no listener)",
+    "diagnosis": "live probe against the real wikipedia API reproduced the failure (403 without init.headers, 200 + 3 results with) BEFORE any code change was made"
+  },
+  "comparison": {
+    "baseline": "run-013 (2026-09-20, working pipeline, meanAll 0.9375)",
+    "regression": "SRC-24 (PR #20) introduced pinnedFetch without forwarding RequestInit.headers to the guard pipeline; unit tests missed it because safe-fetch's guards refuse loopback BY DESIGN, so no end-to-end test could observe per-request headers reaching a socket — the gap was only observable live",
+    "fix": "mergeRequestHeaders (pure, unit-tested) merges factory + init headers for every RequestInit shape; live probe confirms 200 + results; test suite 514/514"
+  },
+  "findings": [
+    "the quality gate did its job: the regression was caught by the live protocol within ~90 minutes of merge, before any operator reliance",
+    "degradation honesty held under TOTAL failure — the system's worst-case behavior is truthful evidence-only reporting",
+    "test-ability lesson recorded: guards that refuse loopback make transport-header integration untestable end-to-end; the pure mergeRequestHeaders helper is the testable seam",
+    "process: the fix lands with this artifact; run-015 (immediately after) restores the measurement series"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated) — same caveat as RET-01",
+    "NOT model quality: the fixture model; this run measured a regressed pipeline",
+    "Provider behavior on 2026-09-20 — re-run rather than extrapolate",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ]
+}
