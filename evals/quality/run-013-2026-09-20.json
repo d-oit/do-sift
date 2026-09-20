@@ -1,0 +1,424 @@
+{
+  "runId": "run-013",
+  "protocol": "docs/quality-gate.md (v1)",
+  "executedAtUtc": "2026-09-20T15:08-15:18Z (driver timestamps; operator-local 2026-09-20)",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": "HEAD 715740d — SRC-23 pinned-IP transport live + SRC-18/19/20/21 + SRC-16/17 lineage; fixture model (harness measured, not model quality)",
+  "scale": { "0": "fail", "1": "pass", "0.5": "partial" },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "providerHealthSummary": {
+    "wikipedia": "8/8 sub-searches ok",
+    "marginalia": "1/8 ok (case-06 only) — the variance series now reads 1/8 -> 5/8 -> 6/8 -> 7/8 -> 1/8 across five measured runs",
+    "schemaNote": "every content fetch this run went through the SRC-23 pinned https transport — the run IS the live validation"
+  },
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/SQLite", "relevanceScore": 0.716, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "relevanceScore": 0.647,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "documentsStored": 2,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 0,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "marginalia timed out — the wiki-only 2-source shape; FTS5 named in clean prose; the darksi.de source of runs 011/012 was not served"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "Who invented the world wide web?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web",
+          "relevanceScore": 0.828,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Deep_web", "relevanceScore": 0.666, "low": true }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 51,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 51,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the Deep_web LOW receipt returns (the most persistent receipt in the series); Tim named directly; marginalia timed out"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What causes auroras?",
+      "sources": [
+        { "url": "https://en.wikipedia.org/wiki/Aurora", "relevanceScore": 0.811, "low": false },
+        {
+          "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F",
+          "relevanceScore": 0.635,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Aurora_(singer)",
+          "relevanceScore": 0.674,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 50,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 50,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "BOTH wrong-entity dopps (singer + album) stored as honest LOW receipts, zero block content — the run-009 shape without the universetoday contribution (marginalia down)"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What was the Treaty of Westphalia?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia",
+          "relevanceScore": 0.849,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees",
+          "relevanceScore": 0.689,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/North_Rhine-Westphalia",
+          "relevanceScore": 0.75,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 48,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 48,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "CONFIRMS THE MECHANISM: with marginalia down, the NRW dopp reclaims the third fetch slot and its 'Operation Marriage' block surfaces AGAIN (runs 009/010 surfaced it, 011/012 displaced it via marginalia's cryptiana, 013 back) — the dopp's presence is a direct function of second-provider health, now demonstrated in both directions",
+        "5/6 blocks on-topic Peace-of-Westphalia prose"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How does mRNA vaccination work?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough",
+          "relevanceScore": 0.545,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/J._Bart_Classen",
+          "relevanceScore": 0.641,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/MRNA_vaccine",
+          "relevanceScore": 0.85,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 32,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 32,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the run-010 shape: McCullough + Classen as honest LOW receipts, the mRNA_vaccine anchor carrying all 6 clean blocks"
+      ]
+    },
+    {
+      "id": "06",
+      "question": "What is the tallest mountain on Earth?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain",
+          "relevanceScore": 0.803,
+          "low": false
+        },
+        { "url": "https://en.wikipedia.org/wiki/Mountain", "relevanceScore": 0.822, "low": false },
+        {
+          "url": "https://thehimalayanvoice.blogspot.com/2021/12/is-mount-everest-really-tallest.html",
+          "relevanceScore": 0.855,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 40,
+        "fetchErrors": 1,
+        "denied": 0,
+        "skippedBudget": 2,
+        "embedded": 40,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": true }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the ONLY case marginalia answered — and again the Everest-class blogspot (0.855) with the Mauna-Kea tallest-vs-highest block answering directly (fourth time in six runs)",
+        "SRC-23 LIVE: the blogspot page was fetched through the pinned https transport (safe-fetch, no fetchImpl) — real-world TLS to an arbitrary host with hostname SNI/cert identity, zero transport failures",
+        "1 fetch error (guard refusal on a further marginalia hit — the recurring advisory class)"
+      ]
+    },
+    {
+      "id": "07",
+      "question": "What is a zk-SNARK?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof",
+          "relevanceScore": 0.496,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof",
+          "relevanceScore": 0.57,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Firo_(cryptocurrency)",
+          "relevanceScore": 0.466,
+          "low": true
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 37,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 37,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "NEW receipt: Firo (a cryptocurrency BUILT on zk-SNARKs — topically adjacent, honestly LOW-marked at 0.466, out of the pool); zkp.science was not served this run (marginalia down)",
+        "ALL 5 blocks clean ZKP-article prose — extraction 1.0 with the classifier's steady state holding across pool compositions",
+        "every stored source below floor -> ANS-09 scoped-pool fallback (validated again)"
+      ]
+    },
+    {
+      "id": "08",
+      "question": "In what year did the Berlin Wall fall?",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall",
+          "relevanceScore": 0.779,
+          "low": false
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin",
+          "relevanceScore": 0.652,
+          "low": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Berlin_Wall",
+          "relevanceScore": 0.793,
+          "low": false
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "documentsStored": 3,
+        "passagesStored": 49,
+        "fetchErrors": 0,
+        "denied": 0,
+        "skippedBudget": 3,
+        "embedded": 49,
+        "noiseBackfilled": 0
+      },
+      "providerHealth": [
+        { "provider": "wikipedia", "ok": true },
+        { "provider": "marginalia", "ok": false }
+      ],
+      "evidenceFromRun": "run",
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "the concert dopp LOW receipt; block 1 answers directly; tedmontgomery was not served (marginalia down)"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.6875,
+    "extractionCleanliness": 1,
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.9375
+  },
+  "mechanicalChecks": {
+    "src23LiveValidation": "THE DECLARED VALIDATION: every content fetch of the run — the wikipedia extract-API calls (https to en.wikipedia.org, every case) AND the arbitrary-host blogspot fetch (case-06) — went through the pinned-IP transport (no fetchImpl injected in this composition), completing with ZERO transport, certificate, or SNI failures; the HTTP/1.1 shift produced no observable latency regression (per-case wall times consistent with runs 010-012 at the same >=30s pacing)",
+    "uFFFDReplacementChars": "0 matches across all 8 answer files",
+    "src21Classifiers": "[BCCT11]-class: 0; lowercase/code-comment block starts: 0 (precise block-start scan) — the classifier steady state holds across pool compositions",
+    "src18VerbatimShapes": "0 matches",
+    "citationMarkersInBlocks": 0,
+    "wikitextHeadingMarkers": 0,
+    "injectionPatternScan": "0 matches across all 16 capture files",
+    "unCitedBlocks": 0,
+    "blockCitationCount": "45 blocks / 45 citations (1 per block, fixture-model verbatim composition)",
+    "emptyRunCondition": "no case ended with an empty answer; all 8 evidenceFromRun 'run'; zero degradations; zero cached",
+    "f8RateLimit": "0 x 429s; 1 fetch error (case-06 guard refusal, advisory); >=30s pacing per driver timestamps (15:08:55 first case, 15:18:14 done)",
+    "f7PortProcessHygiene": "port 18124 verified free pre-run; post-run kill-tree immediate (both tree PIDs killed, no listener); server launched with the explicit main() invocation",
+    "storeProfile": "23 documents / 339 passages stored, 339 embedded, 0 noiseBackfilled (all classified at store time)"
+  },
+  "comparison": {
+    "baseline": "run-012 (2026-09-19, 7/8 marginalia health)",
+    "perDimension": {
+      "retrievalRelevance": "0.875 -> 0.6875 — the plateau line returns EXACTLY when marginalia's health does (1/8): case-04's dopp displacement reversed, cases 01/05 lost their marginalia uniques, and the only two 1s are case-06 (the one case marginalia answered) and case-07. The run-011/012 rises were provider-health-driven and this run proves the converse — the receipts measure the binding constraint",
+      "extractionCleanliness": "0.9375 -> 1.0 — full recovery WITH a different pool composition (no zkp.science at all this run): the classifier's classified classes stay out regardless of which pages are served",
+      "citationResolution": "1 -> 1",
+      "degradationHonesty": "1 -> 1 — seven marginalia timeouts within one run, all reported per-case, all runs completed grounded",
+      "injectionObservation": "1 -> 1"
+    },
+    "meanAll": "0.9625 -> 0.9375 (the swing is entirely the retrieval dimension following provider health)",
+    "src23Verdict": "WORKING LIVE — the pinned https transport completed every content fetch (fixed-host extract API + arbitrary-host blogspot) with zero transport/cert/SNI failures and no observable latency regression; the R-11 closure holds under real-world traffic",
+    "provenanceNote": "fresh captures on disk under .do-harness/qual-run-013/ (16 files + server.log + driver.log); executed and scored same-day at HEAD 715740d by the scoring agent"
+  },
+  "findings": [
+    "SRC-23's pinned https transport is validated under real-world traffic: arbitrary-host TLS with hostname SNI/cert identity, zero failures, no latency regression",
+    "the retrieval trend's mechanism is now demonstrated in BOTH directions: rises with marginalia healthy (0.75 -> 0.8125 -> 0.875), plateau with it down (0.6875) — including the NRW dopp reclaiming its fetch slot in case-04 exactly when marginalia's slot vanished",
+    "marginalia's five-run health series (1/8, 5/8, 6/8, 7/8, 1/8) is the strongest quantitative case yet for the api2 key",
+    "extraction at 1.0 across a different pool composition — the classifier steady state holds",
+    "the Firo receipt (a zk-SNARK cryptocurrency, LOW-marked) shows the receipt system handling topically-adjacent-but-not-answer sources honestly"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated) — same caveat as RET-01",
+    "NOT model quality: the fixture model composes blocks from stored evidence; fluency/completeness/reasoning unmeasured",
+    "Provider behavior on 2026-09-20 — re-run rather than extrapolate (sources.md 90-day rule)",
+    "Extraction scored on answer-level blocks; the 1.0 reflects this run's pool composition (no zkp.science served)",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ]
+}
