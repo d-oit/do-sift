@@ -245,8 +245,18 @@ cross-platform. First push failed upstream's `loc` sensor (hook_script.rs
 at 562 lines over its 500-line cap) — repaired by moving binary
 resolution into a new `binary.rs` module (288 lines; hook_script 287,
 re-exports keep hooks/doctor import paths). All 9 upstream CI checks
-green on the PR, including `verify` and `windows`. Drop the
-`DO_HARNESS_BIN` note from AGENTS.md once a release carries #133.
+green on the PR, including `verify` and `windows`.
+
+**Merged upstream 2026-09-20** (merge commit `a983b12`; feature branch
+auto-deleted). Not yet in a release — v0.1.1 is still the newest tag, and
+the release workflow builds the Windows zip per tag. The native retry
+(`doctor` on Windows without `DO_HARNESS_BIN`, expecting a `path:` binary
+resolution) is therefore gated on the next upstream tag; cutting a
+release is an owner action (approval boundary: publishing). After that
+release: install the new zip into `~/.local/bin`, remove the
+`DO_HARNESS_BIN` user env var, retry `do-harness doctor`, then drop the
+workaround note from `AGENTS.md` + `dev-signals` step 5 and refresh the
+version lines.
 
 **Provenance note:** these doc edits were wiped twice the same evening by
 a concurrent session's `git reset --hard origin/main` (uncommitted
