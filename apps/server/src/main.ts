@@ -24,7 +24,7 @@ import {
   USER_AGENT,
   wikipediaExtractUrl,
 } from "@do-sift/plugin-search-wikipedia";
-import { safeFetch, type DnsResolver, type FetchLike } from "@do-sift/safe-fetch";
+import { pinnedFetch, safeFetch, type DnsResolver, type FetchLike } from "@do-sift/safe-fetch";
 import {
   createMergedSearchProvider,
   createResearchServer,
@@ -137,7 +137,22 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     config: { allowlist: config.fetchAllowlist },
   } as unknown as Parameters<typeof siteAccess.activate>[0]);
 
-  const fetchImpl: FetchLike = deps.fetchImpl ?? fetch;
+  /**
+   * SRC-24 (R-11 closure completed for search API calls): the adapters'
+   * default transport is pinnedFetch — the same guard pipeline and
+   * pinned connect as content fetches, in transport-only mode (the
+   * adapters own their 429/502/503/504 envelopes and JSON validation).
+   * Hermetic tests injecting deps.fetchImpl delegate unchanged. The
+   * 15s backstop sits above the adapters' own 10s envelopes so THEIR
+   * timeout mapping (and receipt text) fires first.
+   */
+  const adapterFetch: FetchLike =
+    deps.fetchImpl ??
+    pinnedFetch({
+      dns: deps.dns ?? realDns,
+      checkHost: (host) => siteAccess.assertAllowed(host),
+      timeoutMs: 15_000,
+    });
   let search: SearchProvider;
   let fetchPage: (fetchUrl: string) => Promise<PageContent>;
   let extract: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
@@ -165,7 +180,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     for (const choice of config.searchProviders) {
       if (choice === "marginalia") {
         // SRC-15: the second keyless provider (R-16 structural lever).
-        const marginalia = createMarginaliaSearch({ fetchImpl });
+        const marginalia = createMarginaliaSearch({ fetchImpl: adapterFetch });
         await marginalia.activate({
           events: { emit: () => {} },
           pluginName: "search-marginalia",
@@ -174,7 +189,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         } as unknown as Parameters<typeof marginalia.activate>[0]);
         liveAdapters.push(marginalia);
       } else if (choice === "wikipedia") {
-        const wikipedia = createWikipediaSearch({ fetchImpl });
+        const wikipedia = createWikipediaSearch({ fetchImpl: adapterFetch });
         await wikipedia.activate({
           events: { emit: () => {} },
           pluginName: "search-wikipedia",

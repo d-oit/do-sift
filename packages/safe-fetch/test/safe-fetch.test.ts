@@ -419,3 +419,89 @@ describe("charset-aware text decode (SRC-20)", () => {
     expect(res.text).toBe("café");
   });
 });
+
+describe("transport-only mode (SRC-24, enforceResponsePolicy: false)", () => {
+  it("returns non-2xx statuses to the caller instead of throwing (429 retry envelopes)", async () => {
+    const res = await safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({
+        fetchImpl: makeFetch(() => htmlResponse("slow down", 429, { "retry-after": "7" })),
+        enforceResponsePolicy: false,
+      }),
+    );
+    expect(res.status).toBe(429);
+    // retry envelopes read Retry-After off the response headers
+    expect(res.headers.get("retry-after")).toBe("7");
+  });
+
+  it("returns a non-JSON 200 without the MIME guard firing (adapters own the typed error)", async () => {
+    const res = await safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({
+        fetchImpl: makeFetch(
+          () =>
+            new Response("<html>gateway status page</html>", {
+              status: 200,
+              headers: { "content-type": "text/html" },
+            }),
+        ),
+        allowedMimePrefixes: ["application/json"],
+        enforceResponsePolicy: false,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.text).toContain("gateway status page");
+  });
+
+  it("still refuses private resolutions before any socket", async () => {
+    const p = safeFetch(
+      "http://pinned.test/x",
+      makeOptions({ dns: makeDns(["127.0.0.1"]), enforceResponsePolicy: false }),
+    );
+    await expect(kindOfAsync(p)).resolves.toBe("private-ip");
+  });
+
+  it("keeps the size cap in transport mode", async () => {
+    const big = "x".repeat(70 * 1024);
+    const p = safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({ fetchImpl: makeFetch(() => htmlResponse(big)), enforceResponsePolicy: false }),
+    );
+    await expect(kindOfAsync(p)).resolves.toBe("size");
+  });
+});
+
+describe("external signal (SRC-24, SafeFetchOptions.signal)", () => {
+  it("aborts the in-flight request when the caller's signal fires", async () => {
+    const controller = new AbortController();
+    const never = new Promise<Response>(() => {});
+    const p = safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({
+        fetchImpl: makeFetch(() => never),
+        signal: controller.signal,
+        timeoutMs: 10_000,
+      }),
+    );
+    setTimeout(() => controller.abort(), 50);
+    await expect(kindOfAsync(p)).resolves.toBe("timeout");
+  });
+
+  it("refuses before dispatch when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let called = 0;
+    const p = safeFetch(
+      `http://${PUBLIC_V4}/x`,
+      makeOptions({
+        fetchImpl: makeFetch(() => {
+          called++;
+          return htmlResponse("x");
+        }),
+        signal: controller.signal,
+      }),
+    );
+    await expect(kindOfAsync(p)).resolves.toBe("timeout");
+    expect(called).toBe(0);
+  });
+});
