@@ -8,9 +8,7 @@ bounded synthesis call.
 
 ## Architecture
 
-Everything is a plugin (inspired by the everything-is-a-plugin style of
-[deepseek-harness](https://github.com/deepseek-ai/deepseek-harness), adopted as
-a concept — not a dependency):
+Everything is a plugin
 
 - `packages/kernel` — plugin manifest validation, lifecycle, capability grants
 - `packages/contracts` — shared zod schemas (models, search, harnesses, evidence)
