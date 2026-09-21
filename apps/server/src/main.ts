@@ -13,10 +13,11 @@
  */
 import { createClient, type Client } from "@libsql/client";
 import { AuthService, StaticOidcVerifier } from "@do-sift/auth";
-import type { SearchProvider } from "@do-sift/contracts";
+import type { ModelProvider, SearchProvider } from "@do-sift/contracts";
 import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
 import type { PageContent } from "@do-sift/plugin-harness-research";
+import { createOpenAICompatModel } from "@do-sift/plugin-model-openai-compat";
 import { createMarginaliaSearch, pageHtmlToText } from "@do-sift/plugin-search-marginalia";
 import { createSiteAccessPolicy } from "@do-sift/plugin-policy-siteaccess";
 import {
@@ -108,6 +109,12 @@ export interface ComposeDeps {
   fetchImpl?: FetchLike | undefined;
   /** Test seam: DNS resolver for safe-fetch (tests stay hermetic). */
   dns?: DnsResolver | undefined;
+  /**
+   * Test seam: the resolved model API key value (production reads the env
+   * var NAMED by DO_SIFT_MODEL_API_KEY_SECRET instead — the secret itself
+   * never lives in config).
+   */
+  modelApiKey?: string | undefined;
 }
 
 export interface ComposedApp {
@@ -119,6 +126,21 @@ export interface ComposedApp {
   /** Bound port (the listen() result). */
   port: number;
   close(): Promise<void>;
+}
+
+/** Startup-log model label: key posture only — never names, never values. */
+function modelLabel(config: AppConfig): string {
+  if (config.modelProvider === undefined) return "not configured (/api/answer → 501)";
+  if (config.modelProvider === "fixture") return "fixture (synthetic, dev only)";
+  const oc = config.modelOpenAI;
+  if (oc === undefined) return "openai-compat (missing options — refusing would have fired first)";
+  if (oc.apiKeySecret === undefined) {
+    return `openai-compat (${oc.modelId} @ ${oc.baseURL}; keyless)`;
+  }
+  if (oc.useApiKey) {
+    return `openai-compat (${oc.modelId} @ ${oc.baseURL}; key: configured)`;
+  }
+  return `openai-compat (${oc.modelId} @ ${oc.baseURL}; key disabled by config)`;
 }
 
 export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Promise<ComposedApp> {
@@ -306,7 +328,47 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     embedder = await createFastEmbedEmbedder();
   }
 
-  const model = config.modelProvider === "fixture" ? new FakeModelProvider() : undefined;
+  let model: ModelProvider | undefined;
+  if (config.modelProvider === "fixture") {
+    model = new FakeModelProvider();
+  } else if (config.modelProvider === "openai-compat" && config.modelOpenAI !== undefined) {
+    const oc = config.modelOpenAI;
+    // Key discipline: the secret NAME comes from config; the VALUE comes
+    // from the process environment (production) or the injected test seam —
+    // never a config file, never logged. useApiKey=false forces keyless
+    // even when a secret is named (the operator kill-switch).
+    let apiKey: string | undefined;
+    if (oc.useApiKey && oc.apiKeySecret !== undefined) {
+      const resolved = deps.modelApiKey ?? process.env[oc.apiKeySecret];
+      if (resolved === undefined || resolved === "") {
+        throw new Error(
+          "DO_SIFT_MODEL_API_KEY_SECRET is set but its env var holds no value (set it or inject the test seam) — refusing to start half-configured instead of silently going keyless",
+        );
+      }
+      apiKey = resolved;
+    }
+    const compat = createOpenAICompatModel({
+      ...(apiKey === undefined ? {} : { apiKey }),
+      // Host-direct transport (operator-chosen URL, not user input):
+      // plain fetch, NOT the pinned safe-fetch pipeline — loopback model
+      // servers (Ollama-local) sit behind the guards' private-IP refusal
+      // by design. Hermetic tests inject deps.fetchImpl.
+      ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}),
+    });
+    await compat.activate({
+      events: { emit: () => {} },
+      pluginName: "model-openai-compat",
+      config: {
+        baseURL: oc.baseURL,
+        modelId: oc.modelId,
+        responseFormat: oc.responseFormat,
+        schemaName: oc.schemaName,
+        termsAcceptedAt: oc.termsAcceptedAt,
+        sourcesEntry: oc.sourcesEntry,
+      },
+    } as unknown as Parameters<typeof compat.activate>[0]);
+    model = compat;
+  }
 
   const runtime = await createRuntime({
     client,
@@ -377,9 +439,13 @@ export async function main(env: Record<string, string | undefined> = process.env
       ? "fixture (synthetic, dev only)"
       : `${compositionLabel} (live — result metadata CC BY-SA (wikipedia) / CC BY-NC-SA (marginalia), attribution preserved; fetch allowlist: ${config.fetchAllowlist.length > 0 ? config.fetchAllowlist.join(",") : "default posture"})`;
   console.log(
-    `  search: ${searchLabel} | model: ${config.modelProvider === undefined ? "not configured (/api/answer → 501)" : "fixture (synthetic, dev only)"} | embedder: ${config.embedder ?? "keyword-only"}`,
+    `  search: ${searchLabel} | model: ${modelLabel(config)} | embedder: ${config.embedder ?? "keyword-only"}`,
   );
-  console.log("  budget: no caps configured (fixture/live-search mode makes no billable calls)");
+  console.log(
+    config.modelProvider === "openai-compat"
+      ? "  budget: usage reconciles actuals per answer; keyed (billable-capable) hosts need daily caps + the router terms gate + INV-003 grant (see plans/sources.md)"
+      : "  budget: no caps configured (fixture/live-search mode makes no billable calls)",
+  );
 
   const shutdown = (): void => {
     void app.close().then(() => process.exit(0));
