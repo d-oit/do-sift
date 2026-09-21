@@ -11,6 +11,10 @@ local file or Turso remote), the **auth service** (owner allowlist; OIDC
 bearer tokens, or a loopback-only dev bypass), the **research/answer
 services** (safe-fetch + site-access policy + budgets + citation gate),
 and the **HTTP server** (`createResearchServer` on Node's `node:http`).
+The packaged entrypoint composes them through the `createRuntime` seam
+(`packages/server/src/runtime.ts`, RET-04: one options object wires
+repositories, budgets, research embed-on-store, and answer hybrid
+retrieval), then serves the runtime over HTTP.
 Plugins never touch the network or filesystem directly; the kernel mediates
 via capability-checked services (ADR 0004).
 
@@ -82,17 +86,17 @@ npx tsx apps/server/src/index.ts
 # → do-sift listening on http://127.0.0.1:8080
 ```
 
-| Variable                                   | Meaning                                                                                                                   | Default              |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `DO_SIFT_OWNERS`                           | Comma-separated owner allowlist (required; seeds the owners registry)                                                     | —                    |
-| `DO_SIFT_SEARCH_PROVIDER`                  | Search adapter: `fixture` (synthetic, offline) or `wikipedia` (live — free, keyless; terms-checked in `plans/sources.md`) | —                    |
-| `DO_SIFT_MODEL_PROVIDER`                   | Answer model; `fixture` wires `/api/answer`, unset answers 501 (live providers gated behind ANS-02 + paid grants)         | unset                |
-| `DO_SIFT_EMBEDDER`                         | `fastembed` = hybrid retrieval (local ONNX); unset = keyword-only bm25                                                    | unset                |
-| `DO_SIFT_DB_URL`                           | libSQL URL; local `file:` only in the entrypoint (Turso runs through the storage plugin + kernel secrets)                 | `file:do-sift.db`    |
-| `DO_SIFT_DB_MIGRATIONS_DIR`                | Numbered migrations applied at startup                                                                                    | `migrations`         |
-| `DO_SIFT_HOST` / `DO_SIFT_PORT`            | Bind address/port                                                                                                         | `127.0.0.1` / `8080` |
-| `DO_SIFT_DEV_BYPASS` / `DO_SIFT_DEV_OWNER` | Loopback-only dev bypass (keep off outside dev)                                                                           | off                  |
-| `DO_SIFT_FETCH_ALLOWLIST`                  | Exhaustive fetch allowlist for the site-access policy (wired with the first live search adapter)                          | unset                |
+| Variable                                   | Meaning                                                                                                                                                                                                                                               | Default              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `DO_SIFT_OWNERS`                           | Comma-separated owner allowlist (required; seeds the owners registry)                                                                                                                                                                                 | —                    |
+| `DO_SIFT_SEARCH_PROVIDER`                  | Search adapter: `fixture` (synthetic, offline), `wikipedia` / `marginalia` (live, terms-checked in `plans/sources.md`), or a comma-separated merged list e.g. `wikipedia,marginalia` (SRC-16 interleave + URL dedup; `fixture` never mixes with live) | —                    |
+| `DO_SIFT_MODEL_PROVIDER`                   | Answer model; `fixture` wires `/api/answer`, unset answers 501 (live providers gated behind ANS-02 + paid grants)                                                                                                                                     | unset                |
+| `DO_SIFT_EMBEDDER`                         | `fastembed` = hybrid retrieval (local ONNX); unset = keyword-only bm25                                                                                                                                                                                | unset                |
+| `DO_SIFT_DB_URL`                           | libSQL URL; local `file:` only in the entrypoint (Turso runs through the storage plugin + kernel secrets)                                                                                                                                             | `file:do-sift.db`    |
+| `DO_SIFT_DB_MIGRATIONS_DIR`                | Numbered migrations applied at startup                                                                                                                                                                                                                | `migrations`         |
+| `DO_SIFT_HOST` / `DO_SIFT_PORT`            | Bind address/port                                                                                                                                                                                                                                     | `127.0.0.1` / `8080` |
+| `DO_SIFT_DEV_BYPASS` / `DO_SIFT_DEV_OWNER` | Loopback-only dev bypass (keep off outside dev)                                                                                                                                                                                                       | off                  |
+| `DO_SIFT_FETCH_ALLOWLIST`                  | Exhaustive fetch allowlist for the site-access policy (wired with the first live search adapter)                                                                                                                                                      | unset                |
 
 Migrations run automatically at startup; every allowlisted owner is
 seeded into the owners registry. Research mode makes zero LLM calls by
@@ -119,6 +123,31 @@ search adapter's single 429 retry never fires before the instructed
 live test runs in CI — the
 live shape was verified by the recorded SRC-06 spike, and offline tests
 use recorded fixtures.
+
+### Live search (marginalia, merged)
+
+`DO_SIFT_SEARCH_PROVIDER=marginalia` runs the free, keyless legacy path
+`api.marginalia.nu/public/search` behind its dated terms gate
+(`plans/sources.md`, checked 2026-09-15; re-verified 2026-09-21 against
+the canonical docs at `https://about.marginalia-search.com/article/api`).
+Result metadata is **CC BY-NC-SA 4.0** (non-commercial research tool;
+linked pages carry their own licenses); the evidence store preserves
+attribution. `DO_SIFT_SEARCH_PROVIDER=wikipedia,marginalia` composes the
+merged provider (SRC-16: fan-out, interleave + canonical-URL dedup);
+run summaries carry per-provider `providerHealth` (SRC-17) and the bundled
+UI renders it as a status line (SRC-22). The api2 host
+(`api2.marginalia-search.com`, `API-Key` header) is NOT wired: the shared
+literal key `public` probed 429 on 2026-09-21, so migration waits on a
+personal key (owner email) or a healthy re-probe — see `plans/sources.md`.
+
+### Runtime defaults (RET-04 seam)
+
+`apps/server` passes only `client/search/fetchPage/extract/model/embedder`
+into `createRuntime`; answer-pool shaping stays on the designed defaults
+with no env wiring: `relevanceFloor` 0.70 (SRC-11), noise-class exclusion
+on (SRC-12). `DO_SIFT_EMBEDDER=fastembed` flips both sides to hybrid
+(research embed-on-store + answer RRF); unset keeps byte-identical
+keyword-only bm25.
 
 ### Container
 

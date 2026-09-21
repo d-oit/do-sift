@@ -1,0 +1,19 @@
+{
+  "name": "model-openai-compat",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "model",
+  "description": "OpenAI-compatible chat-completions adapter (offline slice). One bounded POST {baseURL}/chat/completions with response_format json_schema over the DraftAnswer blocks shape; usage from provider counts with estimator fallback. No tools field, no retries. Zero capabilities; https required except loopback http. Not wired into apps/server — live use needs the sources.md gate.",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "baseURL": "",
+    "modelId": "",
+    "responseFormat": "strict",
+    "schemaName": "grounded_answer"
+  },
+  "entry": "createOpenAICompatModel"
+}

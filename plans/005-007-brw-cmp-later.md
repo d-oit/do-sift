@@ -921,3 +921,14 @@ hard gate and is never weakened or skipped, so the TS 7 bump is DEFERRED
 until typescript-eslint ships support; the bump was reverted and the
 suite re-verified green (514/514). Dependabot PR #2 stays open and will
 be revisited at that point.
+
+### OPS-06 re-check (2026-09-21, agent) — TS 7 still blocked
+
+`npm view typescript-eslint@8.70.0 peerDependencies` →
+`typescript: '>=4.8.4 <6.1.0'` (local `tsc 5.9.3` in range;
+registry latest `typescript 7.0.2` out of range);
+`typescript-eslint#10940` still open (tsgo/type-information enhancement,
+no TS 7 support shipped). Official docs root confirms `v8.70.0` latest.
+Decision: keep TS 7 DEFERRED, no code change. Tree verified clean:
+`npm run check:fast` 5/5, `npm run signals -- verify --set feedback`
+green (receipt `.do-harness/evidence.feedback.json`).
