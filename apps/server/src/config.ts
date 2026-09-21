@@ -171,13 +171,24 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
       );
     }
     const apiKeySecretRaw = env.DO_SIFT_MODEL_API_KEY_SECRET ?? "";
+    // CodeQL clear-text-logging hygiene: this var's name marks its value
+    // as sensitive, so the refusal below must NOT echo the value the way
+    // parseBool does for ordinary flags — name the variable, never the value.
+    const useApiKeyRaw = env.DO_SIFT_MODEL_USE_API_KEY ?? "";
+    let useApiKey = true;
+    if (useApiKeyRaw !== "") {
+      if (useApiKeyRaw === "1" || useApiKeyRaw === "true") useApiKey = true;
+      else if (useApiKeyRaw === "0" || useApiKeyRaw === "false") useApiKey = false;
+      else {
+        throw new Error(
+          'DO_SIFT_MODEL_USE_API_KEY must be "1", "true", "0", or "false" to switch key sending',
+        );
+      }
+    }
     const init: OpenAICompatModelEnv = {
       baseURL: baseURL.trim(),
       modelId: modelId.trim(),
-      useApiKey:
-        env.DO_SIFT_MODEL_USE_API_KEY === undefined || env.DO_SIFT_MODEL_USE_API_KEY === ""
-          ? true
-          : parseBool("DO_SIFT_MODEL_USE_API_KEY", env.DO_SIFT_MODEL_USE_API_KEY),
+      useApiKey,
       responseFormat: responseFormatRaw,
       schemaName:
         env.DO_SIFT_MODEL_SCHEMA_NAME?.trim() === "" || env.DO_SIFT_MODEL_SCHEMA_NAME === undefined
