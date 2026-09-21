@@ -130,7 +130,11 @@ function parseBaseURL(value: unknown): string {
   }
   let url: URL;
   try {
-    url = new URL(value.trim().replace(/\/+$/u, ""));
+    // Strip trailing slashes without a regex (CodeQL js/redos hygiene —
+    // a `\/+$` pattern can backtrack on slash-heavy input).
+    let normalized = value.trim();
+    while (normalized.endsWith("/")) normalized = normalized.slice(0, -1);
+    url = new URL(normalized);
   } catch {
     throw new ModelProviderError(
       "http",
