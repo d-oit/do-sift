@@ -5,16 +5,42 @@
  * do nothing must refuse to start instead.
  *
  * Honesty rules encoded here:
- * - Fixture providers are opt-in labels, never defaults; live providers do
- *   not exist yet (SRC-02/ANS-02 gates: sources.md entries + paid grants).
+ * - Fixture providers are opt-in labels, never defaults; live search needs
+ *   its sources.md entry (SRC-02 gate) and a live model needs its terms
+ *   pair (DO_SIFT_MODEL_TERMS_ACCEPTED_AT + DO_SIFT_MODEL_SOURCES_ENTRY —
+ *   paid use additionally needs the router terms gate + INV-003 grant).
  * - Remote DB URLs refuse: the Turso path runs through the storage
  *   plugin's kernel-mediated secret resolution, which the bare entrypoint
  *   does not replace (docs/deployment.md).
  */
 
 export type SearchProviderChoice = "fixture" | "wikipedia" | "marginalia";
-export type ModelProviderChoice = "fixture";
+export type ModelProviderChoice = "fixture" | "openai-compat";
 export type EmbedderChoice = "fastembed";
+export type ModelResponseFormat = "strict" | "best-effort" | "json";
+
+export interface OpenAICompatModelEnv {
+  baseURL: string;
+  modelId: string;
+  /**
+   * NAME of the env var holding the provider key (never the key itself —
+   * same posture as DO_SIFT_DB_AUTH_TOKEN_SECRET). Undefined = keyless
+   * (Ollama-class loopback servers). When named, the entrypoint resolves
+   * it at startup and refuses to start if it is missing or empty.
+   */
+  apiKeySecret?: string | undefined;
+  /**
+   * Kill-switch for key sending (default true): "if a key exists, use it"
+   * unless the operator sets this to "0"/"false", which forces keyless
+   * operation even when apiKeySecret is configured.
+   */
+  useApiKey: boolean;
+  responseFormat: ModelResponseFormat;
+  schemaName: string;
+  /** Dated sources.md gate, mirrored into the plugin activation terms. */
+  termsAcceptedAt: string;
+  sourcesEntry: string;
+}
 
 export interface AppConfig {
   dbUrl: string;
@@ -29,6 +55,8 @@ export interface AppConfig {
   searchProviders: SearchProviderChoice[];
   /** Unset → the answer surface stays unwired: /api/answer answers 501. */
   modelProvider?: ModelProviderChoice | undefined;
+  /** Set iff modelProvider is "openai-compat" (fail-closed parsing below). */
+  modelOpenAI?: OpenAICompatModelEnv | undefined;
   /** Unset → keyword-only bm25 on both research and answer retrieval. */
   embedder?: EmbedderChoice | undefined;
   /** Exhaustive when non-empty (site-access policy semantics). */
@@ -95,10 +123,71 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
   }
 
   const modelRaw = env.DO_SIFT_MODEL_PROVIDER;
-  if (modelRaw !== undefined && modelRaw !== "" && modelRaw !== "fixture") {
+  if (
+    modelRaw !== undefined &&
+    modelRaw !== "" &&
+    modelRaw !== "fixture" &&
+    modelRaw !== "openai-compat"
+  ) {
     throw new Error(
-      `DO_SIFT_MODEL_PROVIDER must be "fixture" or unset (got "${modelRaw}"); unset = /api/answer answers 501; live providers are gated behind ANS-02 + paid-capability grants`,
+      `DO_SIFT_MODEL_PROVIDER must be "fixture", "openai-compat", or unset (got "${modelRaw}"); unset = /api/answer answers 501; "openai-compat" needs DO_SIFT_MODEL_BASE_URL + DO_SIFT_MODEL_ID + the terms pair, with an optional key via DO_SIFT_MODEL_API_KEY_SECRET (paid use additionally needs the router terms gate + INV-003 grant)`,
     );
+  }
+
+  let modelOpenAI: OpenAICompatModelEnv | undefined;
+  if (modelRaw === "openai-compat") {
+    const baseURL = env.DO_SIFT_MODEL_BASE_URL ?? "";
+    const modelId = env.DO_SIFT_MODEL_ID ?? "";
+    const termsAcceptedAt = env.DO_SIFT_MODEL_TERMS_ACCEPTED_AT ?? "";
+    const sourcesEntry = env.DO_SIFT_MODEL_SOURCES_ENTRY ?? "";
+    if (baseURL.trim() === "") {
+      throw new Error(
+        "DO_SIFT_MODEL_BASE_URL is required with DO_SIFT_MODEL_PROVIDER=openai-compat (e.g. http://localhost:11434/v1 for Ollama-local, https://api.groq.com/openai/v1 for Groq)",
+      );
+    }
+    if (modelId.trim() === "") {
+      throw new Error(
+        "DO_SIFT_MODEL_ID is required with DO_SIFT_MODEL_PROVIDER=openai-compat (the provider model id, e.g. gpt-oss-20b)",
+      );
+    }
+    if (!/^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/u.test(termsAcceptedAt)) {
+      throw new Error(
+        "DO_SIFT_MODEL_TERMS_ACCEPTED_AT must record the date the provider terms were checked (mirrored into the plugin activation gate; see plans/sources.md)",
+      );
+    }
+    if (sourcesEntry.trim() === "") {
+      throw new Error(
+        "DO_SIFT_MODEL_SOURCES_ENTRY must name the plans/sources.md entry that clears this provider (mirrored into the plugin activation gate)",
+      );
+    }
+    const responseFormatRaw = env.DO_SIFT_MODEL_RESPONSE_FORMAT ?? "strict";
+    if (
+      responseFormatRaw !== "strict" &&
+      responseFormatRaw !== "best-effort" &&
+      responseFormatRaw !== "json"
+    ) {
+      throw new Error(
+        `DO_SIFT_MODEL_RESPONSE_FORMAT must be "strict", "best-effort", or "json" (got "${responseFormatRaw}")`,
+      );
+    }
+    const apiKeySecretRaw = env.DO_SIFT_MODEL_API_KEY_SECRET ?? "";
+    const init: OpenAICompatModelEnv = {
+      baseURL: baseURL.trim(),
+      modelId: modelId.trim(),
+      useApiKey:
+        env.DO_SIFT_MODEL_USE_API_KEY === undefined || env.DO_SIFT_MODEL_USE_API_KEY === ""
+          ? true
+          : parseBool("DO_SIFT_MODEL_USE_API_KEY", env.DO_SIFT_MODEL_USE_API_KEY),
+      responseFormat: responseFormatRaw,
+      schemaName:
+        env.DO_SIFT_MODEL_SCHEMA_NAME?.trim() === "" || env.DO_SIFT_MODEL_SCHEMA_NAME === undefined
+          ? "grounded_answer"
+          : env.DO_SIFT_MODEL_SCHEMA_NAME.trim(),
+      termsAcceptedAt,
+      sourcesEntry: sourcesEntry.trim(),
+    };
+    if (apiKeySecretRaw.trim() !== "") init.apiKeySecret = apiKeySecretRaw.trim();
+    modelOpenAI = init;
   }
 
   const embedderRaw = env.DO_SIFT_EMBEDDER;
@@ -145,6 +234,9 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
     ...(devBypass && devOwner !== undefined && devOwner !== "" ? { devOwner } : {}),
     searchProviders: searchProviders as SearchProviderChoice[],
     ...(modelRaw === "fixture" ? { modelProvider: "fixture" as const } : {}),
+    ...(modelRaw === "openai-compat" && modelOpenAI !== undefined
+      ? { modelProvider: "openai-compat" as const, modelOpenAI }
+      : {}),
     ...(embedderRaw === "fastembed" ? { embedder: "fastembed" as const } : {}),
     fetchAllowlist: splitList(env.DO_SIFT_FETCH_ALLOWLIST),
   };

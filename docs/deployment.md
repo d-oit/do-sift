@@ -86,17 +86,24 @@ npx tsx apps/server/src/index.ts
 # → do-sift listening on http://127.0.0.1:8080
 ```
 
-| Variable                                   | Meaning                                                                                                                                                                                                                                               | Default              |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `DO_SIFT_OWNERS`                           | Comma-separated owner allowlist (required; seeds the owners registry)                                                                                                                                                                                 | —                    |
-| `DO_SIFT_SEARCH_PROVIDER`                  | Search adapter: `fixture` (synthetic, offline), `wikipedia` / `marginalia` (live, terms-checked in `plans/sources.md`), or a comma-separated merged list e.g. `wikipedia,marginalia` (SRC-16 interleave + URL dedup; `fixture` never mixes with live) | —                    |
-| `DO_SIFT_MODEL_PROVIDER`                   | Answer model; `fixture` wires `/api/answer`, unset answers 501 (live providers gated behind ANS-02 + paid grants)                                                                                                                                     | unset                |
-| `DO_SIFT_EMBEDDER`                         | `fastembed` = hybrid retrieval (local ONNX); unset = keyword-only bm25                                                                                                                                                                                | unset                |
-| `DO_SIFT_DB_URL`                           | libSQL URL; local `file:` only in the entrypoint (Turso runs through the storage plugin + kernel secrets)                                                                                                                                             | `file:do-sift.db`    |
-| `DO_SIFT_DB_MIGRATIONS_DIR`                | Numbered migrations applied at startup                                                                                                                                                                                                                | `migrations`         |
-| `DO_SIFT_HOST` / `DO_SIFT_PORT`            | Bind address/port                                                                                                                                                                                                                                     | `127.0.0.1` / `8080` |
-| `DO_SIFT_DEV_BYPASS` / `DO_SIFT_DEV_OWNER` | Loopback-only dev bypass (keep off outside dev)                                                                                                                                                                                                       | off                  |
-| `DO_SIFT_FETCH_ALLOWLIST`                  | Exhaustive fetch allowlist for the site-access policy (wired with the first live search adapter)                                                                                                                                                      | unset                |
+| Variable                                                          | Meaning                                                                                                                                                                                                                                               | Default              |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `DO_SIFT_OWNERS`                                                  | Comma-separated owner allowlist (required; seeds the owners registry)                                                                                                                                                                                 | —                    |
+| `DO_SIFT_SEARCH_PROVIDER`                                         | Search adapter: `fixture` (synthetic, offline), `wikipedia` / `marginalia` (live, terms-checked in `plans/sources.md`), or a comma-separated merged list e.g. `wikipedia,marginalia` (SRC-16 interleave + URL dedup; `fixture` never mixes with live) | —                    |
+| `DO_SIFT_MODEL_PROVIDER`                                          | Answer model: `fixture` (synthetic, offline), `openai-compat` (live OpenAI-shaped adapter — needs the model rows below + terms pair); unset answers 501                                                                                               | unset                |
+| `DO_SIFT_EMBEDDER`                                                | `fastembed` = hybrid retrieval (local ONNX); unset = keyword-only bm25                                                                                                                                                                                | unset                |
+| `DO_SIFT_DB_URL`                                                  | libSQL URL; local `file:` only in the entrypoint (Turso runs through the storage plugin + kernel secrets)                                                                                                                                             | `file:do-sift.db`    |
+| `DO_SIFT_DB_MIGRATIONS_DIR`                                       | Numbered migrations applied at startup                                                                                                                                                                                                                | `migrations`         |
+| `DO_SIFT_HOST` / `DO_SIFT_PORT`                                   | Bind address/port                                                                                                                                                                                                                                     | `127.0.0.1` / `8080` |
+| `DO_SIFT_DEV_BYPASS` / `DO_SIFT_DEV_OWNER`                        | Loopback-only dev bypass (keep off outside dev)                                                                                                                                                                                                       | off                  |
+| `DO_SIFT_FETCH_ALLOWLIST`                                         | Exhaustive fetch allowlist for the site-access policy (wired with the first live search adapter)                                                                                                                                                      | unset                |
+| `DO_SIFT_MODEL_BASE_URL`                                          | Model endpoint base (with `openai-compat` only): `http://localhost:11434/v1` (Ollama-local, keyless) or `https://…` (hosted; http refused off-loopback)                                                                                               | —                    |
+| `DO_SIFT_MODEL_ID`                                                | Provider model id (with `openai-compat` only)                                                                                                                                                                                                         | —                    |
+| `DO_SIFT_MODEL_API_KEY_SECRET`                                    | NAME of the env var holding the provider key (never the key; with `openai-compat` only) — keyless when unset; startup refuses if the named var is missing/empty                                                                                       | unset                |
+| `DO_SIFT_MODEL_USE_API_KEY`                                       | `1`/`true` (default): use the key when configured; `0`/`false` forces keyless even with a secret named (kill-switch)                                                                                                                                  | true                 |
+| `DO_SIFT_MODEL_RESPONSE_FORMAT`                                   | `strict` (default, constrained-decoding hosts) / `best-effort` / `json`                                                                                                                                                                               | strict               |
+| `DO_SIFT_MODEL_SCHEMA_NAME`                                       | Schema name sent in `response_format`                                                                                                                                                                                                                 | grounded_answer      |
+| `DO_SIFT_MODEL_TERMS_ACCEPTED_AT` / `DO_SIFT_MODEL_SOURCES_ENTRY` | Dated terms gate (with `openai-compat` only): checked date + `plans/sources.md` entry, mirrored into plugin activation (paid hosts additionally need router gate + INV-003 grant)                                                                     | —                    |
 
 Migrations run automatically at startup; every allowlisted owner is
 seeded into the owners registry. Research mode makes zero LLM calls by
@@ -149,6 +156,21 @@ on (SRC-12). `DO_SIFT_EMBEDDER=fastembed` flips both sides to hybrid
 (research embed-on-store + answer RRF); unset keeps byte-identical
 keyword-only bm25.
 
+### Live model (openai-compat)
+
+`DO_SIFT_MODEL_PROVIDER=openai-compat` wires the OpenAI-shaped adapter
+(`packages/plugins/plugin-model-openai-compat`): one bounded POST per
+answer with `response_format` json_schema over the DraftAnswer blocks,
+usage reconciled from provider counts. Key rule: if
+`DO_SIFT_MODEL_API_KEY_SECRET` names an env var holding a key, it is
+used (`Authorization: Bearer`); keyless when unset (Ollama-local);
+`DO_SIFT_MODEL_USE_API_KEY=0` forces keyless even with a secret named.
+A named-but-missing key refuses startup instead of silently going
+keyless. The startup log names the key posture (secret NAME only, never
+the value). Paid (billable-capable) hosts additionally need the router
+terms gate + INV-003 grant recorded in `plans/sources.md` — the
+entrypoint itself stays key-agnostic by design.
+
 ### Container
 
 The image's CMD is the service entrypoint with a `/healthz` liveness
@@ -194,10 +216,10 @@ per run — cite `.do-harness/evidence.verification.json` rather than memory.
 - Single owner; no multi-user deployment (plan 000 non-goal until
   OPS/QUAL gates).
 - No TLS, no rate limiting in the server itself (reverse proxy duty).
-- Live search (Wikipedia) exists behind its dated terms gate; live LLM
-  adapters and remote Turso via the entrypoint remain behind their
-  recorded gates (no credentials exist in this environment; paid APIs
-  need explicit grants). Extraction is a block heuristic after host
+- Live search (Wikipedia, Marginalia, merged) exists behind dated terms gates; the live
+  model path (`openai-compat`) is wired but unwired by default — first live use needs its
+  terms pair plus, for billable-capable hosts, the router gate + INV-003 grant (no
+  credentials exist in this environment). Extraction is a block heuristic after host
   HTML→text preprocessing — no DOM parsing (SRC-03 scope). Budgets are
   not yet env-wirable in the entrypoint; the fixture/live-search posture
   makes no billable calls.

@@ -13,7 +13,9 @@
     "baseURL": "",
     "modelId": "",
     "responseFormat": "strict",
-    "schemaName": "grounded_answer"
+    "schemaName": "grounded_answer",
+    "termsAcceptedAt": "",
+    "sourcesEntry": ""
   },
   "entry": "createOpenAICompatModel"
 }

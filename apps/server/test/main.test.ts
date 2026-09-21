@@ -116,6 +116,96 @@ describe("parseEnvConfig", () => {
       parseEnvConfig({ ...BASE_ENV, DO_SIFT_SEARCH_PROVIDER: "wikipedia" }).searchProviders,
     ).toEqual(["wikipedia"]);
   });
+
+  it("accepts openai-compat with baseURL, model, and terms; keyless unless a secret is named", () => {
+    const config = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_MODEL_PROVIDER: "openai-compat",
+      DO_SIFT_MODEL_BASE_URL: "http://localhost:11434/v1",
+      DO_SIFT_MODEL_ID: "probe-model",
+      DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
+      DO_SIFT_MODEL_SOURCES_ENTRY: "Model providers — candidate, checked 2026-09-21",
+    });
+    expect(config.modelProvider).toBe("openai-compat");
+    expect(config.modelOpenAI).toEqual({
+      baseURL: "http://localhost:11434/v1",
+      modelId: "probe-model",
+      useApiKey: true,
+      responseFormat: "strict",
+      schemaName: "grounded_answer",
+      termsAcceptedAt: "2026-09-21",
+      sourcesEntry: "Model providers — candidate, checked 2026-09-21",
+    });
+  });
+
+  it("parses the key secret name with the use-key kill-switch", () => {
+    const keyed = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_MODEL_PROVIDER: "openai-compat",
+      DO_SIFT_MODEL_BASE_URL: "https://api.example.test/openai/v1",
+      DO_SIFT_MODEL_ID: "probe-model",
+      DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
+      DO_SIFT_MODEL_SOURCES_ENTRY: "entry",
+      DO_SIFT_MODEL_API_KEY_SECRET: "PROBE_API_KEY",
+    });
+    expect(keyed.modelOpenAI?.apiKeySecret).toBe("PROBE_API_KEY");
+    expect(keyed.modelOpenAI?.useApiKey).toBe(true);
+    const disabled = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_MODEL_PROVIDER: "openai-compat",
+      DO_SIFT_MODEL_BASE_URL: "https://api.example.test/openai/v1",
+      DO_SIFT_MODEL_ID: "probe-model",
+      DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
+      DO_SIFT_MODEL_SOURCES_ENTRY: "entry",
+      DO_SIFT_MODEL_API_KEY_SECRET: "PROBE_API_KEY",
+      DO_SIFT_MODEL_USE_API_KEY: "0",
+    });
+    expect(disabled.modelOpenAI?.useApiKey).toBe(false);
+    expect(() =>
+      parseEnvConfig({
+        ...BASE_ENV,
+        DO_SIFT_MODEL_PROVIDER: "openai-compat",
+        DO_SIFT_MODEL_BASE_URL: "https://api.example.test/openai/v1",
+        DO_SIFT_MODEL_ID: "probe-model",
+        DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
+        DO_SIFT_MODEL_SOURCES_ENTRY: "entry",
+        DO_SIFT_MODEL_USE_API_KEY: "maybe",
+      }),
+    ).toThrow(/DO_SIFT_MODEL_USE_API_KEY/);
+    expect(() =>
+      parseEnvConfig({
+        ...BASE_ENV,
+        DO_SIFT_MODEL_PROVIDER: "openai-compat",
+        DO_SIFT_MODEL_BASE_URL: "https://api.example.test/openai/v1",
+        DO_SIFT_MODEL_ID: "probe-model",
+        DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
+        DO_SIFT_MODEL_SOURCES_ENTRY: "entry",
+        DO_SIFT_MODEL_RESPONSE_FORMAT: "yaml",
+      }),
+    ).toThrow(/DO_SIFT_MODEL_RESPONSE_FORMAT/);
+  });
+
+  it("refuses openai-compat missing baseURL, model, or terms (fail closed)", () => {
+    const full = {
+      DO_SIFT_MODEL_PROVIDER: "openai-compat",
+      DO_SIFT_MODEL_BASE_URL: "http://localhost:11434/v1",
+      DO_SIFT_MODEL_ID: "probe-model",
+      DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
+      DO_SIFT_MODEL_SOURCES_ENTRY: "entry",
+    };
+    expect(() => parseEnvConfig({ ...BASE_ENV, ...full, DO_SIFT_MODEL_BASE_URL: "" })).toThrow(
+      /DO_SIFT_MODEL_BASE_URL/,
+    );
+    expect(() => parseEnvConfig({ ...BASE_ENV, ...full, DO_SIFT_MODEL_ID: "  " })).toThrow(
+      /DO_SIFT_MODEL_ID/,
+    );
+    expect(() =>
+      parseEnvConfig({ ...BASE_ENV, ...full, DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "yesterday" }),
+    ).toThrow(/DO_SIFT_MODEL_TERMS_ACCEPTED_AT/);
+    expect(() => parseEnvConfig({ ...BASE_ENV, ...full, DO_SIFT_MODEL_SOURCES_ENTRY: "" })).toThrow(
+      /DO_SIFT_MODEL_SOURCES_ENTRY/,
+    );
+  });
 });
 
 describe("composeApp (fixture mode, offline end-to-end)", () => {
@@ -815,5 +905,176 @@ describe("search-health receipt (SRC-17)", () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe("composeApp openai-compat model (offline end-to-end via seams)", () => {
+  const MODEL_ENV: Record<string, string> = {
+    DO_SIFT_MODEL_PROVIDER: "openai-compat",
+    DO_SIFT_MODEL_BASE_URL: "http://localhost:11434/v1",
+    DO_SIFT_MODEL_ID: "probe-model",
+    DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
+    DO_SIFT_MODEL_SOURCES_ENTRY: "Model providers — candidate, checked 2026-09-21",
+    DO_SIFT_DEV_BYPASS: "1",
+    DO_SIFT_DEV_OWNER: "owner-a",
+  };
+
+  type ModelLog = { url: string; init?: RequestInit | undefined }[];
+
+  /** Self-contained stub: echoes the PACKED evidence ids from the incoming
+   * request (like the fixture model) so the ANS-03 citation gate passes.
+   * Research never calls it; the first call is always the answer call. */
+  function modelSeam(log: ModelLog): { fetchImpl: FetchLike } {
+    const fetchImpl: FetchLike = async (url: string, init?: RequestInit) => {
+      log.push({ url, init });
+      const body = JSON.parse(String(init?.body)) as {
+        messages?: Array<{ content?: string }>;
+      };
+      const content = body.messages?.[1]?.content ?? "";
+      const ids = [
+        ...new Set([...content.matchAll(/\[([^\]\s]+)\]/gu)].map((m) => m[1] as string)),
+      ].slice(0, 2);
+      const envelope = {
+        id: "chatcmpl-test-1",
+        object: "chat.completion",
+        created: 1758450000,
+        model: "probe-model",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: JSON.stringify({
+                blocks: ids.map((id, i) => ({
+                  kind: "paragraph",
+                  text: `composed answer block ${i + 1}`,
+                  citations: [id],
+                })),
+              }),
+            },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+      };
+      return new Response(JSON.stringify(envelope), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    return { fetchImpl };
+  }
+
+  async function research(app: ComposedApp): Promise<void> {
+    const base = `http://127.0.0.1:${app.port}`;
+    const res = await fetch(`${base}/api/research`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "how does fts5 ranking work?" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("event: done");
+  }
+
+  async function answerGrounded(app: ComposedApp): Promise<{
+    evidenceOnly: boolean;
+    blocks: Array<{ text: string; citations: string[] }>;
+  }> {
+    await research(app);
+    const base = `http://127.0.0.1:${app.port}`;
+    const res = await fetch(`${base}/api/answer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "how does fts5 ranking work?" }),
+    });
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      evidenceOnly: boolean;
+      blocks: Array<{ text: string; citations: string[] }>;
+    };
+    expect(payload.evidenceOnly).toBe(false);
+    expect(payload.blocks.length).toBeGreaterThan(0);
+    for (const block of payload.blocks) expect(block.citations.length).toBeGreaterThan(0);
+    return payload;
+  }
+
+  function startModel(
+    env: Record<string, string>,
+    seam: { fetchImpl: FetchLike },
+    modelApiKey?: string,
+  ): Promise<ComposedApp> {
+    const config = parseEnvConfig({ ...BASE_ENV, ...MODEL_ENV, ...env });
+    return composeApp(config, {
+      dbUrl: ":memory:",
+      port: 0,
+      fetchImpl: seam.fetchImpl,
+      ...(modelApiKey === undefined ? {} : { modelApiKey }),
+    });
+  }
+
+  it("answers grounded through the wired adapter keyless (no auth header)", async () => {
+    const log: ModelLog = [];
+    const seam = modelSeam(log);
+    const app = await startModel({}, seam);
+    try {
+      await answerGrounded(app);
+      expect(log).toHaveLength(1);
+      expect(log[0]?.url).toBe("http://localhost:11434/v1/chat/completions");
+      const headers = new Headers(log[0]?.init?.headers);
+      expect(headers.get("authorization")).toBeNull();
+      expect(headers.get("content-type")).toContain("application/json");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("sends Bearer when a key exists and honors the disable switch", async () => {
+    const secret = "DO_SIFT_TEST_MODEL_KEY";
+    delete process.env[secret];
+    // Keyed: secret named + value injected → Bearer sent.
+    const keyedLog: ModelLog = [];
+    const keyed = modelSeam(keyedLog);
+    const keyedApp = await startModel(
+      { DO_SIFT_MODEL_API_KEY_SECRET: secret },
+      keyed,
+      "test-key-value",
+    );
+    try {
+      await answerGrounded(keyedApp);
+      expect(new Headers(keyedLog[0]?.init?.headers).get("authorization")).toBe(
+        "Bearer test-key-value",
+      );
+    } finally {
+      await keyedApp.close();
+    }
+    // Disabled: secret named but USE=0 and no value → keyless, no auth header.
+    const offLog: ModelLog = [];
+    const off = modelSeam(offLog);
+    const offApp = await startModel(
+      { DO_SIFT_MODEL_API_KEY_SECRET: secret, DO_SIFT_MODEL_USE_API_KEY: "0" },
+      off,
+    );
+    try {
+      await answerGrounded(offApp);
+      expect(new Headers(offLog[0]?.init?.headers).get("authorization")).toBeNull();
+    } finally {
+      await offApp.close();
+    }
+  });
+
+  it("refuses to start when the named secret has no value (no silent keyless)", async () => {
+    const secret = "DO_SIFT_TEST_MODEL_KEY_ABSENT";
+    delete process.env[secret];
+    const log: ModelLog = [];
+    const seam = modelSeam(log);
+    const config = parseEnvConfig({
+      ...BASE_ENV,
+      ...MODEL_ENV,
+      DO_SIFT_MODEL_API_KEY_SECRET: secret,
+    });
+    await expect(
+      composeApp(config, { dbUrl: ":memory:", port: 0, fetchImpl: seam.fetchImpl }),
+    ).rejects.toThrow(/DO_SIFT_MODEL_API_KEY_SECRET/);
+    expect(log).toHaveLength(0); // refused before any model call
   });
 });

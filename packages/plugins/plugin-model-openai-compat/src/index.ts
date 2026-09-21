@@ -47,6 +47,8 @@ export interface OpenAICompatModelConfig {
   modelId?: unknown;
   responseFormat?: unknown;
   schemaName?: unknown;
+  termsAcceptedAt?: unknown;
+  sourcesEntry?: unknown;
 }
 
 export type ResponseFormatMode = "strict" | "best-effort" | "json";
@@ -80,6 +82,8 @@ export interface OpenAICompatModelDeps {
 /** Descriptive UA (same posture as the search adapters). */
 export const USER_AGENT = "do-sift/0.1 (research-with-receipts engine; contact via repo)";
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/u;
+
 /**
  * Transport shape: only the DraftAnswer *blocks* are provider-generated.
  * Usage is attached host-side from envelope counts (the model cannot know
@@ -112,6 +116,8 @@ export const DRAFT_BLOCKS_JSON_SCHEMA = {
 } as const;
 
 export interface OpenAICompatModelInstance extends PluginInstance {
+  /** Contract identity (ModelProvider.name) — provenance records it. */
+  readonly name: string;
   complete(request: SynthesisRequestT, signal?: AbortSignal): Promise<DraftAnswerT>;
   readonly modelId: string;
 }
@@ -217,12 +223,30 @@ export function createOpenAICompatModel(
   let activated = false;
 
   return {
+    name: "openai-compat",
     get modelId() {
       return modelId;
     },
 
     async activate(context) {
       const cfg = context.config as OpenAICompatModelConfig;
+      // Terms gate (SRC-02 pattern, same as the search adapters): no dated
+      // sources.md entry, no activation — even for free/keyless local
+      // servers, whose runner/model licenses are the recorded terms.
+      const acceptedAt = cfg.termsAcceptedAt;
+      const entry = cfg.sourcesEntry;
+      if (typeof acceptedAt !== "string" || !ISO_DATE.test(acceptedAt)) {
+        throw new ModelProviderError(
+          "http",
+          "activation refused: config.termsAcceptedAt must record the date the provider terms were checked (see plans/sources.md)",
+        );
+      }
+      if (typeof entry !== "string" || entry.trim().length === 0) {
+        throw new ModelProviderError(
+          "http",
+          "activation refused: config.sourcesEntry must name the plans/sources.md entry that clears this provider",
+        );
+      }
       baseURL = parseBaseURL(cfg.baseURL);
       if (typeof cfg.modelId !== "string" || cfg.modelId.trim().length === 0) {
         throw new ModelProviderError(

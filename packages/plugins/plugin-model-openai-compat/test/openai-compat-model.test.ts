@@ -113,7 +113,13 @@ async function activated(
 }
 
 function baseConfig(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { baseURL: BASE, modelId: "probe-model", ...overrides };
+  return {
+    baseURL: BASE,
+    modelId: "probe-model",
+    termsAcceptedAt: "2026-09-21",
+    sourcesEntry: "Model providers — candidate (NOT activated), checked 2026-09-21",
+    ...overrides,
+  };
 }
 
 describe("manifest", () => {
@@ -128,6 +134,7 @@ describe("activation (trusted-operator baseURL gate)", () => {
   it("activates on an https baseURL with defaults", async () => {
     const plugin = await activated(baseConfig());
     expect(plugin.modelId).toBe("probe-model");
+    expect(plugin.name).toBe("openai-compat");
   });
 
   it("refuses a missing baseURL or modelId", async () => {
@@ -161,6 +168,11 @@ describe("activation (trusted-operator baseURL gate)", () => {
     await expect(activated(baseConfig({ schemaName: "  " }))).rejects.toBeInstanceOf(
       ModelProviderError,
     );
+  });
+
+  it("refuses without a recorded terms date and a sources.md entry", async () => {
+    await expect(activated(baseConfig({ termsAcceptedAt: "" }))).rejects.toThrow(/termsAcceptedAt/);
+    await expect(activated(baseConfig({ sourcesEntry: "  " }))).rejects.toThrow(/sourcesEntry/);
   });
 });
 
