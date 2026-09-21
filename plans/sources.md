@@ -71,16 +71,19 @@ re-verify before relying on an entry older than 90 days.
   quota / enables custom filters: free non-commercial personal keys require EMAIL (contact@marginalia-search.com) —
   owner follow-up, not automatable. The self-hosted engine repo (github.com/MarginaliaSearch/MarginaliaSearch, AGPL,
   docs at docs.marginalia.nu) has no key concept at all — keys exist only on the hosted API service. The adapter therefore
-  targets the verified legacy endpoint; migration to api2 can first be spiked with the literal `public` key (no secret),
-  requesting a personal key by email only if the spike proves the quota is the binding constraint.
+  targets the verified legacy endpoint; api2 was spiked with the literal `public` key (no secret)
+  below. Update 2026-09-21: a personal api2 key is CLOSED (owner could not obtain one) —
+  api2 migration is off the table; the legacy endpoint is the supported path until
+  Marginalia reopens keys, at which point re-probe before any migration design.
 - **Addendum 2026-09-21 (api2 spike, literal `public` key, 2 polite sequential probes):** legacy
   `api.marginalia.nu/public/search/tallest%20mountain%20on%20Earth?count=3` → 200 in 0.28 s,
   envelope `{license: CC-BY-NC-SA 4.0, page, pages: 11, query, results[]}` with the R-16 value intact
   (ecuador-travel-guide tallest-mountain pages + the QUAL run-015 blogspot Everest hit);
   `api2.marginalia-search.com/search?query=...&count=3` with `API-Key: public` → 429 `Daily Limit Exceeded`
   (`text/plain`, 20 bytes, 0.13 s). No email or secret was used or needed for either probe. Decision: stay on the
-  legacy endpoint; api2 migration waits on a personal key (owner email) or a re-probe showing `public` healthy —
-  do not migrate to api2 on the shared key.
+  legacy endpoint; api2 migration is CLOSED with it (owner could not obtain a personal key
+  as of 2026-09-21) — do not migrate to api2 on the shared key and do not plan around
+  a personal key unless Marginalia reopens access.
 - **Error envelope**: transient failures arrive as HTML status pages (observed `504 Gateway Time-out` nginx, twice
   under rapid probing) — adapters must treat non-JSON/non-200 as a typed error with bounded retry, never hot.
 - **Rate limits**: not numerically documented for the legacy public path; aggressive under bursts (observed 504s

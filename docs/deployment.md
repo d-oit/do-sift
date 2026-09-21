@@ -136,9 +136,9 @@ attribution. `DO_SIFT_SEARCH_PROVIDER=wikipedia,marginalia` composes the
 merged provider (SRC-16: fan-out, interleave + canonical-URL dedup);
 run summaries carry per-provider `providerHealth` (SRC-17) and the bundled
 UI renders it as a status line (SRC-22). The api2 host
-(`api2.marginalia-search.com`, `API-Key` header) is NOT wired: the shared
-literal key `public` probed 429 on 2026-09-21, so migration waits on a
-personal key (owner email) or a healthy re-probe — see `plans/sources.md`.
+(`api2.marginalia-search.com`, `API-Key` header) is NOT wired and NOT planned: the shared
+literal key `public` probed 429 on 2026-09-21, and a personal key is closed (owner could
+not obtain one) — the legacy endpoint is the supported path; see `plans/sources.md`.
 
 ### Runtime defaults (RET-04 seam)
 
