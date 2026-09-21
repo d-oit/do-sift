@@ -166,8 +166,8 @@ usage reconciled from provider counts. Key rule: if
 used (`Authorization: Bearer`); keyless when unset (Ollama-local);
 `DO_SIFT_MODEL_USE_API_KEY=0` forces keyless even with a secret named.
 A named-but-missing key refuses startup instead of silently going
-keyless. The startup log names the key posture (secret NAME only, never
-the value). Paid (billable-capable) hosts additionally need the router
+keyless. The startup log reports key posture only (configured / disabled
+/ keyless — never secret names or values). Paid (billable-capable) hosts additionally need the router
 terms gate + INV-003 grant recorded in `plans/sources.md` — the
 entrypoint itself stays key-agnostic by design.
 

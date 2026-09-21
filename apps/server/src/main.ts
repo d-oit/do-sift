@@ -128,7 +128,7 @@ export interface ComposedApp {
   close(): Promise<void>;
 }
 
-/** Startup-log model label: names the provider + key posture, never the key value. */
+/** Startup-log model label: key posture only — never names, never values. */
 function modelLabel(config: AppConfig): string {
   if (config.modelProvider === undefined) return "not configured (/api/answer → 501)";
   if (config.modelProvider === "fixture") return "fixture (synthetic, dev only)";
@@ -138,9 +138,9 @@ function modelLabel(config: AppConfig): string {
     return `openai-compat (${oc.modelId} @ ${oc.baseURL}; keyless)`;
   }
   if (oc.useApiKey) {
-    return `openai-compat (${oc.modelId} @ ${oc.baseURL}; key: ${oc.apiKeySecret} — name only)`;
+    return `openai-compat (${oc.modelId} @ ${oc.baseURL}; key: configured)`;
   }
-  return `openai-compat (${oc.modelId} @ ${oc.baseURL}; key disabled, secret ${oc.apiKeySecret} ignored)`;
+  return `openai-compat (${oc.modelId} @ ${oc.baseURL}; key disabled by config)`;
 }
 
 export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Promise<ComposedApp> {
@@ -342,7 +342,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       const resolved = deps.modelApiKey ?? process.env[oc.apiKeySecret];
       if (resolved === undefined || resolved === "") {
         throw new Error(
-          `DO_SIFT_MODEL_API_KEY_SECRET names "${oc.apiKeySecret}" but no value was provided (set the env var or inject the test seam) — refusing to start half-configured instead of silently going keyless`,
+          "DO_SIFT_MODEL_API_KEY_SECRET is set but its env var holds no value (set it or inject the test seam) — refusing to start half-configured instead of silently going keyless",
         );
       }
       apiKey = resolved;
