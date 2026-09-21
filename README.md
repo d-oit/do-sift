@@ -83,8 +83,8 @@ repeating its limits.
 
 Pre-alpha. FND, CORE, SRC, ANS, BRW, CMP, OPS, and the QUAL gate protocol
 milestones are complete (see `plans/`); the last recorded live run is
-`evals/quality/run-012-2026-09-19.json` (meanAll 0.9625, series high, with
-limits). Owner-gated next steps: Marginalia api2 key and a live model
+`evals/quality/run-016-2026-09-21.json` (meanAll 0.95 held, with
+limits; series high remains `run-012-2026-09-19.json` at 0.9625). Owner-gated next steps: Marginalia api2 key and a live model
 adapter.
 
 ## License
