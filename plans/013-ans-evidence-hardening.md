@@ -70,12 +70,12 @@ stays owner-gated (dated sources.md entry + paid grant where billable).
 
 ## Tasks
 
-| ID     | Task                                                                                                                                                                                                                                                                             | Status   | Owner | Evidence |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----- | -------- |
-| ANS-10 | Contracts evidence-framing module (pure): `neutralizePassageText` + framing helpers + suspect detector; red-first unit tests over the attack corpus, plus an offline regression pass of the helper over existing `evals/datasets` passages (no behavior claim beyond the corpus) | proposed | agent | below    |
-| ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | proposed | agent | below    |
-| ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | proposed | agent | below    |
-| ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded                                                                                                | proposed | agent | below    |
+| ID     | Task                                                                                                                                                                                                                                                                             | Status                   | Owner | Evidence |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- | -------- |
+| ANS-10 | Contracts evidence-framing module (pure): `neutralizePassageText` + framing helpers + suspect detector; red-first unit tests over the attack corpus, plus an offline regression pass of the helper over existing `evals/datasets` passages (no behavior claim beyond the corpus) | done (2026-09-23, agent) | agent | below    |
+| ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | proposed                 | agent | below    |
+| ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | proposed                 | agent | below    |
+| ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded                                                                                                | proposed                 | agent | below    |
 
 ## Decomposition (htn-planner workflow per plan 009)
 
@@ -112,3 +112,42 @@ tests. Risk-register cross-check: R-15 is CLOSED (ANS-07/08 evidence
 2026-09-14, ANS-09 2026-09-15 — the register row is being corrected in this
 same change); R-16's remaining lever is owner-gated (integrate-provider
 decision), making R-12 the register's own next agent-runnable trigger.
+
+### ANS-10 evidence (2026-09-23, agent) — evidence-framing primitives shipped
+
+**Files:** `packages/contracts/src/evidence-framing.ts` (new: `neutralizeEvidenceText`,
+`frameEvidenceLine`, `suspectEvidenceMarkers` + `EvidenceMarker` codes + `EvidenceFramingError`),
+`packages/contracts/src/index.ts` (export), `packages/contracts/test/evidence-framing.test.ts`
+(new: 20 tests — structural-escape corpus, unforgeable-framing properties, advisory-detector
+corpus, and the `evals/datasets` regression pass).
+
+**Design as shipped:** neutralization deletes `\p{Cf}` (bidi/zero-width/BOM), maps
+`\p{Cc}\p{Zl}\p{Zp}` to space, collapses whitespace, trims — content codepoints otherwise
+byte-for-byte. Framing is one JSON record per line; the neutralize-first precondition is
+ENFORCED by `frameEvidenceLine` (line separators and non-EvidenceId ids throw), so the
+one-record-per-line forgery bound holds at the call site, not by convention. Detector runs on
+RAW text (receipts, pre-neutralization) with benign whitespace controls (\t\n\r\f\v) excluded
+from the control-char rule; advisory only, never a filter.
+
+**Honest scope:** nothing on the live answer path calls these yet — the answer path's packed
+prompt is unchanged (`buildChatBody` still raw `[id] text`); wiring is ANS-11/ANS-12 and the
+`promptRevision` pr2 bump lands with the behavior change (this slice cannot invalidate cache
+rows because behavior is unchanged).
+
+**Commands:** red first (`npx vitest run packages/contracts/test/evidence-framing.test.ts` →
+no tests / module missing), then → **20/20 green**; `npm run check:fast` → FAIL prettier once
+(plan-row edit unformatted — prettier --write, no code impact) → PASS 5; `npm run signals --
+verify --set feedback` → green (receipt `.do-harness/evidence.feedback.json`); `npm run check`
+→ PASS all 7 (tests 26068ms, evals 25122ms).
+
+**Test fix during the slice (recorded):** the bidi corpus case initially expected the DISPLAY
+illusion ("nor\u202Egnp" → "normal"); deletion yields codepoints "norgnpmal" — expectation
+corrected to the true post-neutralization value; implementation was right, test was wrong.
+
+**Risks / open questions:** detector precision is loose by design (advisory); line-start
+patterns use raw `\n`/`\r\n` boundaries — stored passages keep newlines until pack time, which
+is exactly what the receipts observe. JSON-record framing is the ANS-11 contract; if a provider
+chokes on JSONL-style evidence, the fallback (bracket framing with delimiter-escaping) is a
+documented alternative but must preserve the same parse-back property.
+
+**Status:** done. **Next:** ANS-11 (wire `buildChatBody` onto neutralize+frame).
