@@ -1,0 +1,99 @@
+{
+  "methods": [
+    {
+      "name": "vertical-event-slice",
+      "subtasks": [
+        {
+          "name": "define-event-schema",
+          "sensor": null,
+          "spike_candidate": false
+        },
+        {
+          "name": "write-acceptance-test",
+          "sensor": "tests",
+          "spike_candidate": false
+        },
+        {
+          "name": "implement-slice",
+          "sensor": "tests",
+          "spike_candidate": false
+        },
+        {
+          "name": "verify-sensors",
+          "sensor": "evals",
+          "spike_candidate": false
+        },
+        {
+          "name": "distill-learning",
+          "sensor": "skills",
+          "spike_candidate": false
+        }
+      ],
+      "preconditions": [
+        {
+          "description": "The domain behavior is understood well enough to model events without a prototype."
+        }
+      ]
+    },
+    {
+      "name": "spike-and-resolve",
+      "subtasks": [
+        {
+          "name": "create-spike",
+          "sensor": null,
+          "spike_candidate": false
+        },
+        {
+          "name": "execute-spike",
+          "sensor": "tests",
+          "spike_candidate": false
+        },
+        {
+          "name": "record-findings",
+          "sensor": null,
+          "spike_candidate": false
+        },
+        {
+          "name": "clean-spike",
+          "sensor": "policy",
+          "spike_candidate": false
+        },
+        {
+          "name": "transition-to-slice",
+          "sensor": "tests",
+          "spike_candidate": false
+        }
+      ],
+      "preconditions": [
+        {
+          "description": "A third-party API, provider integration, or performance boundary is uncertain and needs de-risking."
+        }
+      ]
+    },
+    {
+      "name": "decision",
+      "subtasks": [
+        {
+          "name": "verify-decision-gate",
+          "sensor": "policy",
+          "spike_candidate": false
+        },
+        {
+          "name": "record-decision-evidence",
+          "sensor": null,
+          "spike_candidate": false
+        },
+        {
+          "name": "confirm-feature-boundary",
+          "sensor": "policy",
+          "spike_candidate": false
+        }
+      ],
+      "preconditions": [
+        {
+          "description": "A promotion-style decision and its feature-boundary consequence are recorded in the relevant plan or ADR."
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@
  */
 import { createClient, type Client } from "@libsql/client";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { SearchProvider } from "@do-sift/contracts";
 import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
 import {
   applyMigrations,
@@ -140,6 +141,113 @@ describe("createRuntime (RET-04)", () => {
     const answer = await runtime.answerResponse("owner-a", QUESTION);
     expect(answer.evidenceFromRun).toBe("run");
     expect(answer.evidenceOnly).toBe(false);
+  });
+
+  it("isolates source events for concurrent owner runs", async () => {
+    await client.execute({
+      sql: "INSERT INTO owners (id, display_name, created_at) VALUES ('owner-b', 'Owner B', '2026-09-24T00:00:00Z') ON CONFLICT(id) DO NOTHING",
+      args: [],
+    });
+
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((res) => {
+        resolve = res;
+      });
+      return { promise, resolve };
+    }
+
+    const firstStarted = deferred<void>();
+    const secondStarted = deferred<void>();
+    const firstPage = deferred<{ text: string; contentType: string }>();
+    const secondPage = deferred<{ text: string; contentType: string }>();
+    const search: SearchProvider = {
+      name: "concurrent-test",
+      async search(query) {
+        return [
+          {
+            url: `https://${query.ownerId}.test/page`,
+            title: query.ownerId,
+            snippet: "stored evidence",
+            provider: "concurrent-test",
+            rank: 0,
+          },
+        ];
+      },
+    };
+    const runtime = await createRuntime({
+      ...baseOptions(),
+      search,
+      fetchPage: async (url) => {
+        if (url === "https://owner-a.test/page") {
+          firstStarted.resolve(undefined);
+          return firstPage.promise;
+        }
+        if (url === "https://owner-b.test/page") {
+          secondStarted.resolve(undefined);
+          return secondPage.promise;
+        }
+        throw new Error(`unexpected fetch URL: ${url}`);
+      },
+    });
+    const firstSources: Array<{ url: string }> = [];
+    const secondSources: Array<{ url: string }> = [];
+
+    const firstRun = runtime.runResearch("owner-a", "question-a", (source) => {
+      firstSources.push({ url: source.url });
+    });
+    await firstStarted.promise;
+    const secondRun = runtime.runResearch("owner-b", "question-b", (source) => {
+      secondSources.push({ url: source.url });
+    });
+    await secondStarted.promise;
+
+    secondPage.resolve({
+      text: "Owner B has a sufficiently long evidence passage for storage.",
+      contentType: "text/plain",
+    });
+    await secondRun;
+    firstPage.resolve({
+      text: "Owner A has a sufficiently long evidence passage for storage.",
+      contentType: "text/plain",
+    });
+    await firstRun;
+
+    expect(firstSources).toEqual([{ url: "https://owner-a.test/page" }]);
+    expect(secondSources).toEqual([{ url: "https://owner-b.test/page" }]);
+  });
+
+  it("propagates a cancellation signal to fetch work", async () => {
+    const controller = new AbortController();
+    let fetchSignal: AbortSignal | undefined;
+    const search: SearchProvider = {
+      name: "signal-test",
+      async search() {
+        return [
+          {
+            url: "https://signal.test/page",
+            title: "Signal test",
+            snippet: "evidence",
+            provider: "signal-test",
+            rank: 0,
+          },
+        ];
+      },
+    };
+    const runtime = await createRuntime({
+      ...baseOptions(),
+      search,
+      fetchPage: async (_url, signal) => {
+        fetchSignal = signal;
+        controller.abort();
+        return { text: KEYWORD_A, contentType: "text/plain" };
+      },
+    });
+
+    await expect(
+      runtime.runResearch("owner-a", "cancel this run", undefined, controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchSignal).toBe(controller.signal);
   });
 });
 

@@ -1,0 +1,404 @@
+{
+  "aggregates": {
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "extractionCleanliness": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.95,
+    "retrievalRelevance": 0.75
+  },
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "cases": [
+    {
+      "evidenceFromRun": "run",
+      "id": "01",
+      "notes": [
+        "marginalia contribution: darksi.de FTS5-structure page (0.764) opens the answer alongside SQLite; comparison page honest LOW receipt"
+      ],
+      "providerHealth": [
+        { "ok": true, "provider": "wikipedia" },
+        { "ok": true, "provider": "marginalia" }
+      ],
+      "question": "What is SQLite FTS5?",
+      "run": {
+        "denied": 0,
+        "documentsStored": 3,
+        "embedded": 52,
+        "fetchErrors": 0,
+        "hits": 6,
+        "noiseBackfilled": 0,
+        "passagesStored": 52,
+        "skippedBudget": 3
+      },
+      "scores": {
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "extractionCleanliness": 1,
+        "injectionObservation": 1,
+        "retrievalRelevance": 1
+      },
+      "sources": [
+        { "low": false, "relevanceScore": 0.716, "url": "https://en.wikipedia.org/wiki/SQLite" },
+        {
+          "low": false,
+          "relevanceScore": 0.764,
+          "url": "https://darksi.de/13.sqlite-fts5-structure/"
+        },
+        {
+          "low": true,
+          "relevanceScore": 0.647,
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems"
+        }
+      ]
+    },
+    {
+      "evidenceFromRun": "run",
+      "id": "02",
+      "notes": ["the Deep_web LOW receipt; Tim named directly in block 3"],
+      "providerHealth": [
+        { "ok": true, "provider": "wikipedia" },
+        { "ok": true, "provider": "marginalia" }
+      ],
+      "question": "Who invented the world wide web?",
+      "run": {
+        "denied": 0,
+        "documentsStored": 3,
+        "embedded": 51,
+        "fetchErrors": 0,
+        "hits": 6,
+        "noiseBackfilled": 0,
+        "passagesStored": 51,
+        "skippedBudget": 3
+      },
+      "scores": {
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "extractionCleanliness": 1,
+        "injectionObservation": 1,
+        "retrievalRelevance": 0.5
+      },
+      "sources": [
+        {
+          "low": false,
+          "relevanceScore": 0.828,
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web"
+        },
+        {
+          "low": false,
+          "relevanceScore": 0.828,
+          "url": "https://en.wikipedia.org/wiki/History_of_the_World_Wide_Web"
+        },
+        { "low": true, "relevanceScore": 0.667, "url": "https://en.wikipedia.org/wiki/Deep_web" }
+      ]
+    },
+    {
+      "evidenceFromRun": "run",
+      "id": "03",
+      "notes": [
+        "wiki-only shape; marginalia timed out; album + singer LOW receipts excluded from pool; all 6 blocks clean aurora science"
+      ],
+      "providerHealth": [
+        { "ok": true, "provider": "wikipedia" },
+        { "ok": false, "provider": "marginalia" }
+      ],
+      "question": "What causes auroras?",
+      "run": {
+        "denied": 0,
+        "documentsStored": 3,
+        "embedded": 50,
+        "fetchErrors": 0,
+        "hits": 6,
+        "noiseBackfilled": 0,
+        "passagesStored": 50,
+        "skippedBudget": 3
+      },
+      "scores": {
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "extractionCleanliness": 1,
+        "injectionObservation": 1,
+        "retrievalRelevance": 0.5
+      },
+      "sources": [
+        { "low": false, "relevanceScore": 0.811, "url": "https://en.wikipedia.org/wiki/Aurora" },
+        {
+          "low": true,
+          "relevanceScore": 0.636,
+          "url": "https://en.wikipedia.org/wiki/What_Happened_to_the_Heart%3F"
+        },
+        {
+          "low": true,
+          "relevanceScore": 0.674,
+          "url": "https://en.wikipedia.org/wiki/Aurora_(singer)"
+        }
+      ]
+    },
+    {
+      "evidenceFromRun": "run",
+      "id": "04",
+      "notes": [
+        "NRW dopp absent this run; cryptiana treaty-notes (0.741) second block; Pyrenees LOW receipt"
+      ],
+      "providerHealth": [
+        { "ok": true, "provider": "wikipedia" },
+        { "ok": true, "provider": "marginalia" }
+      ],
+      "question": "What was the Treaty of Westphalia?",
+      "run": {
+        "denied": 0,
+        "documentsStored": 3,
+        "embedded": 48,
+        "fetchErrors": 0,
+        "hits": 6,
+        "noiseBackfilled": 0,
+        "passagesStored": 48,
+        "skippedBudget": 3
+      },
+      "scores": {
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "extractionCleanliness": 1,
+        "injectionObservation": 1,
+        "retrievalRelevance": 1
+      },
+      "sources": [
+        {
+          "low": false,
+          "relevanceScore": 0.849,
+          "url": "https://en.wikipedia.org/wiki/Peace_of_Westphalia"
+        },
+        {
+          "low": false,
+          "relevanceScore": 0.741,
+          "url": "https://cryptiana.web.fc2.com/docs/west_eng.htm"
+        },
+        {
+          "low": true,
+          "relevanceScore": 0.69,
+          "url": "https://en.wikipedia.org/wiki/Treaty_of_the_Pyrenees"
+        }
+      ]
+    },
+    {
+      "evidenceFromRun": "run",
+      "id": "05",
+      "notes": [
+        "the mRNA_vaccine anchor carries all 6 blocks; McCullough as honest LOW receipt; COVID-19 vaccine LOW"
+      ],
+      "providerHealth": [
+        { "ok": true, "provider": "wikipedia" },
+        { "ok": false, "provider": "marginalia" }
+      ],
+      "question": "How does mRNA vaccination work?",
+      "run": {
+        "denied": 0,
+        "documentsStored": 3,
+        "embedded": 48,
+        "fetchErrors": 0,
+        "hits": 6,
+        "noiseBackfilled": 0,
+        "passagesStored": 48,
+        "skippedBudget": 3
+      },
+      "scores": {
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "extractionCleanliness": 1,
+        "injectionObservation": 1,
+        "retrievalRelevance": 0.5
+      },
+      "sources": [
+        {
+          "low": true,
+          "relevanceScore": 0.682,
+          "url": "https://en.wikipedia.org/wiki/COVID-19_vaccine"
+        },
+        {
+          "low": false,
+          "relevanceScore": 0.85,
+          "url": "https://en.wikipedia.org/wiki/MRNA_vaccine"
+        },
+        {
+          "low": true,
+          "relevanceScore": 0.545,
+          "url": "https://en.wikipedia.org/wiki/Peter_A._McCullough"
+        }
+      ]
+    },
+    {
+      "evidenceFromRun": "run",
+      "id": "06",
+      "notes": [
+        "the R-16 remedy again: the Marginalia-only Everest blogspot (0.856) with direct Everest/Mauna-Kea blocks",
+        "1 fetch error (guard refusal on a further marginalia hit — the recurring advisory class)"
+      ],
+      "providerHealth": [
+        { "ok": true, "provider": "wikipedia" },
+        { "ok": true, "provider": "marginalia" }
+      ],
+      "question": "What is the tallest mountain on Earth?",
+      "run": {
+        "denied": 0,
+        "documentsStored": 3,
+        "embedded": 40,
+        "fetchErrors": 1,
+        "hits": 6,
+        "noiseBackfilled": 0,
+        "passagesStored": 40,
+        "skippedBudget": 2
+      },
+      "scores": {
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "extractionCleanliness": 1,
+        "injectionObservation": 1,
+        "retrievalRelevance": 1
+      },
+      "sources": [
+        {
+          "low": false,
+          "relevanceScore": 0.803,
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain"
+        },
+        { "low": false, "relevanceScore": 0.823, "url": "https://en.wikipedia.org/wiki/Mountain" },
+        {
+          "low": false,
+          "relevanceScore": 0.856,
+          "url": "https://thehimalayanvoice.blogspot.com/2021/12/is-mount-everest-really-tallest.html"
+        }
+      ]
+    },
+    {
+      "evidenceFromRun": "run",
+      "id": "07",
+      "notes": [
+        "same shape as run-015: all three receipts below floor, ANS-09 scoped-pool fallback fired, all 6 blocks clean ZKP prose"
+      ],
+      "providerHealth": [
+        { "ok": true, "provider": "wikipedia" },
+        { "ok": true, "provider": "marginalia" }
+      ],
+      "question": "What is a zk-SNARK?",
+      "run": {
+        "denied": 0,
+        "documentsStored": 3,
+        "embedded": 45,
+        "fetchErrors": 1,
+        "hits": 6,
+        "noiseBackfilled": 0,
+        "passagesStored": 45,
+        "skippedBudget": 2
+      },
+      "scores": {
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "extractionCleanliness": 1,
+        "injectionObservation": 1,
+        "retrievalRelevance": 1
+      },
+      "sources": [
+        {
+          "low": true,
+          "relevanceScore": 0.496,
+          "url": "https://en.wikipedia.org/wiki/Non-interactive_zero-knowledge_proof"
+        },
+        {
+          "low": true,
+          "relevanceScore": 0.57,
+          "url": "https://en.wikipedia.org/wiki/Zero-knowledge_proof"
+        },
+        { "low": true, "relevanceScore": 0.686, "url": "https://zkp.science/" }
+      ]
+    },
+    {
+      "evidenceFromRun": "run",
+      "id": "08",
+      "notes": ["the concert dopp LOW receipt; block 0 answers directly (9 November 1989)"],
+      "providerHealth": [
+        { "ok": true, "provider": "wikipedia" },
+        { "ok": false, "provider": "marginalia" }
+      ],
+      "question": "In what year did the Berlin Wall fall?",
+      "run": {
+        "denied": 0,
+        "documentsStored": 3,
+        "embedded": 49,
+        "fetchErrors": 0,
+        "hits": 6,
+        "noiseBackfilled": 0,
+        "passagesStored": 49,
+        "skippedBudget": 3
+      },
+      "scores": {
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "extractionCleanliness": 1,
+        "injectionObservation": 1,
+        "retrievalRelevance": 0.5
+      },
+      "sources": [
+        {
+          "low": false,
+          "relevanceScore": 0.78,
+          "url": "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall"
+        },
+        {
+          "low": true,
+          "relevanceScore": 0.653,
+          "url": "https://en.wikipedia.org/wiki/The_Wall_%E2%80%93_Live_in_Berlin"
+        },
+        { "low": true, "relevanceScore": 0.794, "url": "https://en.wikipedia.org/wiki/Berlin_Wall" }
+      ]
+    }
+  ],
+  "comparison": {
+    "baseline": "run-015 (meanAll 0.95)",
+    "perDimension": {
+      "citationResolution": "1 -> 1",
+      "degradationHonesty": "1 -> 1",
+      "extractionCleanliness": "1.0 held",
+      "injectionObservation": "1 -> 1",
+      "retrievalRelevance": "0.75 -> 0.75 (marginalia 2/8 then, 5/8 now; NRW dopp absent; case-04 0.5 -> 1, case-03 1 -> 0.5 on provider variance)"
+    },
+    "verdict": "STEADY — meanAll 0.95 held across two runs under fixture-only, CPU-only operation"
+  },
+  "dimensions": [
+    "retrievalRelevance",
+    "extractionCleanliness",
+    "citationResolution",
+    "degradationHonesty",
+    "injectionObservation"
+  ],
+  "executedAtUtc": "2026-09-21T09:50-09:59Z (driver timestamps; operator-local 2026-09-21)",
+  "findings": [
+    "meanAll 0.95 held vs run-015 under identical composition (merged wikipedia+marginalia, fixture model, fastembed)",
+    "marginalia health improved to 5/8 (series: 1/8, 5/8, 6/8, 7/8, 1/8, 2/8, 5/8) — timeouts remain the binding retrieval constraint, all three this run are 10s search timeouts",
+    "NRW dopp absent with marginalia up (mechanism tracks provider health for the fourth time)",
+    "ANS-09 fallback live a fourth time (case-07 all-LOW); R-16 remedy live again (case-06 Everest blogspot)",
+    "extraction 1.0 with zero template/heading/charset findings across a second consecutive pool composition"
+  ],
+  "limits": [
+    "Single-annotator authorial labels (agent-annotated) — same caveat as RET-01",
+    "NOT model quality: the fixture model; fluency/completeness/reasoning unmeasured",
+    "Provider behavior on 2026-09-21 — re-run rather than extrapolate (sources.md 90-day rule)",
+    "No quality claims may cite this artifact without repeating these limits (R-06)"
+  ],
+  "mechanicalChecks": {
+    "blockCitationCount": "47 blocks / 47 citations (1 per block, fixture-model verbatim composition)",
+    "emptyRunCondition": "no case ended with an empty answer; all 8 evidenceFromRun 'run'; zero degradations; zero cached",
+    "f8RateLimit": "0 x 429s; 2 fetch errors (case-06 guard refusal advisory, case-07 fetch error); >=35s pacing per driver timestamps (09:50:26 first case, 09:58:58 done)",
+    "f7PortProcessHygiene": "port 18126 verified free pre-run; server backgrounded with log to .do-harness/qual-run-016/server.log; post-run kill pending at artifact write time",
+    "injectionPatternScan": "0 matches across all 16 capture files",
+    "src21Classifiers": "[BCCT11]-class: 0; lowercase/code-comment block starts: 0 (precise block-start scan)",
+    "uFFFDReplacementChars": "0 matches across all 16 capture files (8 research + 8 answer)"
+  },
+  "pipeline": "HEAD 2992bfd + uncommitted README status line (docs-only, hygiene slice same session) — merged wikipedia+marginalia, fixture model (harness measured, not model quality), fastembed embedder, :memory: DB, port 18126",
+  "protocol": "docs/quality-gate.md (v1)",
+  "providerHealthSummary": {
+    "marginalia": "5/8 ok (cases 01/02/04/06/07) — timeouts in 03/05/08 (10s search timeouts); the seven-run series: 1/8, 5/8, 6/8, 7/8, 1/8, 2/8, 5/8",
+    "schemaNote": "per-provider sub-search outcomes from the merged provider done-event receipts",
+    "wikipedia": "8/8 sub-searches ok"
+  },
+  "runId": "run-016",
+  "scale": { "0": "fail", "0.5": "partial", "1": "pass" }
+}

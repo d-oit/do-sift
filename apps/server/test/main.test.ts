@@ -93,6 +93,28 @@ describe("parseEnvConfig", () => {
     expect(config.devOwner).toBe("owner-b");
   });
 
+  it("refuses a dev bypass on a non-loopback bind address", () => {
+    expect(() =>
+      parseEnvConfig({
+        ...BASE_ENV,
+        DO_SIFT_DEV_BYPASS: "1",
+        DO_SIFT_DEV_OWNER: "owner-a",
+        DO_SIFT_HOST: "0.0.0.0",
+      }),
+    ).toThrow(/loopback/);
+  });
+
+  it("also refuses a directly supplied non-loopback dev-bypass composition", async () => {
+    const config = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_DEV_BYPASS: "1",
+      DO_SIFT_DEV_OWNER: "owner-a",
+    });
+    await expect(composeApp({ ...config, host: "0.0.0.0" }, { dbUrl: ":memory:" })).rejects.toThrow(
+      /loopback/,
+    );
+  });
+
   it("rejects a bad dev-bypass value and an out-of-range port", () => {
     expect(() => parseEnvConfig({ ...BASE_ENV, DO_SIFT_DEV_BYPASS: "yes" })).toThrow(
       /DO_SIFT_DEV_BYPASS/,
@@ -228,6 +250,10 @@ describe("composeApp (fixture mode, offline end-to-end)", () => {
       const health = await fetch(`${base}/healthz`);
       expect(health.status).toBe(200);
       expect(await health.json()).toEqual({ ok: true });
+
+      const readiness = await fetch(`${base}/readyz`);
+      expect(readiness.status).toBe(200);
+      expect(await readiness.json()).toEqual({ ok: true });
 
       const research = await fetch(`${base}/api/research`, {
         method: "POST",
