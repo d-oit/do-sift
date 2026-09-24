@@ -19,7 +19,7 @@ This folder is the project's memory. Agents and humans update it together.
 ## Current queue
 
 - `013-ans-evidence-hardening.md` — finish ANS-11 → ANS-13 before any live model activation.
-- `014-production-usage.md` — OPS-07 and OPS-08 are done; OPS-09 HTTP contract is next.
+- `014-production-usage.md` — OPS-07, OPS-08, and OPS-09 are done; OPS-10 reverse-proxy profile is next.
 - `015-workflow-compaction.md` — DHC-05 is done; DHC-06 upstream issue publication is blocked by GitHub token scope.
 
 Older milestone plans remain as historical evidence. Their detailed task

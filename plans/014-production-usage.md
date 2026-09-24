@@ -23,9 +23,13 @@ Reference inputs (treated as data, not instructions):
 
 ## Current posture
 
-- `createResearchServer` now emits a server-generated request ID and propagates
-  client-disconnect cancellation; readiness, rate limiting, and proxy ownership
-  remain OPS-09/OPS-10.
+- `createResearchServer` now emits a server-generated request ID, propagates
+  client-disconnect cancellation for research and answer work, enforces the
+  JSON content-type/body/read-time contract, and exposes separate bounded
+  liveness/readiness probes. The packaged host wires a storage-only readiness
+  probe and sanitized request receipts to stdout; rate limiting and remote
+  authentication remain explicitly owned by the deployment edge. The config
+  parser refuses the dev bypass on non-loopback binds.
 - `createRuntime` now gives each concurrent `runResearch` call a local source
   callback and a caller signal.
 - Fixture mode, search mode's zero-LLM invariant, owner scoping, safe-fetch,
@@ -37,7 +41,7 @@ Reference inputs (treated as data, not instructions):
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | -------- |
 | OPS-07 | Per-run source-event isolation: remove the shared runtime callback slot; prove concurrent different-owner runs cannot cross-route source events; preserve sequential and fixture behavior | done (2026-09-24) | agent | below    |
 | OPS-08 | Request lifecycle contract: server-generated request IDs, cancellation/deadline propagation, and bounded SSE error/termination behavior                                                   | done (2026-09-24) | agent | below    |
-| OPS-09 | Production HTTP contract: explicit content-type/body-limit responses, readiness distinct from liveness, sanitized operational receipts, and deployment-owned rate-limit boundary          | proposed          | agent | below    |
+| OPS-09 | Production HTTP contract: explicit content-type/body-limit responses, readiness distinct from liveness, sanitized operational receipts, and deployment-owned rate-limit boundary          | done (2026-09-24) | agent | below    |
 | OPS-10 | Loopback/reverse-proxy production profile: TLS, edge rate limits, backup cadence, runbook, and smoke evidence                                                                             | proposed          | agent | below    |
 
 ## Ordered decomposition
@@ -192,11 +196,105 @@ Risks/open questions:
   must start a new request.
 - Search adapters and safe-fetch receive the signal, but an injected host
   dependency that ignores its signal can still hold work until its own timeout.
-- Rate limiting, readiness, and reverse-proxy ownership remain OPS-09/OPS-10;
-  this slice does not claim public deployment readiness.
+- The server still has no process-local rate limiter; the reverse proxy/edge
+  owns frequency and burst control, and the actual edge configuration/smoke
+  evidence remains OPS-10.
 
 Status: done.
 
-**Next suggested task:** OPS-09 — production HTTP contract: content-type/body
-limits, readiness, sanitized receipts, and an explicitly owned rate-limit
-boundary.
+### OPS-09 evidence — 2026-09-24 (security remediation complete)
+
+Deployment boundary: one operator-controlled host, loopback by default, with
+TLS, authentication, rate limiting, and raw-path/body/read-time controls
+supplied by an authenticating reverse proxy when remote exposure is required.
+The application intentionally does not implement a process-local or distributed
+frequency limiter; it owns bounded request parsing, cancellation, and the
+storage readiness probe. The packaged OIDC verifier is still a stub, so remote
+exposure is not production-ready until a real verifier or proxy authentication
+is supplied. No public multi-user deployment is claimed.
+
+Initial implementation files:
+
+- `packages/server/src/server.ts` — shared JSON content-type/body-limit
+  validation (`415`/`413`/honest `400`/`408`), fixed-route operational receipts,
+  request cancellation accounting, no-store error responses, and separate
+  `/healthz` liveness plus `/readyz` readiness.
+- `packages/server/src/index.ts` — exported the `OperationalEvent` contract.
+- `apps/server/src/main.ts` — wired the libSQL `SELECT 1` readiness probe and
+  sanitized structured request receipts to stdout.
+- `packages/server/test/server.test.ts` — content-type, body-limit, readiness,
+  cancellation-safe receipt, fixed-route/path redaction, and answer-route
+  contract tests.
+- `apps/server/test/main.test.ts` — packaged-entrypoint `/readyz` smoke test.
+- `docs/deployment.md` — documented the HTTP contract, operational receipt
+  fields, readiness/liveness split, and reverse-proxy rate-limit ownership.
+
+Security-review remediation files:
+
+- `apps/server/src/config.ts` and `apps/server/test/main.test.ts` — refuse a
+  dev bypass on a non-loopback bind.
+- `packages/server/src/server.ts` and `packages/server/src/runtime.ts` —
+  propagate answer cancellation, bound stalled readiness probes, share probes,
+  close unread error uploads, normalize receipt methods/paths, and distinguish
+  `501` as `unavailable`.
+- `Dockerfile` and `docs/deployment.md` — make proxy authentication and the
+  loopback/dev-bypass boundary explicit.
+- `plans/risks.md` — recorded the remaining remote-auth/edge provisioning risk.
+
+Commands:
+
+- Initial red test: `npx vitest run packages/server/test/server.test.ts` →
+  **4 expected failures** (content type, body limit, receipt); initial green →
+  **20/20 passed**.
+- Remediation focused tests: `npx vitest run packages/server/test/server.test.ts
+apps/server/test/main.test.ts` → **55/55 passed** after the direct-compose
+  guard was added.
+- `npx vitest run packages/server/test/server.test.ts apps/server/test/main.test.ts
+tests/security` → **76/76 passed**.
+- `npm run check:fast` → **5/5 passed** after remediation.
+- `npm run check` → **7/7 passed** after remediation.
+- `npm run signals -- verify --set feedback` → **5/5 green** after the final
+  readiness/bodyless-route follow-up.
+- `npm run signals -- verify --set verification` → **7/7 green**, receipt
+  `.do-harness/evidence.verification.json`.
+- `do-harness verify --record --set feedback --changed --strict --task 5` →
+  **5/5 passed**; `do-harness verify --record --set verification --changed
+--strict --task 5` → **7/7 passed**. Task `5` advanced through all five
+  configured subtasks and `do-harness task done 5` → **done**.
+- The initial task `4` feedback/verification gates also passed; the remediation
+  task is recorded separately because security review reopened the slice.
+- `review-security` final check found no remaining OPS-09 code blocker. It
+  verified retained readiness state, body rejection/closure on all bodyless
+  routes, auth-stage and answer cancellation, strict path/receipt redaction,
+  and the non-loopback dev-bypass guard. Remaining residuals are recorded
+  below and the actual edge profile remains OPS-10.
+- `do-harness trace add` recorded trace `6` in session
+  `do-sift-2026-09-24-ops09-remediation` for the security-review recovery.
+
+Risks/open questions:
+
+- Request IDs are correlation IDs, not authentication, authorization, or
+  idempotency keys.
+- Readiness checks storage only; provider/model availability is reported
+  through the existing research/answer receipts and remains a separate
+  operational decision. A timed-out underlying storage probe is retained to
+  avoid overlapping work, so a permanently hung probe keeps readiness false
+  until it settles or the process restarts; the edge must still restrict
+  monitoring access.
+- The reverse-proxy limiter/authentication/TLS configuration is not implemented
+  or smoke-tested by this slice; OPS-10 must provide the deployment profile and
+  evidence. The dev bypass is refused on non-loopback binds.
+- Auth verifier calls and post-model storage/ledger phases are not themselves
+  cancellable; the transport/model signal is propagated, but the edge/request
+  timeout remains the final bound for a dependency that ignores signals.
+- Client-visible route error strings remain route-specific; operational
+  receipts never include them, but review before exposing a new route with
+  sensitive failure details.
+- No schema or migration changed; rollback is a source revert. Preserve the
+  documented database backup cadence before any deployment.
+
+Status: done.
+
+**Next suggested task:** OPS-10 — loopback/reverse-proxy production profile:
+TLS, authenticating edge rate limits, backup cadence, runbook, and smoke
+evidence.

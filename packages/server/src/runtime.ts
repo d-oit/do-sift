@@ -89,7 +89,11 @@ export interface Runtime {
    * stored evidence). Throws if the answer service failed or the stored row
    * is missing.
    */
-  answerResponse(ownerId: string, question: string): Promise<AnswerHttpResponse>;
+  answerResponse(
+    ownerId: string,
+    question: string,
+    signal?: AbortSignal,
+  ): Promise<AnswerHttpResponse>;
 }
 
 const NO_MODEL_MESSAGE =
@@ -175,9 +179,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       if (answers === undefined) throw new Error(NO_MODEL_MESSAGE);
       return answers.answer(task, signal);
     },
-    async answerResponse(ownerId, question) {
+    async answerResponse(ownerId, question, signal) {
       if (answers === undefined) throw new Error(NO_MODEL_MESSAGE);
-      const outcome = await answers.answer({ ownerId, question });
+      const outcome = await answers.answer({ ownerId, question }, signal);
       const stored = await repositories.answers.get(ownerId, outcome.answerId);
       if (stored === undefined) {
         throw new Error(`stored answer ${outcome.answerId} not found`);

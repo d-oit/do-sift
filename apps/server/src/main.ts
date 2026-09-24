@@ -12,7 +12,7 @@
  * (exhaustive when DO_SIFT_FETCH_ALLOWLIST is set).
  */
 import { createClient, type Client } from "@libsql/client";
-import { AuthService, StaticOidcVerifier } from "@do-sift/auth";
+import { AuthService, StaticOidcVerifier, isLoopbackAddress } from "@do-sift/auth";
 import type { ModelProvider, SearchProvider } from "@do-sift/contracts";
 import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
@@ -144,6 +144,9 @@ function modelLabel(config: AppConfig): string {
 }
 
 export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Promise<ComposedApp> {
+  if (config.devBypass && !isLoopbackAddress(config.host)) {
+    throw new Error("dev bypass requires a loopback host; refusing a remotely reachable bypass");
+  }
   const client = createClient({ url: deps.dbUrl ?? config.dbUrl });
   const repositories = new Repositories(client);
   await applyMigrations(client, loadMigrations(config.migrationsDir));
@@ -402,10 +405,23 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       if (mergedProvider === undefined) return summary;
       return { ...summary, providerHealth: mergedProvider.lastHealth() };
     },
+    // OPS-09: readiness is a dependency probe, while /healthz remains a
+    // constant liveness signal. The probe is deliberately storage-only: it
+    // does not call providers or expose owner/evidence data.
+    readiness: async () => {
+      await client.execute("SELECT 1");
+      return true;
+    },
+    // Operational receipts contain only bounded request metadata. Never add
+    // auth headers, request bodies, prompts, or provider/model payloads here.
+    onEvent: (event) => {
+      console.log(JSON.stringify({ component: "do-sift", ...event }));
+    },
     ...(model === undefined
       ? {}
       : {
-          answer: (ownerId: string, question: string) => runtime.answerResponse(ownerId, question),
+          answer: (ownerId: string, question: string, signal?: AbortSignal) =>
+            runtime.answerResponse(ownerId, question, signal),
         }),
   });
 

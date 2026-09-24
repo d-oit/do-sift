@@ -1,6 +1,6 @@
 import { createClient, type Client } from "@libsql/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Server } from "node:http";
+import { request as httpRequest, type Server } from "node:http";
 import {
   AuthService,
   StaticOidcVerifier,
@@ -17,6 +17,7 @@ import { BudgetService, Repositories, applyMigrations, loadMigrations } from "@d
 import {
   createResearchServer,
   listen,
+  type OperationalEvent,
   type ResearchRunOutcome,
   type ResearchServerOptions,
   type SourceCard,
@@ -139,6 +140,43 @@ async function post(
   });
 }
 
+async function rawGetStatus(port: number, path: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({ host: "127.0.0.1", port, path, method: "GET" }, (response) => {
+      response.resume();
+      response.once("end", () => resolve(response.statusCode ?? 0));
+    });
+    request.once("error", reject);
+    request.end();
+  });
+}
+
+async function rawGetWithBody(port: number, path: string, body: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const request = httpRequest(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "GET",
+        headers: { "content-length": String(Buffer.byteLength(body)) },
+      },
+      (response) => {
+        response.resume();
+        response.once("end", () => {
+          settled = true;
+          resolve(response.statusCode ?? 0);
+        });
+      },
+    );
+    request.once("error", (error) => {
+      if (!settled) reject(error);
+    });
+    request.end(body);
+  });
+}
+
 beforeAll(async () => {
   client = createClient({ url: ":memory:" });
   await applyMigrations(client, loadMigrations("migrations"));
@@ -250,6 +288,55 @@ describe("POST /api/research (SSE)", () => {
     }
   });
 
+  it("does not start research when the client disconnects during authentication", async () => {
+    let markAuthStarted!: () => void;
+    const authStarted = new Promise<void>((resolve) => {
+      markAuthStarted = resolve;
+    });
+    let releaseAuth!: () => void;
+    const authGate = new Promise<void>((resolve) => {
+      releaseAuth = resolve;
+    });
+    let researchStarted = false;
+    const delayedAuthServer = createResearchServer({
+      auth: {
+        authenticateOwner: async () => {
+          markAuthStarted();
+          await authGate;
+          return { ownerId: "owner-alice", via: "dev-bypass" };
+        },
+      },
+      runResearch: async () => {
+        researchStarted = true;
+        return {
+          hits: 0,
+          documentsStored: 0,
+          passagesStored: 0,
+          denied: 0,
+          fetchErrors: 0,
+          skippedBudget: 0,
+        };
+      },
+    });
+    const delayedPort = await listen(delayedAuthServer);
+    const requestController = new AbortController();
+    try {
+      const responsePromise = fetch(`http://127.0.0.1:${delayedPort}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "cancel during auth" }),
+        signal: requestController.signal,
+      }).catch(() => undefined);
+      await authStarted;
+      requestController.abort();
+      releaseAuth();
+      await responsePromise;
+      expect(researchStarted).toBe(false);
+    } finally {
+      delayedAuthServer.close();
+    }
+  });
+
   it("authenticates bearer tokens through the OIDC door", async () => {
     const res = await post(
       "/api/research",
@@ -287,6 +374,72 @@ describe("POST /api/research (SSE)", () => {
     expect((await post("/api/research", {})).status).toBe(400);
     expect((await post("/api/research", { question: "" })).status).toBe(400);
     expect((await post("/api/research", { question: "x".repeat(600) })).status).toBe(400);
+  });
+
+  it("rejects a non-JSON request content type with 415", async () => {
+    const res = await fetch(`${baseUrl()}/api/research`, {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: "question",
+    });
+    expect(res.status).toBe(415);
+  });
+
+  it("returns 413 for an oversized request body", async () => {
+    const res = await fetch(`${baseUrl()}/api/research`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "x".repeat(9_000) }),
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it("emits a sanitized operational receipt for request failures", async () => {
+    const events: OperationalEvent[] = [];
+    const eventServer = createResearchServer({
+      auth: makeAuth(true),
+      runResearch,
+      onEvent: (event) => events.push(event),
+    } as ResearchServerOptions);
+    const eventPort = await listen(eventServer);
+    try {
+      const res = await fetch(`http://127.0.0.1:${eventPort}/api/research?token=query-secret`, {
+        method: "POST",
+        headers: { "content-type": "text/plain", authorization: "Bearer token-alice" },
+        body: "secret-looking-body",
+      });
+      expect(res.status).toBe(415);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: "http.request",
+        method: "POST",
+        path: "/api/research",
+        status: 415,
+        outcome: "client_error",
+        requestId: expect.any(String),
+      });
+      expect(JSON.stringify(events[0])).not.toContain("secret-looking-body");
+      expect(JSON.stringify(events[0])).not.toContain("Bearer token-alice");
+      expect(JSON.stringify(events[0])).not.toContain("query-secret");
+
+      const health = await fetch(`http://127.0.0.1:${eventPort}/healthz`);
+      expect(health.status).toBe(200);
+      expect(events).toHaveLength(2);
+      expect(events[1]).toMatchObject({ path: "/healthz", status: 200, outcome: "success" });
+
+      const unknown = await fetch(
+        `http://127.0.0.1:${eventPort}/private/path?token=another-secret`,
+      );
+      expect(unknown.status).toBe(404);
+      expect(events).toHaveLength(3);
+      expect(events[2]).toMatchObject({ path: "/unmatched", status: 404, outcome: "client_error" });
+      expect(JSON.stringify(events[2])).not.toContain("another-secret");
+
+      expect(await rawGetStatus(eventPort, "//host/api/research")).toBe(404);
+      expect(events[3]).toMatchObject({ path: "/unmatched", status: 404 });
+    } finally {
+      eventServer.close();
+    }
   });
 });
 
@@ -357,6 +510,66 @@ describe("answer surface (ANS-05)", () => {
     expect((await post("/api/answer", {})).status).toBe(400);
     expect((await post("/api/answer", { question: "" })).status).toBe(400);
     expect((await post("/api/answer", { question: "x".repeat(600) })).status).toBe(400);
+
+    const unsupportedType = await fetch(`${baseUrl()}/api/answer`, {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: "question",
+    });
+    expect(unsupportedType.status).toBe(415);
+
+    const oversized = await fetch(`${baseUrl()}/api/answer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "x".repeat(9_000) }),
+    });
+    expect(oversized.status).toBe(413);
+  });
+
+  it("propagates client disconnect to answer work", async () => {
+    let signalSeen: AbortSignal | undefined;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let markAborted!: () => void;
+    const aborted = new Promise<void>((resolve) => {
+      markAborted = resolve;
+    });
+    const answerServer = createResearchServer({
+      auth: makeAuth(true),
+      runResearch,
+      answer: async (_ownerId: string, _question: string, signal?: AbortSignal) => {
+        signalSeen = signal;
+        markStarted();
+        return new Promise((_resolve, reject) => {
+          const onAbort = (): void => {
+            markAborted();
+            reject(new DOMException("aborted", "AbortError"));
+          };
+          if (signal?.aborted === true) onAbort();
+          else signal?.addEventListener("abort", onAbort, { once: true });
+        });
+      },
+    });
+    const answerPort = await listen(answerServer);
+    const requestController = new AbortController();
+    try {
+      const responsePromise = fetch(`http://127.0.0.1:${answerPort}/api/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "cancel answer" }),
+        signal: requestController.signal,
+      }).catch(() => undefined);
+      await started;
+      requestController.abort();
+      await aborted;
+      const response = await responsePromise;
+      if (response !== undefined) await response.arrayBuffer().catch(() => undefined);
+      expect(signalSeen?.aborted).toBe(true);
+    } finally {
+      answerServer.close();
+    }
   });
 
   it("returns 405 for GET /api/answer and 500 when the answer path throws", async () => {
@@ -367,7 +580,12 @@ describe("answer surface (ANS-05)", () => {
   });
 
   it("answers 501 when the answer surface is not configured (authed caller informed)", async () => {
-    const unconfigured = createResearchServer({ auth: makeAuth(true), runResearch });
+    const events: OperationalEvent[] = [];
+    const unconfigured = createResearchServer({
+      auth: makeAuth(true),
+      runResearch,
+      onEvent: (event) => events.push(event),
+    });
     const unconfiguredPort = await listen(unconfigured);
     try {
       const res = await fetch(`http://127.0.0.1:${unconfiguredPort}/api/answer`, {
@@ -377,6 +595,7 @@ describe("answer surface (ANS-05)", () => {
       });
       expect(res.status).toBe(501);
       expect(await res.json()).toMatchObject({ error: "answer surface not configured" });
+      expect(events[0]).toMatchObject({ path: "/api/answer", status: 501, outcome: "unavailable" });
     } finally {
       unconfigured.close();
     }
@@ -393,8 +612,89 @@ describe("GET /healthz (OPS-05 liveness, unauthenticated)", () => {
       expect(await res.json()).toEqual({ ok: true });
       // no data leaks: the body is the constant ok object
       expect((await fetch(`http://127.0.0.1:${p}/healthz`, { method: "POST" })).status).toBe(404);
+      expect(await rawGetWithBody(p, "/healthz", "unexpected-body")).toBe(413);
     } finally {
       s.close();
+    }
+  });
+});
+
+describe("GET /readyz (OPS-09 readiness)", () => {
+  it("distinguishes readiness from liveness without exposing data", async () => {
+    const readyOptions = {
+      auth: makeAuth(false),
+      runResearch,
+      readiness: () => true,
+    } as ResearchServerOptions;
+    const readyServer = createResearchServer(readyOptions);
+    const readyPort = await listen(readyServer);
+    try {
+      const res = await fetch(`http://127.0.0.1:${readyPort}/readyz`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      expect((await fetch(`http://127.0.0.1:${readyPort}/readyz`, { method: "POST" })).status).toBe(
+        404,
+      );
+    } finally {
+      readyServer.close();
+    }
+
+    const unavailableOptions = {
+      auth: makeAuth(false),
+      runResearch,
+      readiness: () => false,
+    } as ResearchServerOptions;
+    const unavailableServer = createResearchServer(unavailableOptions);
+    const unavailablePort = await listen(unavailableServer);
+    try {
+      const res = await fetch(`http://127.0.0.1:${unavailablePort}/readyz`);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ ok: false });
+    } finally {
+      unavailableServer.close();
+    }
+
+    const failingOptions = {
+      auth: makeAuth(false),
+      runResearch,
+      readiness: async () => {
+        throw new Error("storage probe failed");
+      },
+    } as ResearchServerOptions;
+    const failingServer = createResearchServer(failingOptions);
+    const failingPort = await listen(failingServer);
+    try {
+      const res = await fetch(`http://127.0.0.1:${failingPort}/readyz`);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ ok: false });
+    } finally {
+      failingServer.close();
+    }
+  });
+
+  it("bounds a stalled readiness probe without overlapping retries", async () => {
+    let probeCalls = 0;
+    const stalledServer = createResearchServer({
+      auth: makeAuth(false),
+      runResearch,
+      readiness: () => {
+        probeCalls += 1;
+        return new Promise<boolean>(() => {});
+      },
+    });
+    const stalledPort = await listen(stalledServer);
+    try {
+      const startedAt = Date.now();
+      const readiness = await fetch(`http://127.0.0.1:${stalledPort}/readyz`);
+      expect(readiness.status).toBe(503);
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+      const secondReadiness = await fetch(`http://127.0.0.1:${stalledPort}/readyz`);
+      expect(secondReadiness.status).toBe(503);
+      expect(probeCalls).toBe(1);
+      const health = await fetch(`http://127.0.0.1:${stalledPort}/healthz`);
+      expect(health.status).toBe(200);
+    } finally {
+      stalledServer.close();
     }
   });
 });

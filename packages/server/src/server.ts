@@ -44,6 +44,16 @@ export interface ResearchRunOutcome {
   providerHealth?: Array<{ provider: string; ok: boolean; error?: string | undefined }> | undefined;
 }
 
+export interface OperationalEvent {
+  type: "http.request";
+  requestId: string;
+  method: string;
+  path: string;
+  status: number;
+  outcome: "success" | "client_error" | "server_error" | "unavailable" | "canceled";
+  durationMs: number;
+}
+
 export interface ResearchServerOptions {
   /** CORE-04 AuthService-shaped: resolves the owner or throws AuthError. */
   auth: {
@@ -59,13 +69,19 @@ export interface ResearchServerOptions {
     onSource: (source: SourceCard) => void,
     signal?: AbortSignal,
   ) => Promise<ResearchRunOutcome>;
+  /** Structured, redacted request receipt; never receives body or auth headers. */
+  onEvent?: ((event: OperationalEvent) => void) | undefined;
+  /** Readiness dependency probe; omitted means the server is ready. */
+  readiness?: (() => boolean | Promise<boolean>) | undefined;
   /**
    * Answer surface (ANS-05). When absent, POST /api/answer answers 501 —
    * the route is known but not wired. The payload carries the stored answer
    * blocks (citations resolve to stored evidence) plus the outcome flags;
    * rendering treats block text as data, never markup.
    */
-  answer?: ((ownerId: string, question: string) => Promise<AnswerHttpResponse>) | undefined;
+  answer?:
+    | ((ownerId: string, question: string, signal?: AbortSignal) => Promise<AnswerHttpResponse>)
+    | undefined;
   /** Override for tests; defaults to the bundled source-card page. */
   pageHtml?: string;
   /** Request body cap in bytes; default 8192. */
@@ -105,6 +121,128 @@ export interface AnswerHttpResponse {
 }
 
 const MAX_QUESTION = 512;
+const BODY_READ_TIMEOUT_MS = 10_000;
+const READINESS_TIMEOUT_MS = 1_000;
+
+class HttpRequestError extends Error {
+  constructor(
+    public readonly status: 400 | 408 | 413 | 415,
+    message: string,
+  ) {
+    super(message);
+    this.name = "HttpRequestError";
+  }
+}
+
+function requestPath(rawUrl: string | undefined): string {
+  if (rawUrl === undefined || !rawUrl.startsWith("/")) return "/unmatched";
+  const queryStart = rawUrl.indexOf("?");
+  const rawPath = queryStart === -1 ? rawUrl : rawUrl.slice(0, queryStart);
+  // Dispatch and receipts use the same fixed route vocabulary, but never
+  // canonicalize an alias: //host/... and dot/encoded variants are rejected
+  // rather than being allowed to evade an edge rule keyed to the raw target.
+  if (rawPath.startsWith("//") || rawPath.includes("#") || rawPath.includes("\\")) {
+    return "/unmatched";
+  }
+  switch (rawPath) {
+    case "/":
+    case "/index.html":
+    case "/healthz":
+    case "/readyz":
+    case "/api/research":
+    case "/api/answer":
+      return rawPath;
+    default:
+      return "/unmatched";
+  }
+}
+
+function safeMethod(method: string | undefined): string {
+  switch (method) {
+    case "GET":
+    case "HEAD":
+    case "OPTIONS":
+    case "POST":
+      return method;
+    default:
+      return "OTHER";
+  }
+}
+
+interface ReadinessProbe {
+  result: Promise<boolean>;
+  settled: Promise<void>;
+}
+
+function startReadinessProbe(probe: () => boolean | Promise<boolean>): ReadinessProbe {
+  const underlying = Promise.resolve().then(probe);
+  const result = new Promise<boolean>((resolve) => {
+    let responseSettled = false;
+    const finish = (ready: boolean): void => {
+      if (responseSettled) return;
+      responseSettled = true;
+      clearTimeout(timeout);
+      resolve(ready);
+    };
+    const timeout = setTimeout(() => finish(false), READINESS_TIMEOUT_MS);
+    timeout.unref();
+    underlying.then(
+      (ready) => finish(Boolean(ready)),
+      () => finish(false),
+    );
+  });
+  const settled = underlying.then(
+    () => undefined,
+    () => undefined,
+  );
+  return { result, settled };
+}
+
+function jsonError(
+  res: ServerResponse,
+  status: number,
+  message: string,
+  requestId: string,
+  req?: IncomingMessage,
+): void {
+  if (req !== undefined) {
+    // Error responses can happen before the body has been consumed (auth,
+    // media-type, 501, and 413 paths). Close after the response is flushed
+    // rather than leaving an attacker-controlled upload attached to keep-alive.
+    res.setHeader("connection", "close");
+    res.once("finish", () => {
+      if (!req.destroyed) req.destroy();
+    });
+  }
+  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+  res.end(JSON.stringify({ error: message, requestId }));
+}
+
+function requestHasBody(req: IncomingMessage): boolean {
+  if (req.headers["transfer-encoding"] !== undefined) return true;
+  const rawLength = req.headers["content-length"];
+  const value = Array.isArray(rawLength) ? rawLength[0] : rawLength;
+  return value !== undefined && /^\d+$/u.test(value) && Number(value) > 0;
+}
+
+function rejectBodyOnBodylessRoute(
+  req: IncomingMessage,
+  res: ServerResponse,
+  requestId: string,
+): boolean {
+  if (!requestHasBody(req)) return false;
+  jsonError(res, 413, "request body is not allowed on this route", requestId, req);
+  return true;
+}
+
+function assertJsonContentType(req: IncomingMessage): void {
+  const raw = req.headers["content-type"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const mediaType = value?.split(";", 1)[0]?.trim().toLowerCase();
+  if (mediaType !== "application/json") {
+    throw new HttpRequestError(415, "content-type must be application/json");
+  }
+}
 
 function sse(res: ServerResponse, event: string, data: unknown, httpRequestId: string): void {
   const payload =
@@ -117,19 +255,95 @@ function sse(res: ServerResponse, event: string, data: unknown, httpRequestId: s
 function readBody(req: IncomingMessage, maxBytes: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let settled = false;
     const chunks: Buffer[] = [];
+    function fail(error: Error): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    }
+    const rejectOversize = (): void => {
+      // Do not drain an unbounded attacker upload after the 413. The response
+      // path closes the request socket after flushing the bounded error.
+      req.pause();
+      fail(new HttpRequestError(413, "request body exceeds the configured limit"));
+    };
+    const timeout = setTimeout(() => {
+      req.pause();
+      fail(new HttpRequestError(408, "request body read timed out"));
+    }, BODY_READ_TIMEOUT_MS);
+    timeout.unref();
+    const declared = req.headers["content-length"];
+    const declaredValue = Array.isArray(declared) ? declared[0] : declared;
+    if (declaredValue !== undefined && /^\d+$/u.test(declaredValue)) {
+      const declaredBytes = Number(declaredValue);
+      if (Number.isSafeInteger(declaredBytes) && declaredBytes > maxBytes) {
+        rejectOversize();
+        return;
+      }
+    }
     req.on("data", (chunk: Buffer) => {
+      if (settled) return;
       size += chunk.byteLength;
       if (size > maxBytes) {
-        reject(new Error("body too large"));
-        req.destroy();
+        rejectOversize();
         return;
       }
       chunks.push(chunk);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    req.on("end", () => {
+      if (settled) return;
+      settled = true;
+      if (timeout !== undefined) clearTimeout(timeout);
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("aborted", () => fail(new HttpRequestError(400, "request aborted")));
+    req.on("error", fail);
   });
+}
+
+async function readQuestion(req: IncomingMessage, maxBytes: number): Promise<string> {
+  assertJsonContentType(req);
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req, maxBytes)) as unknown;
+  } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
+    throw new HttpRequestError(400, "request body must be valid JSON");
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new HttpRequestError(400, "request body must be a JSON object");
+  }
+  const question = (body as { question?: unknown }).question;
+  if (typeof question !== "string") {
+    throw new HttpRequestError(400, "question must be a string");
+  }
+  const trimmed = question.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_QUESTION) {
+    throw new HttpRequestError(400, `question must be 1..${MAX_QUESTION} characters`);
+  }
+  return trimmed;
+}
+
+interface RequestCancellation {
+  signal: AbortSignal;
+  cleanup(): void;
+}
+
+function bindRequestCancellation(req: IncomingMessage, res: ServerResponse): RequestCancellation {
+  const controller = new AbortController();
+  const abort = (): void => controller.abort();
+  req.once("aborted", abort);
+  res.once("close", abort);
+  if (req.aborted || res.destroyed) controller.abort();
+  return {
+    signal: controller.signal,
+    cleanup(): void {
+      req.off("aborted", abort);
+      res.off("close", abort);
+    },
+  };
 }
 
 async function handleResearch(
@@ -137,53 +351,43 @@ async function handleResearch(
   res: ServerResponse,
   options: ResearchServerOptions,
   maxBodyBytes: number,
+  httpRequestId: string,
 ): Promise<void> {
-  const authHeader = req.headers.authorization ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
-
-  let ownerId: string;
-  try {
-    const owner = await options.auth.authenticateOwner({
-      token,
-      clientAddress: req.socket.remoteAddress ?? "",
-    });
-    ownerId = owner.ownerId;
-  } catch (e) {
-    res.writeHead(401, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: e instanceof Error ? e.message : "unauthorized" }));
-    return;
-  }
-
-  const httpRequestId = randomUUID();
-  res.setHeader("x-request-id", httpRequestId);
-  const controller = new AbortController();
-  const abort = (): void => controller.abort();
-  req.once("aborted", abort);
-  res.once("close", abort);
+  const cancellation = bindRequestCancellation(req, res);
   const canWrite = (): boolean => !res.destroyed && !res.writableEnded;
-  const cleanup = (): void => {
-    req.off("aborted", abort);
-    res.off("close", abort);
-  };
 
   try {
+    const authHeader = req.headers.authorization ?? "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+    let ownerId: string;
+    try {
+      const owner = await options.auth.authenticateOwner({
+        token,
+        clientAddress: req.socket.remoteAddress ?? "",
+      });
+      ownerId = owner.ownerId;
+    } catch (e) {
+      if (!cancellation.signal.aborted) {
+        jsonError(res, 401, e instanceof Error ? e.message : "unauthorized", httpRequestId, req);
+      }
+      return;
+    }
+    if (cancellation.signal.aborted) return;
+
     let question: string;
     try {
-      const body = JSON.parse(await readBody(req, maxBodyBytes)) as { question?: unknown };
-      if (typeof body.question !== "string") throw new Error("question must be a string");
-      const trimmed = body.question.trim();
-      if (trimmed.length === 0 || trimmed.length > MAX_QUESTION) {
-        throw new Error(`question must be 1..${MAX_QUESTION} characters`);
+      question = await readQuestion(req, maxBodyBytes);
+    } catch (error) {
+      if (cancellation.signal.aborted) return;
+      if (error instanceof HttpRequestError) {
+        jsonError(res, error.status, error.message, httpRequestId, req);
+      } else {
+        jsonError(res, 400, "bad request", httpRequestId, req);
       }
-      question = trimmed;
-    } catch (e) {
-      if (controller.signal.aborted) return;
-      res.writeHead(400, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: e instanceof Error ? e.message : "bad request" }));
       return;
     }
 
-    if (controller.signal.aborted) return;
+    if (cancellation.signal.aborted) return;
     res.writeHead(200, {
       "content-type": "text/event-stream",
       "cache-control": "no-store",
@@ -195,25 +399,28 @@ async function handleResearch(
         ownerId,
         question,
         (source) => {
-          if (canWrite() && !controller.signal.aborted) sse(res, "source", source, httpRequestId);
+          if (canWrite() && !cancellation.signal.aborted) sse(res, "source", source, httpRequestId);
         },
-        controller.signal,
+        cancellation.signal,
       );
-      if (canWrite() && !controller.signal.aborted) sse(res, "done", outcome, httpRequestId);
+      if (canWrite() && !cancellation.signal.aborted) sse(res, "done", outcome, httpRequestId);
     } catch (e) {
-      if (canWrite() && !controller.signal.aborted) {
+      if (canWrite() && !cancellation.signal.aborted) {
         sse(
           res,
           "error",
           { message: e instanceof Error ? e.message : "research failed" },
           httpRequestId,
         );
+        // The SSE status is already committed as 200, but the operational
+        // receipt must still classify a runner failure as a server error.
+        throw e;
       }
     } finally {
       if (canWrite()) res.end();
     }
   } finally {
-    cleanup();
+    cancellation.cleanup();
   }
 }
 
@@ -222,101 +429,184 @@ async function handleAnswer(
   res: ServerResponse,
   options: ResearchServerOptions,
   maxBodyBytes: number,
+  httpRequestId: string,
 ): Promise<void> {
-  const authHeader = req.headers.authorization ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  const cancellation = bindRequestCancellation(req, res);
+  const canWrite = (): boolean => !res.destroyed && !res.writableEnded;
 
-  let ownerId: string;
   try {
-    const owner = await options.auth.authenticateOwner({
-      token,
-      clientAddress: req.socket.remoteAddress ?? "",
-    });
-    ownerId = owner.ownerId;
-  } catch (e) {
-    res.writeHead(401, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: e instanceof Error ? e.message : "unauthorized" }));
-    return;
-  }
-
-  if (options.answer === undefined) {
-    // auth passed first: never reveal surface existence to unauthenticated
-    // callers, but do tell an authenticated caller the truth.
-    res.writeHead(501, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "answer surface not configured" }));
-    return;
-  }
-
-  let question: string;
-  try {
-    const body = JSON.parse(await readBody(req, maxBodyBytes)) as { question?: unknown };
-    if (typeof body.question !== "string") throw new Error("question must be a string");
-    const trimmed = body.question.trim();
-    if (trimmed.length === 0 || trimmed.length > MAX_QUESTION) {
-      throw new Error(`question must be 1..${MAX_QUESTION} characters`);
+    const authHeader = req.headers.authorization ?? "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+    let ownerId: string;
+    try {
+      const owner = await options.auth.authenticateOwner({
+        token,
+        clientAddress: req.socket.remoteAddress ?? "",
+      });
+      ownerId = owner.ownerId;
+    } catch (e) {
+      if (!cancellation.signal.aborted) {
+        jsonError(res, 401, e instanceof Error ? e.message : "unauthorized", httpRequestId, req);
+      }
+      return;
     }
-    question = trimmed;
-  } catch (e) {
-    res.writeHead(400, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: e instanceof Error ? e.message : "bad request" }));
-    return;
-  }
+    if (cancellation.signal.aborted) return;
 
-  try {
-    const payload = await options.answer(ownerId, question);
-    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-    res.end(JSON.stringify(payload));
-  } catch (e) {
-    res.writeHead(500, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: e instanceof Error ? e.message : "answer failed" }));
+    if (options.answer === undefined) {
+      // auth passed first: never reveal surface existence to unauthenticated
+      // callers, but do tell an authenticated caller the truth.
+      jsonError(res, 501, "answer surface not configured", httpRequestId, req);
+      return;
+    }
+
+    let question: string;
+    try {
+      question = await readQuestion(req, maxBodyBytes);
+    } catch (error) {
+      if (!cancellation.signal.aborted) {
+        if (error instanceof HttpRequestError) {
+          jsonError(res, error.status, error.message, httpRequestId, req);
+        } else {
+          jsonError(res, 400, "bad request", httpRequestId, req);
+        }
+      }
+      return;
+    }
+    if (cancellation.signal.aborted) return;
+
+    try {
+      const payload = await options.answer(ownerId, question, cancellation.signal);
+      if (!cancellation.signal.aborted && canWrite()) {
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(payload));
+      }
+    } catch (e) {
+      if (!cancellation.signal.aborted && canWrite()) {
+        jsonError(res, 500, e instanceof Error ? e.message : "answer failed", httpRequestId, req);
+      }
+    }
+  } finally {
+    cancellation.cleanup();
   }
 }
 
 export function createResearchServer(options: ResearchServerOptions): Server {
   const maxBodyBytes = options.maxBodyBytes ?? 8192;
+  let readinessInFlight: ReadinessProbe | undefined;
+  const probeReadiness = async (): Promise<boolean> => {
+    if (readinessInFlight === undefined) {
+      const current = startReadinessProbe(options.readiness ?? (() => true));
+      readinessInFlight = current;
+      void current.settled.finally(() => {
+        if (readinessInFlight === current) readinessInFlight = undefined;
+      });
+    }
+    return readinessInFlight.result;
+  };
   return createHttpServer((req, res) => {
+    const httpRequestId = randomUUID();
+    const path = requestPath(req.url);
+    const startedAt = Date.now();
+    let failed = false;
+    let clientAborted = false;
+    const markClientAborted = (): void => {
+      if (!res.writableEnded) clientAborted = true;
+    };
+    req.once("aborted", markClientAborted);
+    res.once("close", markClientAborted);
+    res.setHeader("x-request-id", httpRequestId);
+    res.setHeader("x-content-type-options", "nosniff");
+
+    const emit = (): void => {
+      const status = res.statusCode;
+      const outcome: OperationalEvent["outcome"] = failed
+        ? "server_error"
+        : clientAborted
+          ? "canceled"
+          : status === 501
+            ? "unavailable"
+            : status >= 500
+              ? "server_error"
+              : status >= 400
+                ? "client_error"
+                : "success";
+      try {
+        if (options.onEvent !== undefined) {
+          options.onEvent({
+            type: "http.request",
+            requestId: httpRequestId,
+            method: safeMethod(req.method),
+            path,
+            status,
+            outcome,
+            durationMs: Math.max(0, Date.now() - startedAt),
+          });
+        }
+      } catch {
+        // Operational logging must never change request behavior.
+      } finally {
+        req.off("aborted", markClientAborted);
+        res.off("close", markClientAborted);
+      }
+    };
+
     void (async () => {
-      res.setHeader("x-content-type-options", "nosniff");
-      const url = req.url ?? "/";
-      // Liveness probe (OPS-05): unauthenticated, constant body, no data —
-      // safe for any load balancer or container healthcheck. GET-only;
-      // other methods fall through to the 404 handler.
-      if (req.method === "GET" && url === "/healthz") {
+      // Liveness (constant, no data) and readiness (dependency probe) are
+      // intentionally separate endpoints for orchestrators.
+      if (req.method === "GET" && path === "/healthz") {
+        if (rejectBodyOnBodylessRoute(req, res, httpRequestId)) return;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
         return;
       }
-      if (req.method === "GET" && (url === "/" || url === "/index.html")) {
+      if (req.method === "GET" && path === "/readyz") {
+        if (rejectBodyOnBodylessRoute(req, res, httpRequestId)) return;
+        const ready = await probeReadiness();
+        res.writeHead(ready ? 200 : 503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: ready }));
+        return;
+      }
+      if (req.method === "GET" && (path === "/" || path === "/index.html")) {
+        if (rejectBodyOnBodylessRoute(req, res, httpRequestId)) return;
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(options.pageHtml ?? DEFAULT_PAGE);
         return;
       }
-      if (url === "/api/research") {
+      if (path === "/api/research") {
         if (req.method !== "POST") {
-          res.writeHead(405, { "content-type": "application/json", allow: "POST" });
-          res.end(JSON.stringify({ error: "method not allowed" }));
+          res.setHeader("allow", "POST");
+          jsonError(res, 405, "method not allowed", httpRequestId, req);
           return;
         }
-        await handleResearch(req, res, options, maxBodyBytes);
+        await handleResearch(req, res, options, maxBodyBytes, httpRequestId);
         return;
       }
-      if (url === "/api/answer") {
+      if (path === "/api/answer") {
         if (req.method !== "POST") {
-          res.writeHead(405, { "content-type": "application/json", allow: "POST" });
-          res.end(JSON.stringify({ error: "method not allowed" }));
+          res.setHeader("allow", "POST");
+          jsonError(res, 405, "method not allowed", httpRequestId, req);
           return;
         }
-        await handleAnswer(req, res, options, maxBodyBytes);
+        await handleAnswer(req, res, options, maxBodyBytes, httpRequestId);
         return;
       }
-      res.writeHead(404, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "not found" }));
-    })().catch((e) => {
-      if (!res.headersSent) {
-        res.writeHead(500, { "content-type": "application/json" });
-      }
-      res.end(JSON.stringify({ error: e instanceof Error ? e.message : "internal error" }));
-    });
+      jsonError(res, 404, "not found", httpRequestId, req);
+    })()
+      .catch((error: unknown) => {
+        failed = true;
+        if (!res.headersSent) {
+          jsonError(
+            res,
+            500,
+            error instanceof Error ? error.message : "internal error",
+            httpRequestId,
+            req,
+          );
+        } else if (!res.writableEnded && !res.destroyed) {
+          res.end();
+        }
+      })
+      .finally(emit);
   });
 }
 
