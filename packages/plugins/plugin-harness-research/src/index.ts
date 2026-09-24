@@ -33,10 +33,20 @@ export interface PageContent {
   contentType: string;
 }
 
+export interface ResearchSourceEvent {
+  url: string;
+  title?: string | undefined;
+  passageCount: number;
+  /** SRC-14: the raw store-time similarity receipt (undefined without
+   * an embedder). The RUNTIME decides prominence — the floor is the
+   * composition's option, not the harness's. */
+  relevanceScore?: number | undefined;
+}
+
 export interface ResearchHarnessDeps {
   search: SearchProvider;
   /** Host-provided fetch path (safeFetch-bound). Throws on refusal/failure. */
-  fetchPage: (url: string) => Promise<PageContent>;
+  fetchPage: (url: string, signal?: AbortSignal) => Promise<PageContent>;
   repositories: Repositories;
   /** When present, the run reserves budget before and settles after. */
   budget?: BudgetService | undefined;
@@ -46,17 +56,7 @@ export interface ResearchHarnessDeps {
    */
   extract?: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
   /** Progress hook (SRC-05 SSE): fired after each source is fully stored. */
-  onSource?:
-    | ((source: {
-        url: string;
-        title?: string | undefined;
-        passageCount: number;
-        /** SRC-14: the raw store-time similarity receipt (undefined without
-         * an embedder). The RUNTIME decides prominence — the floor is the
-         * composition's option, not the harness's. */
-        relevanceScore?: number | undefined;
-      }) => void)
-    | undefined;
+  onSource?: ((source: ResearchSourceEvent) => void) | undefined;
   /**
    * When present, newly stored passages are embedded for hybrid retrieval
    * (RET-03, ADR 0009): a backfill runs after storage and `embedded` counts
@@ -97,13 +97,31 @@ export interface ResearchRunSummary {
 }
 
 export interface ResearchHarnessInstance extends PluginInstance {
-  run(task: { ownerId: string; question: string }): Promise<ResearchRunSummary>;
+  run(
+    task: {
+      ownerId: string;
+      question: string;
+      /** Per-run override; avoids sharing a mutable callback across requests. */
+      onSource?: ((source: ResearchSourceEvent) => void) | undefined;
+    },
+    signal?: AbortSignal,
+  ): Promise<ResearchRunSummary>;
 }
 
 /** Bound work per document; the readability extractor (SRC-03) replaces this. */
 const MAX_PASSAGES_PER_DOC = 20;
 const MAX_EXCERPT = 8192;
 const MIN_EXCERPT = 20;
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted === true) {
+    throw new DOMException("research aborted", "AbortError");
+  }
+}
+
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  return signal?.aborted === true || (error instanceof Error && error.name === "AbortError");
+}
 
 /** Split raw text into paragraph-ish excerpts (deterministic, no deps). */
 export function extractPassages(text: string): string[] {
@@ -219,8 +237,17 @@ export function createResearchHarness(
       activated = false;
     },
 
-    async run(task: { ownerId: string; question: string }): Promise<ResearchRunSummary> {
+    async run(
+      task: {
+        ownerId: string;
+        question: string;
+        onSource?: ((source: ResearchSourceEvent) => void) | undefined;
+      },
+      signal?: AbortSignal,
+    ): Promise<ResearchRunSummary> {
       if (!activated) throw new Error("research harness is not activated");
+      throwIfAborted(signal);
+      const onSource = task.onSource ?? deps.onSource;
       const query = SearchQuery.parse({ text: task.question, ownerId: task.ownerId });
       const limits = SearchLimits.parse({ maxHits });
 
@@ -267,10 +294,12 @@ export function createResearchHarness(
         }
 
         try {
-          const hits = await deps.search.search(query, limits);
+          const hits = await deps.search.search(query, limits, signal);
           summary.hits = hits.length;
+          throwIfAborted(signal);
 
           for (const hit of hits) {
+            throwIfAborted(signal);
             if (summary.fetches >= maxFetches) {
               summary.skippedBudget++;
               continue;
@@ -301,7 +330,7 @@ export function createResearchHarness(
                 task.ownerId,
                 existing.id,
               );
-              deps.onSource?.({
+              onSource?.({
                 url: hit.url,
                 title: existing.title ?? hit.title ?? undefined,
                 passageCount: existingPassages,
@@ -312,7 +341,8 @@ export function createResearchHarness(
               continue;
             }
             try {
-              const page = await deps.fetchPage(hit.url);
+              const page = await deps.fetchPage(hit.url, signal);
+              throwIfAborted(signal);
               // SRC-11 (store-with-flag): per-source evidence relevance —
               // cosine(question, FULL plain-text extract) computed ONCE per
               // source, BEFORE passage chunking. The extract is passed WHOLE
@@ -373,13 +403,15 @@ export function createResearchHarness(
                 await deps.repositories.passages.insert(passageInit);
                 summary.passagesStored++;
               }
-              deps.onSource?.({
+              throwIfAborted(signal);
+              onSource?.({
                 url: hit.url,
                 title: hit.title ?? undefined,
                 passageCount: extracted.length,
                 ...(relevanceScore === undefined ? {} : { relevanceScore }),
               });
-            } catch {
+            } catch (error) {
+              if (isAbortError(error, signal)) throw error;
               summary.fetchErrors++;
             }
           }

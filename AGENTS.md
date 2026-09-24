@@ -32,16 +32,19 @@ feedforward guides steer work before it starts; computational sensors judge
 it after. LLM self-assessment never substitutes for a sensor exit code.
 
 1. **Feedforward.** Before coding, read the task's plan row, the invariants
-   it names, and any skill covering the work. Decompose into ordered
-   subtasks with preconditions (`htn-planner` skill); decide at planning
-   time whether an uncertain third-party/API/performance question needs a
-   spike first (`spike-runner` skill — throwaway scratch in the gitignored
-   `.spikes/` directory, never production code).
+   it names, `plans/methods.json` when using the upstream task workflow, and
+   any skill covering the work. Decompose into ordered subtasks with
+   preconditions (`htn-planner` skill); decide at planning time whether an
+   uncertain third-party/API/performance question needs a spike first
+   (`spike-runner` skill — throwaway scratch in the gitignored `.spikes/`
+   directory, never production code).
 2. **Red before green.** Define "done" with a failing test before or with
    the implementation; implement the smallest slice (`implement-slice`).
 3. **Feedback.** A subtask is complete only when verified by automated exit
    codes: `npm run signals -- verify --set feedback` in the edit loop, the
-   `verification` set before handoff.
+   `verification` set before handoff. When the upstream CLI is available,
+   scope its receipts to the numeric ID returned by `do-harness task add`;
+   do not substitute a plan ID for that numeric ID.
 4. **Self-correction.** On failure: classify it, apply the minimal fix,
    re-run the specific sensor. One sensor failing 3 consecutive runs is
    halted — fix the cause, then clear the strikes.
@@ -69,18 +72,23 @@ npm run policy        # repo policy checks alone
 npx vitest run <file> # single test file
 npm run signals -- verify --set feedback  # dev-signal feedback loop before handoff
 npm run signals -- status                 # dev-signal receipt state
-do-harness verify --set feedback  # upstream Rust CLI, same sensors (v0.1.1, ADR 0008)
+do-harness verify --set feedback  # upstream Rust CLI, same sensors (v0.1.2, ADR 0008)
+do-harness verify --record --set verification --task <ID>  # task-scoped receipt
 do-harness status --set verification  # upstream freshness (needs green --record)
+do-harness task add <title> --method <method>  # after the plan row exists
+do-harness task advance <ID>  # advance only after the configured sensor gate passes
+do-harness trace add --session <session> --task <ID> --command <command> --error-diff <diff> --resolution-steps <steps>
 ```
 
 Dev signals are computational receipts for the development loop (plan 008,
 ADR 0007; CLI home `scripts/dev-harness/` since plan 009 — workflow tooling,
 not a package): run the feedback set before claiming a task done. The
 upstream Rust `do-harness` CLI (ADR 0008, configured in `do-harness.toml`)
-drives the same sensors natively on Windows and in WSL (v0.1.1 prebuilt in
+drives the same sensors natively on Windows and in WSL (v0.1.2 prebuilt in
 `~/.local/bin`; on Windows `DO_HARNESS_BIN` must point at the exe —
 upstream's PATH lookup misses `.exe`); `npm run signals` stays the enforced
-hook/CI path. If a sensor is halted after 3 consecutive
+hook/CI path. This repository's `plans/methods.json` maps task gates to its
+`tests`/`evals`/`skills` sensor names. If a sensor is halted after 3 consecutive
 failures, fix the cause first, then clear it with
 `npm run signals -- errors clear --sensor <name>` — never clear a strike
 before the fix, and never weaken a sensor or edit its argv to make it pass.

@@ -5,6 +5,8 @@ This folder is the project's memory. Agents and humans update it together.
 ## Layout
 
 - `0NN-*.md` — numbered milestone plans with task tables (one row per task ID)
+- `methods.json` — do-harness task-method catalog; subtask gates reference
+  this repository's configured sensor names
 - `invariants.json` — machine-checked invariants; each maps to an enforcing
   test or script (CI fails if an invariant has no enforcing check)
 - `risks.md` — living risk register with owners and status
@@ -13,6 +15,16 @@ This folder is the project's memory. Agents and humans update it together.
   requires a fresh entry here.
 - `adr/` — architecture decision records (immutable once accepted)
 - `templates/task.md` — task record format
+
+## Current queue
+
+- `013-ans-evidence-hardening.md` — finish ANS-11 → ANS-13 before any live model activation.
+- `014-production-usage.md` — OPS-07 and OPS-08 are done; OPS-09 HTTP contract is next.
+- `015-workflow-compaction.md` — DHC-05 is done; DHC-06 upstream issue publication is blocked by GitHub token scope.
+
+Older milestone plans remain as historical evidence. Their detailed task
+records and stable IDs are retained; use this queue rather than stale
+"next suggested task" notes to choose new work.
 
 ## Task lifecycle
 

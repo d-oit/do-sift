@@ -14,7 +14,13 @@ import {
 } from "@do-sift/plugin-harness-research";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
 import { BudgetService, Repositories, applyMigrations, loadMigrations } from "@do-sift/storage";
-import { createResearchServer, listen, type SourceCard } from "../src/index.js";
+import {
+  createResearchServer,
+  listen,
+  type ResearchRunOutcome,
+  type ResearchServerOptions,
+  type SourceCard,
+} from "../src/index.js";
 
 const PAGE_A = [
   "Alpha is the first paragraph of page A and carries the primary claim about the topic at hand.",
@@ -167,8 +173,15 @@ describe("POST /api/research (SSE)", () => {
     const res = await post("/api/research", { question: "what is alpha?" });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const httpRequestId = res.headers.get("x-request-id");
+    expect(httpRequestId).toMatch(/^[0-9a-f-]{36}$/iu);
 
     const events = parseSse(await res.text());
+    expect(
+      events.every(
+        (event) => (event.data as { httpRequestId?: unknown }).httpRequestId === httpRequestId,
+      ),
+    ).toBe(true);
     const sources = events.filter((e) => e.event === "source");
     const done = events.find((e) => e.event === "done");
     expect(sources).toHaveLength(1);
@@ -185,6 +198,56 @@ describe("POST /api/research (SSE)", () => {
     const docs = await repos.documents.list("owner-alice");
     expect(docs).toHaveLength(1);
     expect(docs[0]?.contentHash).toHaveLength(64);
+  });
+
+  it("aborts research when the client disconnects", async () => {
+    let signalSeen: AbortSignal | undefined;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let markAborted!: () => void;
+    const aborted = new Promise<void>((resolve) => {
+      markAborted = resolve;
+    });
+    const lifecycleServer = createResearchServer({
+      auth: makeAuth(true),
+      runResearch: (async (
+        _ownerId: string,
+        _question: string,
+        _onSource: (source: SourceCard) => void,
+        signal?: AbortSignal,
+      ): Promise<ResearchRunOutcome> => {
+        signalSeen = signal;
+        markStarted();
+        return new Promise<ResearchRunOutcome>((_resolve, reject) => {
+          const onAbort = (): void => {
+            markAborted();
+            reject(new DOMException("aborted", "AbortError"));
+          };
+          if (signal?.aborted === true) onAbort();
+          else signal?.addEventListener("abort", onAbort, { once: true });
+        });
+      }) as ResearchServerOptions["runResearch"],
+    });
+    const lifecyclePort = await listen(lifecycleServer);
+    const requestController = new AbortController();
+    try {
+      const responsePromise = fetch(`http://127.0.0.1:${lifecyclePort}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "cancel me" }),
+        signal: requestController.signal,
+      }).catch(() => undefined);
+      await started;
+      requestController.abort();
+      await aborted;
+      const response = await responsePromise;
+      if (response !== undefined) await response.arrayBuffer().catch(() => undefined);
+      expect(signalSeen?.aborted).toBe(true);
+    } finally {
+      lifecycleServer.close();
+    }
   });
 
   it("authenticates bearer tokens through the OIDC door", async () => {

@@ -14,18 +14,21 @@ self-assessment (plan 009, ADR 0008: do-harness engineering model).
 ### Vertical slice (default)
 
 Preconditions: the objective has a task row in a `plans/0NN-*.md` plan with
-acceptance criteria, and the contracts/invariants it touches are known.
+acceptance criteria, the contracts/invariants it touches are known, and (when
+using upstream tasks) `plans/methods.json` names sensors that actually exist
+in `do-harness.toml`.
 
 1. Record the ordered subtask list in the task row (or a new plan) before
-   writing code.
+   writing code. Keep one owner and one vertical outcome per row.
 2. Write or adjust the failing test that defines "done" for the first
    subtask (red).
 3. Implement the smallest slice that turns it green
    (`implement-slice` skill); do not refactor adjacent code.
 4. Run `npm run signals -- verify --set feedback`; a subtask pointer may
-   advance only on exit code 0.
-5. Before handoff run the `verification` set and record evidence (commands +
-   results) in the plan file.
+   advance only on exit code 0. With upstream `do-harness`, use the numeric
+   task ID returned by `task add` and run task-scoped `verify --record`.
+5. Before handoff run the `verification` set, record a trace for non-trivial
+   recovery, and record evidence (commands + results) in the plan file.
 
 ### Spike & resolve
 

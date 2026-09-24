@@ -36,3 +36,6 @@ feedforward guide, not just the symptom (plan 009, ADR 0008).
 - One pattern per skill; keep procedures imperative and short.
 - If the guide that needs updating is an accepted ADR, write a new ADR
   instead of editing it (plans/README rule).
+- If an upstream tool defect blocks the workflow, preserve the exact failing
+  command and output, use the configured repository's issue channel, and keep
+  the local workaround explicit; do not weaken a sensor to hide the defect.

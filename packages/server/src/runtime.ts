@@ -10,8 +10,8 @@
  * (measured + promoted in plans/011); omitting it keeps byte-identical
  * keyword-only behavior. This file is host infrastructure like server.ts:
  * it composes, it never performs raw I/O beyond what the injected deps do.
- * A single runtime serves one owner-scoped process; concurrent research
- * runs share the onSource forwarding slot by design (dev scale).
+ * A single runtime serves one owner-scoped process; each research call owns
+ * its source-event callback for the lifetime of that call.
  */
 import type { Client } from "@libsql/client";
 import type { ModelProvider, SearchProvider } from "@do-sift/contracts";
@@ -20,6 +20,7 @@ import {
   createResearchHarness,
   type PageContent,
   type ResearchRunSummary,
+  type ResearchSourceEvent,
 } from "@do-sift/plugin-harness-research";
 import { BudgetService, Repositories, type DailyCaps, type TextEmbedder } from "@do-sift/storage";
 import { createAnswerService, DEFAULT_RELEVANCE_FLOOR, type AnswerOutcome } from "./answer.js";
@@ -30,7 +31,7 @@ export interface RuntimeOptions {
   /** Search adapter (terms gates live in the adapter, not here). */
   search: SearchProvider;
   /** Host-bound safe fetch path (SSRF guards live there). */
-  fetchPage: (url: string) => Promise<PageContent>;
+  fetchPage: (url: string, signal?: AbortSignal) => Promise<PageContent>;
   /** Extraction plugin output; default = the harness's built-in splitter. */
   extract?: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
   /**
@@ -79,6 +80,7 @@ export interface Runtime {
       relevanceScore?: number | undefined;
       relevanceLow?: boolean | undefined;
     }) => void,
+    signal?: AbortSignal,
   ): Promise<ResearchRunSummary>;
   answer(task: { ownerId: string; question: string }, signal?: AbortSignal): Promise<AnswerOutcome>;
   /**
@@ -100,15 +102,6 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       ? undefined
       : new BudgetService(options.client, options.budgetCaps);
 
-  let currentOnSource:
-    | ((source: {
-        url: string;
-        title?: string | undefined;
-        passageCount: number;
-        relevanceScore?: number | undefined;
-        relevanceLow?: boolean | undefined;
-      }) => void)
-    | undefined;
   // SRC-14: the runtime owns the floor for card prominence — the same
   // option (or the exported designed default) the answer service applies.
   const cardFloor = options.relevanceFloor ?? DEFAULT_RELEVANCE_FLOOR;
@@ -120,18 +113,6 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       repositories,
       budget: budgets,
       extract: options.extract,
-      onSource: (source) => {
-        const card = {
-          url: source.url,
-          title: source.title,
-          passageCount: source.passageCount,
-          ...(source.relevanceScore === undefined ? {} : { relevanceScore: source.relevanceScore }),
-          ...(source.relevanceScore === undefined
-            ? {}
-            : { relevanceLow: source.relevanceScore < cardFloor }),
-        };
-        currentOnSource?.(card);
-      },
       ...(options.embedder === undefined ? {} : { embedder: options.embedder }),
     },
   );
@@ -163,13 +144,32 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   return {
     repositories,
     budgets,
-    async runResearch(ownerId, question, onSource) {
-      currentOnSource = onSource;
-      try {
-        return await harness.run({ ownerId, question });
-      } finally {
-        currentOnSource = undefined;
-      }
+    async runResearch(ownerId, question, onSource, signal) {
+      const onSourceForRun =
+        onSource === undefined
+          ? undefined
+          : (source: ResearchSourceEvent) => {
+              const card = {
+                url: source.url,
+                passageCount: source.passageCount,
+                ...(source.title === undefined ? {} : { title: source.title }),
+                ...(source.relevanceScore === undefined
+                  ? {}
+                  : { relevanceScore: source.relevanceScore }),
+                ...(source.relevanceScore === undefined
+                  ? {}
+                  : { relevanceLow: source.relevanceScore < cardFloor }),
+              };
+              onSource(card);
+            };
+      return harness.run(
+        {
+          ownerId,
+          question,
+          ...(onSourceForRun === undefined ? {} : { onSource: onSourceForRun }),
+        },
+        signal,
+      );
     },
     async answer(task, signal) {
       if (answers === undefined) throw new Error(NO_MODEL_MESSAGE);

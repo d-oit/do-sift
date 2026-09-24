@@ -9,6 +9,7 @@
  * 404/405. The research runner is injected; this package knows nothing
  * about plugins or storage internals.
  */
+import { randomUUID } from "node:crypto";
 import {
   createServer as createHttpServer,
   type IncomingMessage,
@@ -56,6 +57,7 @@ export interface ResearchServerOptions {
     ownerId: string,
     question: string,
     onSource: (source: SourceCard) => void,
+    signal?: AbortSignal,
   ) => Promise<ResearchRunOutcome>;
   /**
    * Answer surface (ANS-05). When absent, POST /api/answer answers 501 —
@@ -104,8 +106,12 @@ export interface AnswerHttpResponse {
 
 const MAX_QUESTION = 512;
 
-function sse(res: ServerResponse, event: string, data: unknown): void {
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+function sse(res: ServerResponse, event: string, data: unknown, httpRequestId: string): void {
+  const payload =
+    typeof data === "object" && data !== null && !Array.isArray(data)
+      ? { ...(data as Record<string, unknown>), httpRequestId }
+      : { httpRequestId, value: data };
+  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
 function readBody(req: IncomingMessage, maxBytes: number): Promise<string> {
@@ -148,36 +154,67 @@ async function handleResearch(
     return;
   }
 
-  let question: string;
-  try {
-    const body = JSON.parse(await readBody(req, maxBodyBytes)) as { question?: unknown };
-    if (typeof body.question !== "string") throw new Error("question must be a string");
-    const trimmed = body.question.trim();
-    if (trimmed.length === 0 || trimmed.length > MAX_QUESTION) {
-      throw new Error(`question must be 1..${MAX_QUESTION} characters`);
-    }
-    question = trimmed;
-  } catch (e) {
-    res.writeHead(400, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: e instanceof Error ? e.message : "bad request" }));
-    return;
-  }
+  const httpRequestId = randomUUID();
+  res.setHeader("x-request-id", httpRequestId);
+  const controller = new AbortController();
+  const abort = (): void => controller.abort();
+  req.once("aborted", abort);
+  res.once("close", abort);
+  const canWrite = (): boolean => !res.destroyed && !res.writableEnded;
+  const cleanup = (): void => {
+    req.off("aborted", abort);
+    res.off("close", abort);
+  };
 
-  res.writeHead(200, {
-    "content-type": "text/event-stream",
-    "cache-control": "no-store",
-    connection: "keep-alive",
-    "x-accel-buffering": "no",
-  });
   try {
-    const outcome = await options.runResearch(ownerId, question, (source) => {
-      sse(res, "source", source);
+    let question: string;
+    try {
+      const body = JSON.parse(await readBody(req, maxBodyBytes)) as { question?: unknown };
+      if (typeof body.question !== "string") throw new Error("question must be a string");
+      const trimmed = body.question.trim();
+      if (trimmed.length === 0 || trimmed.length > MAX_QUESTION) {
+        throw new Error(`question must be 1..${MAX_QUESTION} characters`);
+      }
+      question = trimmed;
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : "bad request" }));
+      return;
+    }
+
+    if (controller.signal.aborted) return;
+    res.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-store",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
     });
-    sse(res, "done", outcome);
-  } catch (e) {
-    sse(res, "error", { message: e instanceof Error ? e.message : "research failed" });
+    try {
+      const outcome = await options.runResearch(
+        ownerId,
+        question,
+        (source) => {
+          if (canWrite() && !controller.signal.aborted) sse(res, "source", source, httpRequestId);
+        },
+        controller.signal,
+      );
+      if (canWrite() && !controller.signal.aborted) sse(res, "done", outcome, httpRequestId);
+    } catch (e) {
+      if (canWrite() && !controller.signal.aborted) {
+        sse(
+          res,
+          "error",
+          { message: e instanceof Error ? e.message : "research failed" },
+          httpRequestId,
+        );
+      }
+    } finally {
+      if (canWrite()) res.end();
+    }
+  } finally {
+    cleanup();
   }
-  res.end();
 }
 
 async function handleAnswer(
