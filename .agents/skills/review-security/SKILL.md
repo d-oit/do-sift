@@ -25,6 +25,10 @@ description: Security-review a do-sift change set — auth, fetching, plugin cap
    - **Workflows:** pinned action SHAs, least-privilege tokens, no
      `pull_request_target` with secrets, no untrusted-code execution with
      privileged tokens.
+   - **Production requests:** request IDs, cancellation/deadlines, body and
+     content-type limits, rate-limit ownership, readiness versus liveness, and
+     structured logs that redact tokens, prompts, raw passages, and provider
+     responses.
 3. Use and extend the fixtures in `tests/security/`; add a fixture for every
    new finding class you can express as a test.
 4. Report findings with severity, exploit sketch, and residual limitations.

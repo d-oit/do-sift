@@ -12,7 +12,7 @@
  * (exhaustive when DO_SIFT_FETCH_ALLOWLIST is set).
  */
 import { createClient, type Client } from "@libsql/client";
-import { AuthService, StaticOidcVerifier } from "@do-sift/auth";
+import { AuthService, StaticOidcVerifier, isLoopbackAddress } from "@do-sift/auth";
 import type { ModelProvider, SearchProvider } from "@do-sift/contracts";
 import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
@@ -144,6 +144,9 @@ function modelLabel(config: AppConfig): string {
 }
 
 export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Promise<ComposedApp> {
+  if (config.devBypass && !isLoopbackAddress(config.host)) {
+    throw new Error("dev bypass requires a loopback host; refusing a remotely reachable bypass");
+  }
   const client = createClient({ url: deps.dbUrl ?? config.dbUrl });
   const repositories = new Repositories(client);
   await applyMigrations(client, loadMigrations(config.migrationsDir));
@@ -176,7 +179,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       timeoutMs: 15_000,
     });
   let search: SearchProvider;
-  let fetchPage: (fetchUrl: string) => Promise<PageContent>;
+  let fetchPage: (fetchUrl: string, signal?: AbortSignal) => Promise<PageContent>;
   let extract: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
   /** SRC-17: set only for merged compositions; single-provider runs stay undefined. */
   let mergedProvider: ReturnType<typeof createMergedSearchProvider> | undefined;
@@ -247,7 +250,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
 
     const dns: DnsResolver = deps.dns ?? realDns;
     const wikiInComposition = config.searchProviders.includes("wikipedia");
-    fetchPage = async (fetchUrl) => {
+    fetchPage = async (fetchUrl: string, signal?: AbortSignal) => {
       // SRC-16: DUAL content path per hit URL. A wiki URL in a composition
       // that includes wikipedia maps to the plain-text extract endpoint
       // (SRC-07 — no HTML-stripping pipeline for wiki pages); anything
@@ -270,6 +273,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
           // guard validated instead of re-resolving. Injected fetchImpl
           // (hermetic tests) delegates as before.
           ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}),
+          ...(signal === undefined ? {} : { signal }),
           checkHost: (host) => siteAccess.assertAllowed(host),
         });
         // SRC-15: HTML → text pre-pass (plugin-owned) before the
@@ -291,6 +295,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         headers: { "user-agent": USER_AGENT, accept: "application/json" },
         dns,
         ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}),
+        ...(signal === undefined ? {} : { signal }),
         checkHost: (host) => siteAccess.assertAllowed(host),
       });
       // formatversion=2 (SRC-09): query.pages is an ARRAY. The v1 map
@@ -392,18 +397,31 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
 
   const server = createResearchServer({
     auth,
-    runResearch: async (ownerId, question, onSource): Promise<ResearchRunOutcome> => {
-      const summary = await runtime.runResearch(ownerId, question, onSource);
+    runResearch: async (ownerId, question, onSource, signal): Promise<ResearchRunOutcome> => {
+      const summary = await runtime.runResearch(ownerId, question, onSource, signal);
       // SRC-17: surface per-provider sub-search health in the run summary
       // (merged compositions only) — degradation becomes first-class in
       // the measurement instead of provenance-only.
       if (mergedProvider === undefined) return summary;
       return { ...summary, providerHealth: mergedProvider.lastHealth() };
     },
+    // OPS-09: readiness is a dependency probe, while /healthz remains a
+    // constant liveness signal. The probe is deliberately storage-only: it
+    // does not call providers or expose owner/evidence data.
+    readiness: async () => {
+      await client.execute("SELECT 1");
+      return true;
+    },
+    // Operational receipts contain only bounded request metadata. Never add
+    // auth headers, request bodies, prompts, or provider/model payloads here.
+    onEvent: (event) => {
+      console.log(JSON.stringify({ component: "do-sift", ...event }));
+    },
     ...(model === undefined
       ? {}
       : {
-          answer: (ownerId: string, question: string) => runtime.answerResponse(ownerId, question),
+          answer: (ownerId: string, question: string, signal?: AbortSignal) =>
+            runtime.answerResponse(ownerId, question, signal),
         }),
   });
 

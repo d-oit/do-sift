@@ -52,8 +52,8 @@ VOLUME /data
 USER node
 
 # Container convention: bind all interfaces inside the container namespace;
-# publish selectively with -p and keep the reverse-proxy duties from
-# docs/deployment.md (no TLS/rate limiting in the server itself).
+# publish selectively with -p and keep the authenticating reverse-proxy duties
+# from docs/deployment.md (no TLS/rate limiting in the server itself).
 ENV DO_SIFT_HOST=0.0.0.0
 
 # Liveness = the real service's /healthz (unauthenticated, constant body).
