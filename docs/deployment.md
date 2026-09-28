@@ -58,12 +58,56 @@ The server speaks plain HTTP on whatever interface you bind it to and has
 **no TLS and no rate limiting**. Therefore:
 
 - Preferred: bind to loopback only and keep the whole stack on one machine.
-- If it must be reached remotely, put a reverse proxy (Caddy/nginx) in
-  front that terminates TLS and adds rate limiting. do-sift sets
-  `X-Content-Type-Options: nosniff` and serves same-origin only; the proxy
-  must not loosen that.
+- If it must be reached remotely, put an authenticating reverse proxy
+  (Caddy/nginx) in front that terminates TLS, authenticates the caller, and
+  adds rate limiting. The packaged entrypoint currently has only a stub OIDC
+  verifier, so the proxy authentication is mandatory until a real verifier is
+  configured; do not enable the dev bypass on a public or container-published
+  interface.
+- The proxy must keep the upstream private/loopback, preserve
+  `X-Content-Type-Options: nosniff`, match the exact `/api/*` request target
+  before forwarding, and enforce body/read-time limits. Restrict `/healthz`
+  and `/readyz` to the monitoring network. do-sift does not treat forwarded
+  headers as authentication.
 
-## Running
+### HTTP contract and operational receipts
+
+The two health endpoints have different purposes:
+
+- `GET /healthz` is unauthenticated liveness. It returns the constant
+  `{"ok":true}` and does not inspect storage, providers, or owner data.
+- `GET /readyz` is readiness. The packaged entrypoint probes the configured
+  libSQL connection with `SELECT 1`; a failed or stalled probe returns `503`
+  with `{"ok":false}` within the server's one-second probe deadline. Concurrent
+  probes share one in-flight check. It does not call search or model providers
+  and does not expose data or secrets.
+
+`POST /api/research` and `POST /api/answer` require
+`Content-Type: application/json` (parameters such as `charset` are accepted)
+and reject bodies over 8,192 bytes with `413`. JSON shape/question errors are
+`400`; an unsupported media type is `415`; a body that stalls for ten seconds
+is `408`. Error responses close the request connection after flushing, so an
+unread upload is not drained indefinitely. Every HTTP response carries a
+server-generated `X-Request-Id`, and SSE events include the same correlation
+ID. Operational receipts are structured JSON with only the request ID, method,
+fixed route path (never raw path parameters), status, outcome, and duration.
+The entrypoint writes those receipts to stdout; bodies, authorization
+headers, prompts, fetched passages, and provider/model responses are not
+logged.
+
+### Rate-limit ownership
+
+The application deliberately owns **no** in-memory or distributed rate
+limiter. The supported remote exposure boundary is an authenticating reverse
+proxy/edge limiter in front of the single-owner service: configure limits per
+client and, where available, per authenticated owner before forwarding `/api/*`
+traffic. Match the raw request target exactly; do not rely on a canonicalized
+path that could make an alias bypass the edge rule. The application still
+enforces its per-request body cap and upstream safe-fetch/budget boundaries;
+the edge owns request frequency, burst control, and read-time/body limits. Keep
+the service bound to loopback behind that proxy unless an operator has
+explicitly chosen a different trusted deployment boundary. Do not add a second
+process-local limiter as an implicit substitute for the edge policy.
 
 ```bash
 npm install
@@ -173,23 +217,29 @@ entrypoint itself stays key-agnostic by design.
 
 ### Container
 
-The image's CMD is the service entrypoint with a `/healthz` liveness
-probe; the build-time offline eval suite is unchanged. Note: the tagged
-v0.1.0 image predates the entrypoint — its CMD still runs the offline
-suite; the service CMD ships with the next image build. The fail-closed
-env is not defaulted, so provide configuration explicitly:
+The image's CMD is the service entrypoint. Use `/healthz` for liveness and
+`/readyz` for readiness (which checks the storage connection). The build-time
+offline eval suite is unchanged. Note: the tagged v0.1.0 image predates the
+entrypoint — its CMD still runs the offline suite; the service CMD ships with
+the next image build. The fail-closed env is not defaulted, so provide
+configuration explicitly:
 
 ```bash
-docker run -p 8080:8080 \
+# Smoke-only: the image's OIDC verifier is still a stub, so this container
+# accepts no unauthenticated owner calls. Do not treat this as a usable remote
+# deployment; configure a real verifier or an authenticating proxy first.
+docker run -p 127.0.0.1:8080:8080 \
   -e DO_SIFT_OWNERS="me" -e DO_SIFT_SEARCH_PROVIDER=fixture \
   -e DO_SIFT_MODEL_PROVIDER=fixture \
-  -e DO_SIFT_DEV_BYPASS=1 -e DO_SIFT_DEV_OWNER=me \
+  -e DO_SIFT_DEV_BYPASS=0 \
   do-sift:dev
 ```
 
 The image binds `0.0.0.0` inside the container namespace (publish
 selectively with `-p`); the server itself still has no TLS or rate
-limiting — reverse-proxy duty.
+limiting. A reverse proxy must provide TLS, authentication, rate limits, and
+raw-path/body/read-time controls; the dev bypass is refused on a non-loopback
+bind.
 
 ## Backups
 
@@ -215,7 +265,10 @@ per run — cite `.do-harness/evidence.verification.json` rather than memory.
 
 - Single owner; no multi-user deployment (plan 000 non-goal until
   OPS/QUAL gates).
-- No TLS, no rate limiting in the server itself (reverse proxy duty).
+- No TLS, no rate limiting in the server itself (reverse proxy duty). The
+  packaged entrypoint's OIDC verifier is still a stub; remote exposure also
+  requires proxy authentication or a real verifier, and the dev bypass is
+  refused on non-loopback binds.
 - Live search (Wikipedia, Marginalia, merged) exists behind dated terms gates; the live
   model path (`openai-compat`) is wired but unwired by default — first live use needs its
   terms pair plus, for billable-capable hosts, the router gate + INV-003 grant (no
