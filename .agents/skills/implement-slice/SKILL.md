@@ -12,14 +12,20 @@ Implement the smallest slice that satisfies one task's acceptance criteria.
 1. Open the referenced plan file in `plans/` and find the task row. If the
    task is `in-progress` under another owner or already `done`, stop and
    report instead of working.
-2. Set the task to `in-progress` in the plan file.
+2. Set the task to `in-progress` in the plan file. If the upstream CLI is
+   available, add the task with `do-harness task add` and keep its numeric
+   database ID with the plan evidence; advance it only after the configured
+   sensor gate passes.
 3. Read the code you will touch and the invariants named by the plan. Never
    start from a blank mental model.
 4. Write/adjust tests that define "done" before or with the implementation.
 5. Implement. Do not refactor adjacent code, rename public APIs, or "improve"
    anything outside the task — note suggestions in the plan file instead.
-6. Run `npm run check:fast`; before hand-off run `npm run check`.
-7. Record evidence per `plans/templates/task.md`: files, exact commands,
+6. Run `npm run check:fast`; before hand-off run `npm run check`. When using
+   upstream `do-harness`, also run task-scoped feedback/verification with
+   `--record --task <numeric-id>`.
+7. Record a `do-harness trace` for any non-trivial red/green recovery, then
+   record evidence per `plans/templates/task.md`: files, exact commands,
    results, risks. Set status honestly (`done` or `blocked` + blocker).
 
 ## Rules
