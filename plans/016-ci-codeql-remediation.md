@@ -24,10 +24,11 @@ request was blocked as collateral.
 
 ## Tasks
 
-| ID    | Task                                                                                                           | Status            | Owner | Evidence |
-| ----- | -------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | -------- |
-| CI-01 | Format and SHA-pin `.github/workflows/codeql.yml` so `check (linux)` and the CodeQL Advanced jobs stop failing | done (2026-09-29) | agent | below    |
-| CI-02 | Disable CodeQL default setup so the in-repo, SHA-pinned advanced configuration is authoritative                | done (2026-09-29) | agent | below    |
+| ID    | Task                                                                                                                 | Status            | Owner | Evidence |
+| ----- | -------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | -------- |
+| CI-01 | Format and SHA-pin `.github/workflows/codeql.yml` so `check (linux)` and the CodeQL Advanced jobs stop failing       | done (2026-09-29) | agent | below    |
+| CI-02 | Disable CodeQL default setup so the in-repo, SHA-pinned advanced configuration is authoritative                      | done (2026-09-29) | agent | below    |
+| CI-03 | Dedupe CodeQL: drop the `codeql` job from `security.yml` so `javascript-typescript` is scanned once, by `codeql.yml` | done (2026-09-29) | agent | below    |
 
 ## Guard rails
 
@@ -37,7 +38,9 @@ request was blocked as collateral.
 - Pin by full commit SHA with the `# vX.Y.Z` comment, matching `ci.yml`,
   `release.yml`, `security.yml`, and `scorecard.yml`.
 - Keep `security.yml` untouched: Dependabot PRs #37/#36 pin its `init` and
-  `analyze` lines, and unrelated edits there would invalidate both.
+  `analyze` lines, and unrelated edits there would invalidate both. **Superseded
+  by CI-03**, which deletes the job those two PRs edit; #36 and #37 are then
+  obsolete and must be closed rather than merged.
 - Disable default setup only _after_ CI-01 is on `main`. Until then default
   setup is the only configuration actually uploading CodeQL results, so
   disabling it first would leave the repo unscanned.
@@ -185,7 +188,7 @@ Risks/open questions:
 - If re-enabling works, the duplicate-alert risk recorded under CI-01 becomes
   live: `codeql.yml` and `security.yml` both analyze `javascript-typescript`,
   and two configurations for the same language produce duplicate alerts.
-  Dedupe them afterwards, as its own change.
+  Dedupe them afterwards, as its own change. **Done as CI-03 below.**
 - References:
   <https://docs.github.com/en/code-security/concepts/code-scanning/merge-protection>
   (code scanning merge protection — unrelated to status checks; blocks when a
@@ -193,3 +196,104 @@ Risks/open questions:
   <https://docs.github.com/en/code-security/reference/code-scanning/troubleshoot-analysis-errors/two-codeql-workflows>
   (default setup disables existing CodeQL workflows and blocks analysis
   uploads).
+
+### Re-verification — 2026-09-29 (agent, later session)
+
+The `CodeQL` alert is unchanged: `1 configuration not found`. Re-checked live,
+no new cause.
+
+- `gh api repos/d-oit/do-sift/check-runs/109449104110` (PR #42) → conclusion
+  `neutral`, title `1 configuration not found`, summary "1 configuration
+  present on `refs/heads/main` was not found: Actions workflow
+  (`security.yml`) → `.github/workflows/security.yml:codeql`". `gh pr checks`
+  renders the same check as `skipping` — a display of the same neutral result,
+  not a pass.
+- `gh api repos/d-oit/do-sift/actions/workflows` → `security` (id 362162401) is
+  still `disabled_manually`; `ci`, `CodeQL Advanced`, `release`, `scorecard`
+  are `active`.
+- `gh run list` → every recent `CodeQL Advanced` run is `success` on both
+  matrix languages, so the advanced configuration is healthy; only the disabled
+  `security.yml` configuration is missing.
+- `gh api repos/d-oit/do-sift/code-scanning/default-setup` → still
+  `not-configured` (CI-02 holds; do not re-enable it while `codeql.yml` exists).
+- Blocked on the same write, re-probed this session: `gh workflow enable
+security.yml` → `HTTP 403: Resource not accessible by integration`. Reads
+  (`/actions/workflows`, `/code-scanning/*`) succeed.
+
+Open PRs #35–#39 and #42 are all `BLOCKED`; auto-merge (SQUASH) remains armed
+on #35, #38, #39, and #36/#37 are still the pair that must land together.
+
+**Remedy is unchanged and needs one of:** a human on Actions → `security` →
+"Enable workflow", or the Freebuff GitHub App gaining **Actions: write**. No
+in-repo change can clear it: code scanning matches the missing configuration by
+the path+job `security.yml:codeql` that already exists on `main`, and every
+content PR is itself blocked by the `code_scanning` ruleset rule (23702255,
+`alerts_threshold: errors`), so the job cannot be removed or the file renamed
+through a pull request. Weakening or disabling that ruleset rule was rejected:
+it is a check, and this repo does not trade a check to pass a gate.
+
+### CI-03 evidence — 2026-09-29 (agent)
+
+Dedupe: `javascript-typescript` is analyzed by `codeql.yml` only. The `codeql`
+job is deleted from `security.yml`, which keeps its `dependency review` job.
+
+Files:
+
+- `.github/workflows/security.yml` — removed the `codeql`
+  (javascript-typescript) job and its job-level
+  `security-events: write` permission; added a comment naming `codeql.yml` as
+  the single CodeQL configuration. `dependency review` is byte-identical.
+- `plans/016-ci-codeql-remediation.md`, `plans/README.md` — this record.
+
+Why `codeql.yml` is the survivor: it is the newer, fully SHA-pinned workflow
+(CI-01) and it is the only one that also analyzes the `actions` language, which
+`security.yml` never did. `default setup` is `not-configured` (CI-02), so the
+repository has no third configuration to collide with.
+
+Verification:
+
+- `npx prettier --check .github/workflows/security.yml` → **PASS** (prettier
+  parses the file as YAML, so the edit is also a syntax check).
+- `git diff .github/workflows/security.yml` → the only change is the deleted
+  `codeql` job, the deleted `security-events: write` permission that belonged
+  to it, and a comment. `dependency review` and both triggers are untouched.
+- `npm run check` → **7/7 PASS** (prettier, eslint, typecheck, policy, skills,
+  tests, evals). `npm run policy` scans `.github`, so the workflow was checked
+  too.
+- `npm run signals -- verify --set feedback` → **5/5 green**, receipt
+  `.do-harness/evidence.feedback.json`.
+
+Consequences that must be handled, in order:
+
+1. **#36 and #37 become obsolete.** Both diffs touch only the deleted job's
+   `init` / `analyze` lines (`gh pr diff 36`, `gh pr diff 37`), so once this
+   lands on `main` they conflict and must be **closed, not merged**. That also
+   retires the CI-02 ordering hazard: their "must land as one unit" constraint
+   disappears with the job they pin. `codeql.yml` is already at codeql-action
+   `4.38.1`, so no pin is lost.
+2. **The gate may not let this PR merge.** The re-verification above recorded
+   that the `CodeQL` rule blocks every PR while the configuration
+   `security.yml:codeql` is present on `main` and absent from the PR's
+   analysis. This change removes the configuration, so the expected end state
+   is that `main` no longer advertises a configuration it cannot produce and
+   the neutral check stops firing — but that cannot be observed until the PR
+   merges, and the PR is itself gated by the same rule. **Unverified.** If it
+   deadlocks, the only paths are the two already recorded: a human enables
+   `security.yml` on Actions, or the ruleset owner handles the gate. Weakening
+   the `code_scanning` rule to break the deadlock is rejected — it is a check.
+3. **Do not re-enable `security.yml`'s CodeQL job** after this lands, and do
+   not re-enable CodeQL default setup while `codeql.yml` exists. Either one
+   re-creates the duplicate configuration this task removes.
+
+Risks / open questions:
+
+- The `schedule: cron "17 3 * * 1"` trigger is now inert — the only remaining
+  job is gated on `github.event_name == 'pull_request'`, so the weekly run
+  skips. Left in place as it is harmless and removing it is unrelated cleanup;
+  worth folding into the next `security.yml` touch.
+- `dependency review` is unaffected and keeps `fail-on-severity: high`; the
+  dedupe does not change dependency scanning coverage.
+- Dedupe cannot be confirmed on GitHub until a `codeql.yml` analysis completes
+  with `security.yml:codeql` gone from `main`. Watch the next `main` push
+  (`CodeQL Advanced`) and confirm the ruleset's `CodeQL` check is no longer
+  neutral.
