@@ -271,16 +271,39 @@ Consequences that must be handled, in order:
    retires the CI-02 ordering hazard: their "must land as one unit" constraint
    disappears with the job they pin. `codeql.yml` is already at codeql-action
    `4.38.1`, so no pin is lost.
-2. **The gate may not let this PR merge.** The re-verification above recorded
-   that the `CodeQL` rule blocks every PR while the configuration
-   `security.yml:codeql` is present on `main` and absent from the PR's
-   analysis. This change removes the configuration, so the expected end state
-   is that `main` no longer advertises a configuration it cannot produce and
-   the neutral check stops firing — but that cannot be observed until the PR
-   merges, and the PR is itself gated by the same rule. **Unverified.** If it
-   deadlocks, the only paths are the two already recorded: a human enables
-   `security.yml` on Actions, or the ruleset owner handles the gate. Weakening
-   the `code_scanning` rule to break the deadlock is rejected — it is a check.
+2. **The gate does not let this PR merge — VERIFIED, not predicted.** The
+   re-verification above recorded that the `CodeQL` rule blocks every PR while
+   the configuration `security.yml:codeql` is present on `main` and absent from
+   the PR's analysis. Shipped as PR #43
+   (`ci/016-codeql-dedupe`), and the predicted deadlock is what happened:
+   `gh api repos/d-oit/do-sift/check-runs/109493934925` on #43 → conclusion
+   `neutral`, title `1 configuration not found`, naming
+   `security.yml:codeql` on `refs/heads/main` — while `Analyze (actions)` and
+   `Analyze (javascript-typescript)` from `codeql.yml` both pass. So the check
+   compares against **`main`**, not the PR head: removing the job in the head
+   does not satisfy the rule while `main` still advertises the configuration.
+   #43 is `MERGEABLE` but `BLOCKED`.
+
+   The deadlock is real, so the way out is to satisfy the gate **first** and
+   land the dedupe second:
+
+   1. A human re-enables `security.yml` on Actions (Actions → `security` →
+      Enable workflow), or the Freebuff GitHub App gains **Actions: write** and
+      runs `gh workflow enable security.yml`. Its `codeql` job then uploads and
+      the configuration becomes determinable, which unblocks #43 and the rest
+      of the queue.
+   2. Merge #43, which then removes the duplicate for good, and close #36/#37.
+
+   Turning that around — shipping the dedupe first to clear the alert — does not
+   work, and this section is the record of having tried it. Weakening or
+   disabling the `code_scanning` rule to break the deadlock is rejected: it is
+   a check, and this repo does not trade a check to pass a gate.
+
+   The branch also carries the three unmerged docs commits from #42 (CI-02
+   evidence and the merge-gate root cause) because CI-03 documents CI-02 and
+   cannot stand without it. **#42 is superseded by #43 and can be closed once
+   #43 merges.**
+
 3. **Do not re-enable `security.yml`'s CodeQL job** after this lands, and do
    not re-enable CodeQL default setup while `codeql.yml` exists. Either one
    re-creates the duplicate configuration this task removes.
@@ -293,7 +316,9 @@ Risks / open questions:
   worth folding into the next `security.yml` touch.
 - `dependency review` is unaffected and keeps `fail-on-severity: high`; the
   dedupe does not change dependency scanning coverage.
-- Dedupe cannot be confirmed on GitHub until a `codeql.yml` analysis completes
-  with `security.yml:codeql` gone from `main`. Watch the next `main` push
+- Dedupe is not yet confirmed on GitHub: it becomes observable only after
+  `security.yml:codeql` is gone from `main`. Watch the next `main` push
   (`CodeQL Advanced`) and confirm the ruleset's `CodeQL` check is no longer
-  neutral.
+  neutral. The check-run read on #43 (`109493934925`) already showed the
+  head-side half of that: `codeql.yml` uploads fine, the alert is entirely the
+  missing `security.yml:codeql` configuration.
