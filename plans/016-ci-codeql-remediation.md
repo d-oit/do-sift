@@ -129,15 +129,22 @@ Risks/open questions:
   workflows are ever deleted, code scanning stops silently; that risk is
   covered by `CODEOWNERS` review of `.github/workflows/`, not by an automated
   check.
-- Merge procedure for the Dependabot queue: the `main` ruleset blocks these
-  pull requests with `mergeStateStatus: BLOCKED` and "the base branch policy
-  prohibits the merge" even when every check is green and
-  `required_approving_review_count` is `0`. The only ruleset parameter that
-  distinguishes them from an equally bot-opened PR that did merge (#41, whose
-  commits are attributed to @d-oit) is
-  `require_extra_approval_for_unattributed_changes: true`, so bot-attributed
-  commits require one human approval. This is treated as a deliberate
-  supply-chain control, not a defect: do not bypass it with `--admin`, and do
-  not weaken the rule to make automation pass. The adjacent `code_quality` rule
-  is inert on this repository (`gh api repos/d-oit/do-sift/code-quality/setup` →
-  "Code quality is not available for this repository").
+- **Unresolved merge gate.** Every pull request now reports
+  `mergeStateStatus: BLOCKED` with all checks green, and `gh pr merge` returns
+  "the base branch policy prohibits the merge", while #41 merged at 12:15 with a
+  _failing_ `CodeQL Advanced` analysis on the same ruleset. The ruleset's
+  `updated_at` has not moved since 11:39:19, so no new rule was added in
+  between, and the `code_quality` rule is inert here
+  (`gh api repos/d-oit/do-sift/code-quality/setup` → "Code quality is not
+  available for this repository"). Two candidates remain: the `code_scanning`
+  rule (plausible, because CI-01 + CI-02 changed exactly whether CodeQL reports
+  results for a PR at all — a rule that cannot be evaluated is not enforced,
+  and #41 merged while its analysis was failing) and
+  `require_extra_approval_for_unattributed_changes`.
+- The exact blocking rule is **not confirmed from here**: the integration token
+  cannot read code scanning alerts (`403 Resource not accessible by
+integration`), and neither REST nor GraphQL expose the per-rule evaluation
+  reason. Resolving it needs the "Merging is blocked" text from the pull
+  request page or the repository's Rules page. Whichever rule it is, it is a
+  control to respect — do not bypass it with `--admin` and do not weaken the
+  rule to make automation pass.
