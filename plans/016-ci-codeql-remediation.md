@@ -1,6 +1,6 @@
 # Plan 016 — CI/CodeQL remediation
 
-Status: in-progress (2026-09-29)
+Status: done (2026-09-29)
 
 Trigger: PR #40 ("Create codeql.yml") merged the stock GitHub CodeQL template
 onto `main`. It broke CI three ways and, because the `main` ruleset requires
@@ -24,10 +24,10 @@ request was blocked as collateral.
 
 ## Tasks
 
-| ID    | Task                                                                                                                   | Status                                                                                                          | Owner | Evidence |
-| ----- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----- | -------- |
-| CI-01 | Format and SHA-pin `.github/workflows/codeql.yml` so `check (linux)` and the CodeQL Advanced analyze jobs stop failing | done (2026-09-29)                                                                                               | agent | below    |
-| CI-02 | Disable CodeQL default setup so the in-repo, SHA-pinned advanced configuration is authoritative                        | ready — gated on CI-01 reaching `main`; until then default setup is the only configuration that uploads results | agent | pending  |
+| ID    | Task                                                                                                           | Status            | Owner | Evidence |
+| ----- | -------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | -------- |
+| CI-01 | Format and SHA-pin `.github/workflows/codeql.yml` so `check (linux)` and the CodeQL Advanced jobs stop failing | done (2026-09-29) | agent | below    |
+| CI-02 | Disable CodeQL default setup so the in-repo, SHA-pinned advanced configuration is authoritative                | done (2026-09-29) | agent | below    |
 
 ## Guard rails
 
@@ -56,9 +56,10 @@ Commands:
 
 - `gh api repos/actions/checkout/git/ref/tags/v7.0.1` →
   `3d3c42e5aac5ba805825da76410c181273ba90b1` (commit).
-- `gh api repos/github/codeql-action/git/tags/<v4.38.1 tag object>` → annotated
-  tag whose target commit is `1c5b675653bb5c22dbe9b12b556ec555138e09fd`; the pin
-  uses the commit, not the tag object.
+- `gh api repos/github/codeql-action/git/tags/<v4.38.1 tag object>` — v4.38.1 is
+  an annotated tag; its target commit is
+  `1c5b675653bb5c22dbe9b12b556ec555138e09fd`, and the pin uses the commit, not
+  the tag object.
 - `npx prettier --check .github/workflows/codeql.yml` → FAIL before; PASS after
   `npx prettier --write`.
 - `git diff -w .github/workflows/codeql.yml` → semantic changes are exactly the
@@ -70,6 +71,8 @@ Commands:
   tests, evals).
 - `npm run signals -- verify --set verification` → **7/7 green**, receipt
   `.do-harness/evidence.verification.json`.
+- Shipped as PR #41 (`fix/codeql-workflow`), squash-merged to `main` as
+  `2f6bfb2`.
 
 Risks/open questions:
 
@@ -87,10 +90,54 @@ Risks/open questions:
   `workflow_run`, neither of which this repo uses, and every checkout here sets
   `persist-credentials: false`; `upload-artifact@v7`'s new single-file
   `archive: false` mode is opt-in and ignores `name` only in that mode.
-- Out of scope for this plan (pre-existing, needs its own decision):
-  `npm audit` reports 2 advisories (1 critical, 1 high) from `tar@6.2.1`,
-  pulled in by `fastembed@2.1.0` in `packages/storage`. The fix is
-  `fastembed@3.0.0`, a breaking change to the retrieval stack governed by
-  ADR 0009 — not something to smuggle into a CI fix PR.
+- Out of scope for this plan (pre-existing, needs its own decision): `npm audit`
+  reports 2 advisories (1 critical, 1 high) from `tar@6.2.1`, pulled in by
+  `fastembed@2.1.0` in `packages/storage`. The fix is `fastembed@3.0.0`, a
+  breaking change to the retrieval stack governed by ADR 0009 — not something to
+  smuggle into a CI fix PR.
 
-Status: CI-01 done; CI-02 pending CI-01 merge.
+### CI-02 evidence — 2026-09-29
+
+Action:
+
+- `gh api -X PATCH repos/d-oit/do-sift/code-scanning/default-setup -f state=not-configured`
+  → default setup `configured` → `not-configured`, making the in-repo,
+  SHA-pinned advanced configuration authoritative. The call is reversible by
+  re-enabling default setup in repository settings.
+
+Commands:
+
+- Diagnostic that fixed the ordering: the "passing" Analyze jobs at
+  `pull_request` time were GitHub's default-setup dynamic run (`event:
+dynamic`), while the repository workflow failed at upload with "CodeQL
+  analyses from advanced configurations cannot be processed when the default
+  setup is enabled" (run 36566413560). So default setup — not the workflow —
+  was the remaining fault, and it had to be disabled only once CI-01 was on
+  `main`.
+- `gh run list --branch main` after CI-01 merged as `2f6bfb2` → `ci` success
+  (36566877460), `CodeQL Advanced` success (36566877245), `scorecard` success
+  (36566877510). The preceding `main` push runs (36562578177, 36562578077) had
+  failed on `ci` and `CodeQL Advanced` respectively.
+- `gh pr checks 35` after rebasing the Dependabot queue onto the fixed `main` →
+  `check (linux)` pass, `check (windows, fast)` pass, `Analyze (actions)` pass,
+  `Analyze (javascript-typescript)` pass. The advanced workflow now uploads
+  successfully, confirming CI-01 + CI-02 together.
+
+Risks/open questions:
+
+- Disabling default setup removes the fallback configuration. If the advanced
+  workflows are ever deleted, code scanning stops silently; that risk is
+  covered by `CODEOWNERS` review of `.github/workflows/`, not by an automated
+  check.
+- Merge procedure for the Dependabot queue: the `main` ruleset blocks these
+  pull requests with `mergeStateStatus: BLOCKED` and "the base branch policy
+  prohibits the merge" even when every check is green and
+  `required_approving_review_count` is `0`. The only ruleset parameter that
+  distinguishes them from an equally bot-opened PR that did merge (#41, whose
+  commits are attributed to @d-oit) is
+  `require_extra_approval_for_unattributed_changes: true`, so bot-attributed
+  commits require one human approval. This is treated as a deliberate
+  supply-chain control, not a defect: do not bypass it with `--admin`, and do
+  not weaken the rule to make automation pass. The adjacent `code_quality` rule
+  is inert on this repository (`gh api repos/d-oit/do-sift/code-quality/setup` →
+  "Code quality is not available for this repository").
