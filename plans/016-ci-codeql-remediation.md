@@ -265,12 +265,15 @@ Verification:
 
 Consequences that must be handled, in order:
 
-1. **#36 and #37 become obsolete.** Both diffs touch only the deleted job's
-   `init` / `analyze` lines (`gh pr diff 36`, `gh pr diff 37`), so once this
-   lands on `main` they conflict and must be **closed, not merged**. That also
-   retires the CI-02 ordering hazard: their "must land as one unit" constraint
-   disappears with the job they pin. `codeql.yml` is already at codeql-action
-   `4.38.1`, so no pin is lost.
+1. **#36 and #37 become obsolete — CLOSED 2026-09-29.** Both diffs touch only
+   the deleted job's `init` / `analyze` lines (`gh pr diff 36`, `gh pr diff
+37`), so once this lands on `main` they conflict and were **closed, not
+   merged**, each with the reasoning in a closing comment. That also retires
+   the CI-02 ordering hazard: their "must land as one unit" constraint
+   disappeared with the job they pin — and neither could ever have merged
+   alone, since `codeql-action` requires `init` and `analyze` on the same
+   version. `codeql.yml` is already at codeql-action `4.38.1`, so no pin is
+   lost. Dependabot will re-propose if a future workflow needs the bump.
 2. **The gate does not let this PR merge — VERIFIED, not predicted.** The
    re-verification above recorded that the `CodeQL` rule blocks every PR while
    the configuration `security.yml:codeql` is present on `main` and absent from
@@ -301,8 +304,9 @@ Consequences that must be handled, in order:
 
    The branch also carries the three unmerged docs commits from #42 (CI-02
    evidence and the merge-gate root cause) because CI-03 documents CI-02 and
-   cannot stand without it. **#42 is superseded by #43 and can be closed once
-   #43 merges.**
+   cannot stand without it. **#42 was closed as superseded 2026-09-29** — its
+   three commits are in this branch, so nothing was lost, and its branch was
+   deleted.
 
 3. **Do not re-enable `security.yml`'s CodeQL job** after this lands, and do
    not re-enable CodeQL default setup while `codeql.yml` exists. Either one
@@ -322,3 +326,41 @@ Risks / open questions:
   neutral. The check-run read on #43 (`109493934925`) already showed the
   head-side half of that: `codeql.yml` uploads fine, the alert is entirely the
   missing `security.yml:codeql` configuration.
+
+### Queue state — 2026-09-29 (agent), after CI-03 shipped as PR #43
+
+The request was to merge the queue in the correct order with auto-merge off.
+Auto-merge is now **disarmed everywhere** and four pull requests remain open,
+all `MERGEABLE` against the current `main` (`2f6bfb2`) and all `BLOCKED` by
+one policy. Recording the attempts so the next session does not re-derive them.
+
+Done:
+
+- `gh pr merge <n> --disable-auto` on #35, #38, #39 → auto-merge removed from
+  all seven PRs (`gh pr list` → `auto=false` everywhere). Nothing will merge
+  itself the moment the gate clears.
+- **#36 closed** and **#37 closed**, each with a comment recording that the
+  diff touches only the deleted job's pin, that neither could merge alone
+  (`init`/`analyze` version match), and that `codeql.yml` is already on
+  codeql-action 4.38.1.
+- **#42 closed as superseded** and its branch deleted; its three docs commits
+  already live in #43.
+
+Not done, and why:
+
+- `gh pr merge 43 --squash --match-head-commit 87a8036` → "the base branch
+  policy prohibits the merge". The same command on #35, #38, and #39 returns
+  the identical refusal. The policy is ruleset `23702255`'s `code_scanning`
+  rule, whose whole purpose is to refuse a merge when code scanning cannot
+  evaluate it. **Merging these would mean bypassing that control, so it was
+  not attempted** — `gh pr merge --admin` was deliberately not used, and
+  re-arming `--auto` would only park the PRs on a gate that cannot clear
+  (the configuration is missing on `main`, which is what the gate reads).
+- Every open PR is already based on the current `main` and reports
+  `MERGEABLE` (not `BEHIND`), so no rebase is needed before the gate clears.
+  #39 will need a Dependabot rebase **after** #43 lands, because one of its
+  two `security.yml` `checkout` hunks targets the deleted job.
+
+Landing order once the gate clears: **#43 first** (it is the only one that
+changes what the others mean), then #35 and #38, then #39 last, because it is
+the only PR with a hunk that #43 invalidates.
