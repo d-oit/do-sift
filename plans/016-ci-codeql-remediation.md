@@ -1,6 +1,10 @@
 # Plan 016 — CI/CodeQL remediation
 
-Status: done (2026-09-29)
+Status: done (2026-09-29). The strategy recorded below was **superseded later the
+same day** — read [Closing outcome](#closing-outcome--2026-09-29) before acting on
+any task row here. CI-01 and CI-03 are historical: both workflows they repaired
+have since been deleted. CI-02 (disable default setup) was reversed by hand.
+Default setup is the single code scanning configuration and must stay enabled.
 
 Trigger: PR #40 ("Create codeql.yml") merged the stock GitHub CodeQL template
 onto `main`. It broke CI three ways and, because the `main` ruleset requires
@@ -22,13 +26,18 @@ request was blocked as collateral.
    default setup is enabled". `security` / `codeql (javascript-typescript)`
    has failed for this reason since at least 2026-09-28 — run 36436065840.
 
-## Tasks
+## Tasks> **Historical rows.** CI-01, CI-02, and CI-03 describe the in-repo _advanced_
 
-| ID    | Task                                                                                                                 | Status            | Owner | Evidence |
-| ----- | -------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | -------- |
-| CI-01 | Format and SHA-pin `.github/workflows/codeql.yml` so `check (linux)` and the CodeQL Advanced jobs stop failing       | done (2026-09-29) | agent | below    |
-| CI-02 | Disable CodeQL default setup so the in-repo, SHA-pinned advanced configuration is authoritative                      | done (2026-09-29) | agent | below    |
-| CI-03 | Dedupe CodeQL: drop the `codeql` job from `security.yml` so `javascript-typescript` is scanned once, by `codeql.yml` | done (2026-09-29) | agent | below    |
+> CodeQL strategy. That strategy is no longer in effect: `codeql.yml` and
+> `security.yml` were both deleted (PRs #44, #46) and default setup was
+> re-enabled. The rows are kept for their evidence and stable IDs, not as
+> instructions.
+
+| ID    | Task                                                                                                                 | Status                           | Owner | Evidence                        |
+| ----- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ----- | ------------------------------- |
+| CI-01 | Format and SHA-pin `.github/workflows/codeql.yml` so `check (linux)` and the CodeQL Advanced jobs stop failing       | done (2026-09-29)                | agent | below; file since deleted (#44) |
+| CI-02 | Disable CodeQL default setup so the in-repo, SHA-pinned advanced configuration is authoritative                      | done, then reverted (2026-09-29) | agent | below                           |
+| CI-03 | Dedupe CodeQL: drop the `codeql` job from `security.yml` so `javascript-typescript` is scanned once, by `codeql.yml` | done, then obsolete (2026-09-29) | agent | below; file since deleted (#46) |
 
 ## Guard rails
 
@@ -364,3 +373,104 @@ Not done, and why:
 Landing order once the gate clears: **#43 first** (it is the only one that
 changes what the others mean), then #35 and #38, then #39 last, because it is
 the only PR with a hunk that #43 invalidates.
+
+## Closing outcome — 2026-09-29
+
+Everything above this line is the record of one strategy: keep the CodeQL analysis
+in-repo as an _advanced_ configuration, disable default setup, and dedupe the two
+advanced workflows. That strategy was abandoned. The following is the current
+state and the only part a future session should act on.
+
+### What actually landed
+
+| When (UTC) | PR  | Commit    | Change                                                                                   |
+| ---------- | --- | --------- | ---------------------------------------------------------------------------------------- |
+| 16:26:03   | #43 | `3a5c300` | CI-03 — dedupe the `codeql` job out of `security.yml` (merged while still blocked)       |
+| 16:29:44   | #44 | `719763c` | delete `.github/workflows/codeql.yml`                                                    |
+| 16:32:41   | #46 | `71141d1` | delete `.github/workflows/security.yml`                                                  |
+| 16:43:26   | #47 | `c84c23f` | re-land #38 — `actions/upload-artifact` v4.6.2 → v7.0.1 (`release.yml`, `scorecard.yml`) |
+| 16:49:14   | #48 | `a756e47` | `actions/checkout` v4.2.2 → v7.0.1 in `ci.yml`, `release.yml`, `scorecard.yml`           |
+
+Merge SHAs from `gh pr view <n> --json mergedAt,mergeCommit`. The deletions were
+merged by the repository owner, not by the agent.
+
+### Current state, verified on `main` at `a756e47`
+
+- `gh api repos/d-oit/do-sift/code-scanning/default-setup` → `state: configured`,
+  `schedule: weekly`, `query_suite: default`, languages `actions`, `javascript`,
+  `javascript-typescript`, `typescript`, `updated_at: 2026-09-29T16:34:48Z`.
+  **Default setup is the one and only code scanning configuration.**
+- `gh api repos/d-oit/do-sift/actions/workflows` → in-repo workflows are `ci`,
+  `release`, `scorecard` (all `active`), plus GitHub-managed `Dependabot Updates`
+  and `CodeQL`. Neither `codeql.yml` nor `security.yml` exists.
+- `gh run list --branch main` on `a756e47` → `ci` (36600502649) `success`,
+  `scorecard` (36600502714) `success`, CodeQL `Push on main` (36600503035)
+  `success`.
+- `gh pr list --state open` → **0 open pull requests.** Auto-merge is disarmed
+  everywhere and there is no queue left to order.
+
+### Why the strategy changed
+
+CI-02 disabled default setup so the SHA-pinned advanced workflow would be
+authoritative. That removed the fallback configuration, and the `main` ruleset's
+`code_scanning` rule (23702255) then had no configuration it could evaluate. The
+missing-configuration path could not be repaired through a pull request, because
+the check compares against `main` and every content PR was blocked by that same
+rule — the deadlock is documented in full under CI-03.
+
+Deleting both workflows and re-enabling default setup resolved it in one step:
+no in-repo configuration for an advanced upload to be missing, and GitHub's own
+CodeQL runs upload the results the ruleset rule needs.
+
+**Self-correction, recorded honestly.** Around 16:34Z the agent disabled default
+setup a second time, misreading failing SARIF uploads during the checkout bump
+window as a regression from #47. That was wrong — the uploads were failing
+because default setup was off. The repository owner re-enabled it immediately.
+The lesson for the next session: default setup is the configuration this repo
+depends on; turning it off is a change with consequences, not a diagnostic.
+
+### Which sections above are now historical
+
+- **Task table (CI-01, CI-02, CI-03)** — the work is done, but the end state each
+  row describes no longer exists. CI-02's action was reverted; CI-03's target file
+  was deleted 3 minutes after it merged.
+- **"Merge gate — root cause identified" and "Blocked on token scope"** — the gate
+  cleared, so neither is an open problem. The `actions: write` probe result still
+  stands: `gh workflow enable`, `PUT .../actions/workflows/{id}/enable`, and
+  workflow dispatch all return `HTTP 403: Resource not accessible by integration`
+  with the Freebuff App token. It stopped mattering once no in-repo CodeQL
+  workflow needed enabling.
+- **The "re-enable `security.yml`" runbook** — obsolete. There is no `security.yml`
+  to re-enable.
+- **The "1 configuration not found" narrative** — resolved; that check run no
+  longer exists on `main`.
+- **CI-01 / CI-02 / CI-03 evidence sections** — still accurate as history of what
+  was done and why, including the ordering hazards and the `init`/`analyze`
+  version-match constraint.
+
+### Invariants to carry forward
+
+1. **Default setup stays enabled.** It is the only code scanning configuration.
+   Do not disable it while no advanced configuration exists in the repo — that is
+   what produced the blocked-gate state recorded above.
+2. **If an advanced CodeQL workflow is ever added back**, default setup must be
+   disabled first or GitHub rejects the uploads ("CodeQL analyses from advanced
+   configurations cannot be processed when the default setup is enabled"), and
+   exactly one advanced configuration may analyze a given language.
+3. **All actions stay pinned to a full commit SHA** with a `# vX.Y.Z` comment, per
+   repo policy. `actions/checkout` v7.0.1 is
+   `3d3c42e5aac5ba805825da76410c181273ba90b1`; `actions/upload-artifact` v7.0.1 is
+   `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`.
+4. **The `main` ruleset was never weakened.** Ruleset 23702255 is unchanged, and
+   `gh pr merge --admin` was never used to land any of the PRs above.
+
+### Still open
+
+- `release.yml`'s `validate candidate` job has never run with the new
+  `actions/checkout` v7.0.1 pin; it is tag/manual triggered only. The pin is
+  covered by the shared SHA and by the passing `ci` and `scorecard` runs, not by
+  an independent execution of that job.
+- Pre-existing and untouched: `npm audit` reports 2 advisories (1 critical, 1
+  high) from `tar@6.2.1` via `fastembed@2.1.0` in `packages/storage`. The fix is
+  a breaking retrieval-stack change governed by ADR 0009 and needs its own
+  decision.
