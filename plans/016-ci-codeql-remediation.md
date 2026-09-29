@@ -171,6 +171,27 @@ Risks/open questions:
   the diagnosis is solid and only the write is refused. It needs either a human
   on Actions → `security` → "Enable workflow", or the Freebuff GitHub App
   gaining **Actions: write**. Do not route around it with a PAT or SSH key.
+
+  **Which scope is missing — measured 2026-09-29, not assumed.** A capability
+  probe of the installation token against this repository:
+
+  | Capability                                   | Result  |
+  | -------------------------------------------- | ------- |
+  | `contents: write` (push a branch)            | OK      |
+  | `pull_requests: write` (open/comment/close)  | OK      |
+  | `code_scanning: write` (patch default-setup) | OK      |
+  | `actions: read` (list workflows)             | OK      |
+  | **`actions: write` (enable/dispatch)**       | **403** |
+
+  `gh api repos/d-oit/do-sift --jq .permissions` returns
+  `{admin:false, maintain:false, push:false, triage:false, pull:false}` — the
+  app holds no repository role, only individually granted scopes, which is why
+  a role bump would not help and only the **Actions: write** scope does.
+  `GET /app` and `GET /repos/…/installation` both 401 "A JSON web token could
+  not be decoded": the credential is a repository-scoped installation token,
+  not an app-owner JWT, so the agent cannot inspect or widen the app's own
+  permissions. That grant is app-owner/Freebuff-side work.
+
 - `security.yml` declares no `workflow_dispatch`, so there is no "Run workflow"
   button: a controlled run needs a `pull_request` event (a push to a pull
   request branch, or `gh pr update-branch`) or the weekly `cron: "17 3 * * 1"`.
@@ -364,3 +385,27 @@ Not done, and why:
 Landing order once the gate clears: **#43 first** (it is the only one that
 changes what the others mean), then #35 and #38, then #39 last, because it is
 the only PR with a hunk that #43 invalidates.
+
+### Post-permission runbook — 2026-09-29 (agent)
+
+Written so the unblock is mechanical once **Actions: write** exists. Two
+gotchas are recorded because both cost time to rediscover.
+
+1. `gh workflow enable security.yml` → verify
+   `gh api repos/d-oit/do-sift/actions/workflows/362162401 --jq .state` reads
+   `active`. This is the exact call that 403s without the scope.
+2. **Enabling a workflow does not re-trigger it for already-open pull
+   requests.** The four open PRs (#43, #39, #38, #35) would therefore sit
+   without a `security.yml` analysis until a new event arrives. `security.yml`
+   only triggers on `pull_request` and `schedule: "17 3 * * 1"` (Mondays
+   03:17 UTC), so the deterministic options are: wait for the cron, or
+   produce a `synchronize` event on a PR branch (an empty commit) — ask before
+   doing the latter, since it rewrites a branch someone else owns.
+3. Once the `CodeQL` check turns from `neutral` to a real verdict,
+   `gh pr checks <n>` should show no `CodeQL` neutral entry. Then merge in
+   order: **#43 → #35 → #38 → #39**, each with
+   `gh pr merge <n> --squash --match-head-commit <head sha>` so a racing
+   update cannot slip in. #39 goes last because one of its `security.yml`
+   hunks targets the job #43 deletes and will need a rebase.
+4. Confirm: `gh pr list --state open` empty, `gh api .../commits/main` moved
+   past `2f6bfb2`, and `security.yml` no longer holds a CodeQL job.
