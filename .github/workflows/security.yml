@@ -10,26 +10,12 @@ on:
 permissions:
   contents: read
 
+# CodeQL lives only in .github/workflows/codeql.yml. The `codeql` job that used
+# to live here analyzed javascript-typescript a second time, and two
+# configurations for one language produce duplicate alerts. This workflow keeps
+# the dependency review and nothing else — see
+# plans/016-ci-codeql-remediation.md (CI-03).
 jobs:
-  codeql:
-    name: codeql (javascript-typescript)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-      - uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
-        with:
-          languages: javascript-typescript
-      - uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
-
   dependency-review:
     name: dependency review
     if: github.event_name == 'pull_request'
