@@ -21,6 +21,7 @@ This folder is the project's memory. Agents and humans update it together.
 - `013-ans-evidence-hardening.md` — finish ANS-11 → ANS-13 before any live model activation.
 - `014-production-usage.md` — OPS-07, OPS-08, and OPS-09 are done; OPS-10 reverse-proxy profile is next.
 - `015-workflow-compaction.md` — DHC-05 is done; DHC-06 upstream issue publication is blocked by GitHub token scope.
+- `016-ci-codeql-remediation.md` — CI-01 (pin and format `codeql.yml`) is done; CI-02 (disable CodeQL default setup) waits on CI-01 reaching `main`.
 
 Older milestone plans remain as historical evidence. Their detailed task
 records and stable IDs are retained; use this queue rather than stale
