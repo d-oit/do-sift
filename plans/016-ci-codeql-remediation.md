@@ -108,12 +108,12 @@ Action:
 Commands:
 
 - Diagnostic that fixed the ordering: the "passing" Analyze jobs at
-  `pull_request` time were GitHub's default-setup dynamic run (`event:
-dynamic`), while the repository workflow failed at upload with "CodeQL
-  analyses from advanced configurations cannot be processed when the default
-  setup is enabled" (run 36566413560). So default setup — not the workflow —
-  was the remaining fault, and it had to be disabled only once CI-01 was on
-  `main`.
+  `pull_request` time were GitHub's default-setup dynamic run
+  (`event: dynamic`), while the repository workflow failed at upload with
+  "CodeQL analyses from advanced configurations cannot be processed when the
+  default setup is enabled" (run 36566413560). So default setup — not the
+  workflow — was the remaining fault, and it had to be disabled only once
+  CI-01 was on `main`.
 - `gh run list --branch main` after CI-01 merged as `2f6bfb2` → `ci` success
   (36566877460), `CodeQL Advanced` success (36566877245), `scorecard` success
   (36566877510). The preceding `main` push runs (36562578177, 36562578077) had
@@ -122,6 +122,11 @@ dynamic`), while the repository workflow failed at upload with "CodeQL
   `check (linux)` pass, `check (windows, fast)` pass, `Analyze (actions)` pass,
   `Analyze (javascript-typescript)` pass. The advanced workflow now uploads
   successfully, confirming CI-01 + CI-02 together.
+- `npm run check:fast` on the CI-02 evidence branch → **5/5 PASS** (prettier,
+  eslint, typecheck, policy, skills).
+- `npm run policy` → **PASS, 6 checks, 0 findings**.
+- `npx prettier --check plans/016-ci-codeql-remediation.md plans/README.md` →
+  **PASS** ("All matched files use Prettier code style!").
 
 Risks/open questions:
 
@@ -129,22 +134,62 @@ Risks/open questions:
   workflows are ever deleted, code scanning stops silently; that risk is
   covered by `CODEOWNERS` review of `.github/workflows/`, not by an automated
   check.
-- **Unresolved merge gate.** Every pull request now reports
-  `mergeStateStatus: BLOCKED` with all checks green, and `gh pr merge` returns
-  "the base branch policy prohibits the merge", while #41 merged at 12:15 with a
-  _failing_ `CodeQL Advanced` analysis on the same ruleset. The ruleset's
-  `updated_at` has not moved since 11:39:19, so no new rule was added in
-  between, and the `code_quality` rule is inert here
-  (`gh api repos/d-oit/do-sift/code-quality/setup` → "Code quality is not
-  available for this repository"). Two candidates remain: the `code_scanning`
-  rule (plausible, because CI-01 + CI-02 changed exactly whether CodeQL reports
-  results for a PR at all — a rule that cannot be evaluated is not enforced,
-  and #41 merged while its analysis was failing) and
-  `require_extra_approval_for_unattributed_changes`.
-- The exact blocking rule is **not confirmed from here**: the integration token
-  cannot read code scanning alerts (`403 Resource not accessible by
-integration`), and neither REST nor GraphQL expose the per-rule evaluation
-  reason. Resolving it needs the "Merging is blocked" text from the pull
-  request page or the repository's Rules page. Whichever rule it is, it is a
-  control to respect — do not bypass it with `--admin` and do not weaken the
-  rule to make automation pass.
+- **Merge gate — root cause identified.** The `main` ruleset (id 23702255,
+  `updated_at` 2026-09-29T11:39:19.376Z) blocks merges through its
+  **`code_scanning` rule** — code scanning merge protection — not through
+  required status checks. GitHub's documentation for that rule states it is
+  unrelated to status checks, and that it blocks a pull request when a required
+  tool finds an alert at the configured severity, a required tool's analysis is
+  still in progress, **or a required tool is not configured for the
+  repository**. The third condition is what is happening: the `CodeQL` check on
+  the current heads of #35 (`842b4c4`) and #42 (`05d9113`) is `neutral`, titled
+  "1 configuration not found", with the summary "Code scanning cannot determine
+  the alerts introduced by this pull request, because 1 configuration present
+  on `refs/heads/main` was not found: ... Actions workflow (`security.yml`) →
+  `.github/workflows/security.yml:codeql`". The rule is evaluated per head SHA,
+  so every pull request needs its own analysis before it can merge.
+- The missing configuration is `security.yml`'s `codeql` job. `security.yml`
+  was set to `disabled_manually` at 2026-09-28T14:28:28Z, one second after
+  GitHub's default-setup `dynamic` run started; default setup then blocked every
+  SARIF upload from the advanced workflows. Default setup is now
+  `not-configured`, so re-enabling `security.yml` should make the configuration
+  determinable again. Two earlier hypotheses are retired:
+  `require_extra_approval_for_unattributed_changes` is refuted (#41 was
+  bot-authored, had zero reviews, and merged on the same ruleset at
+  2026-09-29T12:15:05Z), and #41's own `CodeQL` check was `neutral` — "Error
+  when processing the SARIF file" — not a _failing_ analysis, so the earlier
+  inference that "a rule that cannot be evaluated is not enforced" did not hold.
+  The `code_quality` rule is also inert here: `gh api repos/d-oit/do-sift/code-quality/setup`
+  → "Code quality is not available for this repository".
+- **Blocked on token scope.** Re-enabling `security.yml` is the remedy and the
+  integration credential cannot perform it: `gh workflow enable 362162401`, the
+  `PUT .../actions/workflows/362162401/enable` endpoint, and a dispatch probe
+  each return 403 "Resource not accessible by integration". Reads succeed, so
+  the diagnosis is solid and only the write is refused. It needs either a human
+  on Actions → `security` → "Enable workflow", or the Freebuff GitHub App
+  gaining **Actions: write**. Do not route around it with a PAT or SSH key.
+- `security.yml` declares no `workflow_dispatch`, so there is no "Run workflow"
+  button: a controlled run needs a `pull_request` event (a push to a pull
+  request branch, or `gh pr update-branch`) or the weekly `cron: "17 3 * * 1"`.
+  Do not re-enable default setup while `codeql.yml` exists — per GitHub's docs
+  it disables existing CodeQL workflows and blocks analysis uploads, which is
+  what produced this state.
+- **Ordering hazard (state as of 2026-09-29T12:31Z).** #35 and #42 report
+  `BLOCKED`; #36–#39 report `BEHIND`. Auto-merge (SQUASH) is armed on all six,
+  so the first one whose gate clears merges immediately. #37 bumps
+  `security.yml`'s `init` to 4.38.1 and #36 bumps its `analyze` to 4.38.1, and
+  `codeql-action` requires `init` and `analyze` to run the same version — a
+  split merge leaves `security.yml` mismatched, the workflow fails, the
+  configuration returns to "not found", and the whole queue re-blocks. They must
+  land as one unit, so disarm auto-merge on #36 and #37 first.
+- If re-enabling works, the duplicate-alert risk recorded under CI-01 becomes
+  live: `codeql.yml` and `security.yml` both analyze `javascript-typescript`,
+  and two configurations for the same language produce duplicate alerts.
+  Dedupe them afterwards, as its own change.
+- References:
+  <https://docs.github.com/en/code-security/concepts/code-scanning/merge-protection>
+  (code scanning merge protection — unrelated to status checks; blocks when a
+  required tool is not configured) and
+  <https://docs.github.com/en/code-security/reference/code-scanning/troubleshoot-analysis-errors/two-codeql-workflows>
+  (default setup disables existing CodeQL workflows and blocks analysis
+  uploads).

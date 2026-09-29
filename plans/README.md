@@ -21,7 +21,7 @@ This folder is the project's memory. Agents and humans update it together.
 - `013-ans-evidence-hardening.md` — finish ANS-11 → ANS-13 before any live model activation.
 - `014-production-usage.md` — OPS-07, OPS-08, and OPS-09 are done; OPS-10 reverse-proxy profile is next.
 - `015-workflow-compaction.md` — DHC-05 is done; DHC-06 upstream issue publication is blocked by GitHub token scope.
-- `016-ci-codeql-remediation.md` — CI-01 and CI-02 are done; `main` CI is green again. The open pull requests are still held by an unresolved `main` ruleset gate (see the plan: exact rule not confirmable from the integration token).
+- `016-ci-codeql-remediation.md` — CI-01 and CI-02 are done; `main` CI is green again. The open pull requests are blocked by the `main` ruleset's `code_scanning` rule: the required CodeQL configuration `security.yml:codeql` is not running, because `security.yml` is `disabled_manually`. Re-enabling it needs a human on Actions or the GitHub App `Actions: write`. See the plan for the root cause and the ordering hazard on #36/#37.
 
 Older milestone plans remain as historical evidence. Their detailed task
 records and stable IDs are retained; use this queue rather than stale
