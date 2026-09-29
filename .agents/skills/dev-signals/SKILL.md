@@ -17,7 +17,9 @@ status, not unverified memory.
    sensors through evals). The `release` set adds the release sensor for
    release gating only. If the `format` sensor fails, run
    `npx prettier --write` on the files you changed and re-verify — fix
-   forward, never hand off red.
+   forward, never hand off red. When using upstream `do-harness`, scope
+   `--record` to the numeric task ID returned by `do-harness task add`; the
+   stable plan ID is descriptive metadata, not the database key.
 2. Read `npm run signals -- status`: each sensor is `green` (last recorded
    result passed and matches the current tree), `stale` (it passed, but the
    working tree changed since that receipt — rerun `verify` to refresh),
@@ -33,14 +35,16 @@ status, not unverified memory.
    fingerprint). Reference it in task evidence instead of restating results
    from memory. Partial reruns: `npm run signals -- verify --only <sensor>`
    refreshes one sensor (it must belong to the chosen set).
-5. The upstream Rust `do-harness` CLI (ADR 0008; `do-harness.toml`; v0.1.1,
-   Windows and WSL) runs the same sensors: `do-harness verify --set
-<feedback|verification> [--record]`, `status --set <set>`, `doctor`. Its
+5. The upstream Rust `do-harness` CLI (ADR 0008; `do-harness.toml`; v0.1.2,
+   Windows and WSL) runs the same sensors: `do-harness verify --record --set
+<feedback|verification> --task <ID>`, `status --set <set>`, `doctor`. Its
    state sits beside ours under `.do-harness/` (`agent_state.db`,
    `evidence-rust-*.json`); neither runner reads the other, and `npm run
-signals` stays the enforced receipt path. On Windows `DO_HARNESS_BIN`
-   must point at the exe (upstream's PATH lookup misses `.exe`); record
-   green runs only — a recorded FAIL bumps the 3-strike signature.
+signals` stays the enforced receipt path. This repository's
+   `plans/methods.json` maps task gates to its configured sensor names. On
+   Windows `DO_HARNESS_BIN` must point at the exe (upstream's PATH lookup
+   misses `.exe`); record green runs only — a recorded FAIL bumps the
+   3-strike signature.
 
 ## Rules
 

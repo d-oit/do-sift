@@ -1,10 +1,13 @@
 # Plan 002 — CORE: contracts, storage, auth, budgets, safe-fetch
 
-Status: proposed
+Status: done (2026-09-11 — CORE-10 consolidated security evidence closed the exit gate)
 
 Goal: everything needed before real credentials exist: libSQL schema +
 repositories, owner auth skeleton, atomic budgets, SSRF-safe fetch, job queue,
 policy plugin, fake providers for tests.
+
+Current status: closed. The detailed evidence and historical "next suggested"
+notes below are retained; active production work is tracked in Plan 014.
 
 ## Tasks
 

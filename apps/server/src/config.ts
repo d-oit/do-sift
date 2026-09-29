@@ -13,6 +13,7 @@
  *   plugin's kernel-mediated secret resolution, which the bare entrypoint
  *   does not replace (docs/deployment.md).
  */
+import { isLoopbackAddress } from "@do-sift/auth";
 
 export type SearchProviderChoice = "fixture" | "wikipedia" | "marginalia";
 export type ModelProviderChoice = "fixture" | "openai-compat";
@@ -217,6 +218,12 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
 
   const devBypass = parseBool("DO_SIFT_DEV_BYPASS", env.DO_SIFT_DEV_BYPASS);
   const devOwner = env.DO_SIFT_DEV_OWNER;
+  const host = env.DO_SIFT_HOST ?? "127.0.0.1";
+  if (devBypass && !isLoopbackAddress(host)) {
+    throw new Error(
+      "DO_SIFT_DEV_BYPASS requires a literal loopback DO_SIFT_HOST; a reverse proxy must keep the upstream loopback-only",
+    );
+  }
   if (devBypass && (devOwner === undefined || devOwner === "")) {
     throw new Error(
       "DO_SIFT_DEV_BYPASS=1 requires DO_SIFT_DEV_OWNER (the owner the bypass acts as)",
@@ -238,7 +245,7 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
   return {
     dbUrl,
     migrationsDir: env.DO_SIFT_DB_MIGRATIONS_DIR ?? "migrations",
-    host: env.DO_SIFT_HOST ?? "127.0.0.1",
+    host,
     port,
     owners,
     devBypass,

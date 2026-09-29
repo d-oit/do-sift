@@ -263,3 +263,18 @@ a concurrent session's `git reset --hard origin/main` (uncommitted
 working-tree state, SRC-22/README then SRC-23 flows) and re-applied
 verbatim from session context each time; they are now on a branch + PR so
 a third reset cannot silently discard them.
+
+## Addendum — v0.1.2 generic-workspace adoption (2026-09-24)
+
+The pinned upstream `do-harness` v0.1.2 binary is installed and verified on
+this Linux workspace. Its task catalog defaults to Rust sensor names
+(`test`, `check`, `clippy`), while do-sift's generic config names its sensors
+`tests`, `evals`, `skills`, and `policy`. `plans/methods.json` now supplies an
+explicit local mapping; task 1 (`OPS-07`) advanced through all five gates and
+completed. This is a configuration adaptation, not a sensor weakening.
+
+The upstream mismatch is documented for publication in
+`d-o-hub/do-harness`; the prepared issue body is preserved at
+`/tmp/opencode/do-harness-task-gates.md`. GitHub issue creation is currently
+blocked by the installed integration token (`403 Resource not accessible by
+integration`).

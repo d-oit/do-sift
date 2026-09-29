@@ -1,6 +1,7 @@
 export { createResearchServer, listen } from "./server.js";
 export type {
   AnswerHttpResponse,
+  OperationalEvent,
   ResearchRunOutcome,
   ResearchServerOptions,
   SourceCard,
