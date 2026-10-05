@@ -53,7 +53,7 @@ Commands and findings:
 | ID    | Task                                                                                                                                                                       | Status            | Owner       | Evidence |
 | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----------- | -------- |
 | QF-01 | `.prettierignore` mirrors `.gitignore`'s local-only dirs (`.do-harness/`, `.spikes/`, `.fastembed_cache/`, `.hf-cache/`, `.cline-home/`, env/log files)                    | done (2026-10-05) | agent       | below    |
-| QF-02 | evals sensor robustness: catch embedder/model-download failure into a fail-closed `eval: FAIL` report (never an unhandled rejection); detect/clean poisoned model cache    | proposed          | agent       | below    |
+| QF-02 | evals sensor robustness: catch embedder/model-download failure into a fail-closed `eval: FAIL` report (never an unhandled rejection); detect/clean poisoned model cache    | done (2026-10-05) | agent       | below    |
 | QF-03 | Evaluate `fastembed@3.0.0` upgrade (removes vulnerable `tar@6.2.1`): spike API compat, re-measure hybrid metrics vs `evals/baselines/retrieval-baseline.json` per ADR 0009 | proposed          | owner-gated | below    |
 | QF-04 | Correct plan 015's stale `/tmp` draft pointer (append-only, history preserved)                                                                                             | done (2026-10-05) | agent       | below    |
 
@@ -100,3 +100,68 @@ Status: done.
   `@huggingface/hub` dependency suggests a new fetch path) and embedding
   output; the held-out re-measure is the gate, not the version number.
   R-18 tracks the advisory pressure.
+
+### QF-02 evidence (2026-10-05, agent)
+
+Files:
+
+- `packages/storage/src/fastembed-embedder.ts` — `clearModelDownloadArtifacts`
+  (exported; removes only `*.tar.gz` download artifacts, never extracted model
+  dirs or unrelated files); init detects `TAR_BAD_ARCHIVE` (poisoned cache
+  signature), clears the artifacts, retries once; a still-failing init throws
+  ONE readable error line naming the cacheDir and the retry failure.
+- `packages/storage/test/fastembed-embedder.test.ts` (new, 2 tests) — artifact
+  cleanup keeps extracted dirs/unrelated files; missing cache dir → `[]`.
+- `scripts/eval.ts` — `describeError` (first-line-only, no stack dump);
+  `evalRetrieval()` wrapped in try/catch recorded as a failed case; final
+  rejection handler prints `eval: FAIL — runner error: …` and exits 1;
+  `DO_SIFT_EVAL_MODEL_CACHE` env override keeps the runner test hermetic.
+- `scripts/test/eval-runner.test.ts` (new, 1 test) — spawns the real runner
+  against a poisoned tmp cache: asserts exit ∈ {0,1}, `eval: PASS|FAIL`
+  summary always printed, no tar stack-dump markers, poisoned marker never
+  survives (works offline → clean FAIL, online → recover + PASS).
+
+Commands:
+
+- Red first: `npx vitest run packages/storage/test/fastembed-embedder.test.ts
+scripts/test/eval-runner.test.ts` → **3 failed** (missing export ×2, runner
+  contract: unhandled `TAR_BAD_ARCHIVE` rejection, no summary line).
+- Green: same command → **3/3 passed**.
+- Failure-path demo: `DO_SIFT_EVAL_MODEL_CACHE=/tmp/qf02-demo npx tsx
+scripts/eval.ts` → **exit 1** with
+  `FAIL retrieval stage completed without runner errors — Error: fastembed
+model unavailable: cleared 1 corrupt download artifact(s) … but
+re-download/init still failed — … TAR_BAD_ARCHIVE` and summary
+  `eval: FAIL — 1/26 case(s) failed`; poisoned marker gone.
+- `npx vitest run` → **51 files, 573/573 passed**.
+- `npm run check:fast` → **5/5 PASS**; `npm run signals -- verify --set
+feedback` → **green** (receipt `.do-harness/evidence.feedback.json`).
+
+Self-correction (recorded): the first perl substitution ate template
+interpolations in `assert`/`describeError` (`FAIL ` with empty name) — caught
+by the failure-path demo output, repaired with escaped replacements, re-verified.
+
+Risks/open questions:
+
+- In this sandbox the model download is proxy-blocked (`AccessDenied` body),
+  so the evals sensor still exits 1 HERE — but now with a readable FAIL report
+  instead of a crash. CI with network runs the recover path (proven by the
+  runner test's cleanup assertion).
+- `npm run check` (full) cannot pass in this sandbox for the same
+  environmental reason; happy-path output contract is unchanged
+  (`eval: PASS (N deterministic cases, 0 network calls, 0 model calls)`).
+- Only `*.tar.gz` artifacts are auto-cleared; a corrupt EXTRACTED model dir
+  would still fail init with the wrapped readable error (no auto-delete of
+  directories — deliberate, destructive scope stays minimal).
+
+Status: done. do-harness CLI unavailable in this sandbox (`which do-harness`
+empty); `npm run signals` used as the enforced path (ADR 0008).
+
+### QF-03 spike note (2026-10-05, agent)
+
+Spike attempted in-scope check: `npm view fastembed@3.0.0` registry access
+works, but the embedding model download (huggingface.co egress) is denied in
+this sandbox (`AccessDenied` on `fast-bge-small-en-v1.5.tar.gz`), so the
+held-out re-measure cannot run here. QF-03 stays proposed/owner-gated;
+execute the spike on a machine with HF egress (or CI) after the owner
+go-ahead per ADR 0009.

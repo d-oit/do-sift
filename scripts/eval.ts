@@ -38,6 +38,12 @@ function assert(name: string, condition: boolean, detail = ""): void {
   }
 }
 
+/** First line of an error for readable failure reports — never a stack dump. */
+function describeError(err: unknown): string {
+  const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  return msg.split("\n")[0] ?? msg;
+}
+
 interface CitationCase {
   name: string;
   answer: Answer;
@@ -310,7 +316,8 @@ async function measurePathHybrid(
   excerptToCorpusId: Map<string, string>,
 ): Promise<RetrievalMetrics> {
   const embedder = await createFastEmbedEmbedder({
-    cacheDir: join(ROOT, ".fastembed_cache"),
+    // Env override keeps the runner-contract test hermetic (scripts/test/eval-runner.test.ts).
+    cacheDir: process.env.DO_SIFT_EVAL_MODEL_CACHE ?? join(ROOT, ".fastembed_cache"),
   });
   await backfillPassageEmbeddings(client, "eval-owner", embedder);
   return measurePath(dataset, client, excerptToCorpusId, (q, k) =>
@@ -323,7 +330,14 @@ async function run(): Promise<number> {
   evalCacheSafety();
   evalBudget();
   evalSitePolicy();
-  await evalRetrieval();
+  try {
+    // Fail closed (INV-006): a stage that cannot execute (e.g. the local
+    // embedding model cannot be prepared) is recorded as a failed case with
+    // a readable reason — never an unhandled rejection that loses the report.
+    await evalRetrieval();
+  } catch (err) {
+    assert("retrieval stage completed without runner errors", false, describeError(err));
+  }
 
   if (ran === 0) {
     console.error("eval: FAIL — zero eval cases registered (INV-006)");
@@ -337,4 +351,11 @@ async function run(): Promise<number> {
   return 0;
 }
 
-void run().then((code) => process.exit(code));
+void run().then(
+  (code) => process.exit(code),
+  (err: unknown) => {
+    // Last-resort fail-closed path: report and exit 1, never an unhandled rejection.
+    console.error(`eval: FAIL — runner error: ${describeError(err)}`);
+    process.exit(1);
+  },
+);

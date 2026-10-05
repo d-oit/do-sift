@@ -22,7 +22,7 @@ This folder is the project's memory. Agents and humans update it together.
 - `014-production-usage.md` — OPS-07, OPS-08, and OPS-09 are done; OPS-10 reverse-proxy profile is next.
 - `015-workflow-compaction.md` — DHC-05 is done; DHC-06 upstream issue publication is blocked by GitHub token scope.
 - `016-ci-codeql-remediation.md` — closed. The in-repo _advanced_ CodeQL strategy (CI-01, CI-02, CI-03) was superseded: `codeql.yml` and `security.yml` are both deleted (PRs #44, #46) and CodeQL **default setup** is enabled weekly as the repository's only scanning configuration, which cleared the `code_scanning` ruleset gate. `actions/checkout` and `actions/upload-artifact` are now pinned to v7.0.1 (#47, #48); `main` is green and no pull requests are open. The CI-01/02/03 rows and the merge-gate and `Actions: write` sections are historical — read the plan's "Closing outcome" for the current invariants before acting on them.
-- `017-improvement-backlog.md` — QF-01 and QF-04 done; QF-02 (evals sensor fail-closed robustness + poisoned model cache) is next agent-runnable; QF-03 (fastembed 3.0.0 upgrade, removes vulnerable tar) is owner-gated.
+- `017-improvement-backlog.md` — QF-01, QF-02, and QF-04 are done; QF-03 (fastembed 3.0.0 upgrade, removes vulnerable tar) is owner-gated.
 
 Older milestone plans remain as historical evidence. Their detailed task
 records and stable IDs are retained; use this queue rather than stale
