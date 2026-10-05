@@ -101,3 +101,8 @@ all configured sensors passing.
 
 The full draft is preserved at `/tmp/opencode/do-harness-task-gates.md`; issue
 creation returned `403 Resource not accessible by integration`.
+
+> Note (2026-10-05, QF-04): the `/tmp` copy is ephemeral and no longer
+> exists. The draft inlined in this section is the authoritative text.
+> DHC-06 stays blocked on issue-write scope for `d-o-hub/do-harness`; do not
+> retry publication without an owner decision (upstream-publication boundary).
