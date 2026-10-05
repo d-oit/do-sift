@@ -6,3 +6,14 @@ test-results/
 playwright-report/
 *.tsbuildinfo
 plans/templates/
+
+# Local-only state (mirrors .gitignore): never checked in, never formatted.
+# Prettier does not read .gitignore, so these must be listed here too.
+.do-harness/
+.spikes/
+.fastembed_cache/
+.hf-cache/
+.cline-home/
+.env
+.env.*
+*.log
