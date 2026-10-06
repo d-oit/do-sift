@@ -195,6 +195,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
         ...(outcome.evidenceFromRun === undefined
           ? {}
           : { evidenceFromRun: outcome.evidenceFromRun }),
+        ...(outcome.suspectEvidence === undefined
+          ? {}
+          : { suspectEvidence: outcome.suspectEvidence }),
         blocks: stored.blocks,
         ...(outcome.usage === undefined ? {} : { usage: outcome.usage }),
         ...(outcome.reconciliation === undefined ? {} : { reconciliation: outcome.reconciliation }),

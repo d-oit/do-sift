@@ -74,7 +74,7 @@ stays owner-gated (dated sources.md entry + paid grant where billable).
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- | -------- |
 | ANS-10 | Contracts evidence-framing module (pure): `neutralizePassageText` + framing helpers + suspect detector; red-first unit tests over the attack corpus, plus an offline regression pass of the helper over existing `evals/datasets` passages (no behavior claim beyond the corpus) | done (2026-09-23, agent) | agent | below    |
 | ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | done (2026-10-05)        | agent | below    |
-| ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | proposed                 | agent | below    |
+| ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | done (2026-10-05)        | agent | below    |
 | ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded                                                                                                | proposed                 | agent | below    |
 
 ## Decomposition (htn-planner workflow per plan 009)
@@ -212,3 +212,49 @@ untrusted data):`; the system prompt cites "passage id from the provided
 
 **Status:** done. **Next:** ANS-12 (suspect receipts in `AnswerOutcome` +
 `promptRevision` pr2 + cache-invalidation test).
+
+### ANS-12 evidence (2026-10-05, agent) — suspect receipts + promptRevision pr2
+
+**Files:**
+
+- `packages/server/src/answer.ts` — new `SuspectEvidenceReceipt`
+  (`{ passageId, markers }`); `AnswerOutcome.suspectEvidence?`; new advisory
+  `AnswerServiceOptions.onSuspectEvidence` callback (called only when at least
+  one packed passage flags); receipts computed over the RAW packed text via
+  `suspectEvidenceMarkers` (ANS-10) right after packing — they never filter,
+  degrade, or re-pack; `promptRevision` default `pr1` → **`pr2`** with the D5
+  comment (framing changed what the model sees).
+- `packages/server/src/server.ts` — `AnswerPayload.suspectEvidence?` (receipts
+  on the answer surface, same pattern as `evidenceFromRun`).
+- `packages/server/src/runtime.ts` — forwards the field conditionally.
+- `packages/server/src/index.ts` — exports the receipt type.
+- `packages/server/test/answer.test.ts` — 3 new tests: hostile packed text is
+  flagged in the outcome AND in one advisory event while the answer stays
+  non-degraded/non-evidence-only (advisory proof); clean text → no field, no
+  event; **cache invalidation** — an answer stored under `promptRevision pr1`
+  is not served by the default (pr2) service (`cached: false`, model re-ran).
+
+**Commands:**
+
+- Red first: `npx vitest run packages/server/test/answer.test.ts` → **2 failed /
+  31 passed** (no receipts field; pr1-stored row served as a cache hit).
+- Green: same command → **33/33**; `npx vitest run packages/server` → **80/80**;
+  `npx vitest run` → **51 files, 581/581**.
+- `npm run check:fast` → **5/5 PASS** (one eslint round-trip: an unused type
+  import in the new test — fixed by using the type);
+  `npm run signals -- verify --set feedback` → **green**.
+
+**Risks / open questions:**
+
+- Receipts observe the PACKED text, so a marker that packing truncated away is
+  not reported — that is honest (the model never saw it) and documented here.
+- Cache hits and the empty-evidence path carry no receipts (nothing re-ran /
+  nothing was packed); a monitoring consumer must treat absence as "unknown",
+  not "clean".
+- The detector stays advisory and precision-loose: it can flag a page that
+  merely opens a line with a bracketed term. No answer changes on a flag.
+- `pr2` invalidates pr1 cache rows by construction (cache key includes the
+  revision); the invalidation test proves the behavior, not just the constant.
+
+**Status:** done. **Next:** ANS-13 (`review-security` pass + QUAL run-016 with
+injection cases; risks.md R-12 → mitigated with residuals).

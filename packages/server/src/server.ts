@@ -104,6 +104,13 @@ export interface AnswerHttpResponse {
    * "legacy" = pre-linkage evidence. Absent on the empty-evidence path.
    */
   evidenceFromRun?: "run" | "legacy" | "cross-question" | undefined;
+  /**
+   * Advisory suspect-evidence receipts (ANS-12, R-12): packed passages whose
+   * raw text tripped the injection/forgery detector, with stable marker codes.
+   * Receipts only — never a filter or a degradation. Absent when nothing was
+   * flagged, on cache hits, and on the empty-evidence path.
+   */
+  suspectEvidence?: Array<{ passageId: string; markers: string[] }> | undefined;
   blocks: Array<{
     kind: "paragraph" | "list" | "caveat";
     text: string;

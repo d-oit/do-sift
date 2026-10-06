@@ -13,6 +13,7 @@ export type {
   AnswerServiceDeps,
   AnswerServiceOptions,
   AnswerTask,
+  SuspectEvidenceReceipt,
   UsageReconciliation,
 } from "./answer.js";
 export { createRuntime } from "./runtime.js";

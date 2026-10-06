@@ -18,7 +18,7 @@ This folder is the project's memory. Agents and humans update it together.
 
 ## Current queue
 
-- `013-ans-evidence-hardening.md` — finish ANS-12 → ANS-13 before any live model activation (ANS-11 is done).
+- `013-ans-evidence-hardening.md` — ANS-13 (review-security + QUAL run-016) is the remaining task before any live model activation (ANS-11/ANS-12 are done).
 - `014-production-usage.md` — OPS-07, OPS-08, and OPS-09 are done; OPS-10 reverse-proxy profile is next.
 - `015-workflow-compaction.md` — DHC-05 is done; DHC-06 upstream issue publication is blocked by GitHub token scope.
 - `016-ci-codeql-remediation.md` — closed. The in-repo _advanced_ CodeQL strategy (CI-01, CI-02, CI-03) was superseded: `codeql.yml` and `security.yml` are both deleted (PRs #44, #46) and CodeQL **default setup** is enabled weekly as the repository's only scanning configuration, which cleared the `code_scanning` ruleset gate. `actions/checkout` and `actions/upload-artifact` are now pinned to v7.0.1 (#47, #48); `main` is green and no pull requests are open. The CI-01/02/03 rows and the merge-gate and `Actions: write` sections are historical — read the plan's "Closing outcome" for the current invariants before acting on them.

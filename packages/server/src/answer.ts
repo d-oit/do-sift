@@ -22,8 +22,10 @@ import {
   CitationError,
   estimateTokens,
   normalizeQuestion,
+  suspectEvidenceMarkers,
   validateCitations,
   type Answer,
+  type EvidenceMarker,
   type ModelProvider,
   type SynthesisRequest,
 } from "@do-sift/contracts";
@@ -67,6 +69,13 @@ export interface AnswerServiceOptions {
    * document carries both clean and flagged chunks — D5 conservatism).
    */
   noiseFilter?: boolean;
+  /**
+   * Advisory suspect-evidence event (ANS-12): called with the receipts for
+   * packed passages whose raw text tripped the detector. Never affects the
+   * answer — the measurability layer for R-12 monitoring (providerHealth
+   * pattern, SRC-17). Not called when nothing is flagged or nothing is packed.
+   */
+  onSuspectEvidence?: ((receipts: SuspectEvidenceReceipt[]) => void) | undefined;
 }
 
 export interface AnswerServiceDeps {
@@ -80,6 +89,17 @@ export interface AnswerServiceDeps {
    * embeddings (RET-02, ADR 0009); without it, plain bm25 (unchanged).
    */
   embedder?: TextEmbedder | undefined;
+}
+
+/**
+ * Advisory suspect-evidence receipt (ANS-12, R-12): which PACKED passages
+ * tripped the detector over their raw stored text, and with which stable
+ * marker codes. Receipts only — they never filter, degrade, or re-pack
+ * evidence (that is the citation gate's job, ANS-03).
+ */
+export interface SuspectEvidenceReceipt {
+  passageId: string;
+  markers: EvidenceMarker[];
 }
 
 export interface AnswerTask {
@@ -111,6 +131,14 @@ export interface AnswerOutcome {
    * empty-evidence path (nothing was retrieved at all).
    */
   evidenceFromRun?: "run" | "legacy" | "cross-question" | undefined;
+  /**
+   * Advisory suspect-evidence receipts (ANS-12, R-12): packed passages whose
+   * RAW stored text tripped the injection/forgery detector, with stable
+   * marker codes. Receipts only — never a filter, never a degradation. Absent
+   * when nothing was flagged, on cache hits (nothing re-ran), and on the
+   * empty-evidence path (nothing was packed).
+   */
+  suspectEvidence?: SuspectEvidenceReceipt[] | undefined;
   usage?: Answer["usage"] | undefined;
   /** Settle-time reconciliation of actual usage vs the reservation. */
   reconciliation?: UsageReconciliation | undefined;
@@ -191,9 +219,11 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
     // noise-classified passages excluded from packing; p1: ANS-08 —
     // retrieval became question-scoped.)
     policyRevision: options.revisions?.policyRevision ?? "p4",
-    // pr1: packing semantics changed in ANS-02 (output budget reserved from
-    // the input ceiling) — revision bump invalidates pre-ANS-02 cache rows.
-    promptRevision: options.revisions?.promptRevision ?? "pr1",
+    // pr2: ANS-11/ANS-12 — passages are packed on the hardened evidence
+    // framing (neutralized text, one JSON record per line), so the prompt the
+    // model sees changed: pre-framing cache rows (pr1) must not be served.
+    // (pr1: ANS-02 — output budget reserved from the input ceiling.)
+    promptRevision: options.revisions?.promptRevision ?? "pr2",
     modelRevision: options.revisions?.modelRevision ?? "m0",
   };
 
@@ -383,6 +413,14 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         maxOutputTokens,
       };
 
+      // ANS-12 advisory receipts over the RAW packed text (pre-neutralization,
+      // exactly what the model is about to receive). Receipts only: the packed
+      // set, the request, and the answer are untouched.
+      const suspectEvidence: SuspectEvidenceReceipt[] = packed
+        .map((p) => ({ passageId: p.id, markers: suspectEvidenceMarkers(p.text) }))
+        .filter((r) => r.markers.length > 0);
+      if (suspectEvidence.length > 0) options.onSuspectEvidence?.(suspectEvidence);
+
       let reservationId: string | undefined;
       if (deps.budget !== undefined) {
         const { id } = await deps.budget.reserve({
@@ -484,6 +522,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         degraded,
         evidenceOnly: answer.evidenceOnly,
         evidenceFromRun: basis,
+        ...(suspectEvidence.length === 0 ? {} : { suspectEvidence }),
         usage: answer.usage,
         reconciliation,
       };
