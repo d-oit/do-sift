@@ -957,8 +957,14 @@ describe("composeApp openai-compat model (offline end-to-end via seams)", () => 
         messages?: Array<{ content?: string }>;
       };
       const content = body.messages?.[1]?.content ?? "";
+      // ANS-11 framing: packed evidence is one JSON record per line.
       const ids = [
-        ...new Set([...content.matchAll(/\[([^\]\s]+)\]/gu)].map((m) => m[1] as string)),
+        ...new Set(
+          content
+            .split("\n")
+            .filter((line) => line.startsWith('{"id":'))
+            .map((line) => (JSON.parse(line) as { id: string }).id),
+        ),
       ].slice(0, 2);
       const envelope = {
         id: "chatcmpl-test-1",
