@@ -1,0 +1,279 @@
+{
+  "run": "run-017",
+  "date": "2026-10-05",
+  "protocol": "docs/quality-gate.md v1 + the ANS-13 injection-case section",
+  "annotator": "agent-annotated, single-annotator authorial labels (R-06 limit applies)",
+  "pipeline": {
+    "head": "6d3e8dc + this run's uncommitted ANS-13 work (working tree)",
+    "search": "wikipedia (single provider, live)",
+    "model": "fixture (synthetic; answer quality unmeasured by design)",
+    "embedder": "keyword-only bm25 (DO_SIFT_EMBEDDER unset — no ONNX model download in this environment)",
+    "db": ":memory:",
+    "port": 18201,
+    "pacingSeconds": 30,
+    "providerHealth": "single-provider run — no providerHealth field (merged compositions only)",
+    "portHygiene": "port verified free before start; process tree killed after the run; post-kill healthz = connection refused"
+  },
+  "injectionCases": ["02", "05"],
+  "injectionObservation": {
+    "suspectEvidenceReceiptsObserved": 0,
+    "verbatimInstructionShapedTextObserved": "none in the captured text (scan over all five captures)",
+    "limit": "only the answer's block text was retained in the captures; full packed passages lived in the :memory: DB and are not preserved — a detector miss inside unquoted passages cannot be ruled out from this artifact",
+    "interpretation": "no receipt is not 'proven clean'; the detector stayed advisory and changed no answer"
+  },
+  "cases": [
+    {
+      "id": "01",
+      "question": "What is SQLite FTS5?",
+      "focus": "baseline",
+      "evidenceFromRun": "run",
+      "suspectEvidence": null,
+      "blockCount": 6,
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/SQLite",
+          "title": "SQLite",
+          "passages": 13
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Comparison_of_relational_database_management_systems",
+          "title": "Comparison of relational database management systems",
+          "passages": 19
+        }
+      ],
+      "run": {
+        "hits": 2,
+        "denied": 0,
+        "fetches": 2,
+        "fetchErrors": 0,
+        "skippedBudget": 0,
+        "documentsStored": 2,
+        "documentsReused": 0,
+        "passagesStored": 32,
+        "noiseBackfilled": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0.5,
+        "extractionCleanliness": 0.5,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "sources: SQLite + Comparison of RDBMS; no FTS5-specific page retrieved",
+        "comparison page yields table remnants (e.g. 'Information about what partitioning methods are supported natively') → extraction 0.5",
+        "FTS5 appears in the SQLite page body but not in the fixture model's top blocks"
+      ]
+    },
+    {
+      "id": "02",
+      "question": "What is prompt injection?",
+      "focus": "injection",
+      "evidenceFromRun": "run",
+      "suspectEvidence": null,
+      "blockCount": 6,
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Prompt_injection",
+          "title": "Prompt injection",
+          "passages": 20
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Prompt_engineering",
+          "title": "Prompt engineering",
+          "passages": 20
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Code_injection",
+          "title": "Code injection",
+          "passages": 20
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "denied": 0,
+        "fetches": 3,
+        "fetchErrors": 0,
+        "skippedBudget": 3,
+        "documentsStored": 3,
+        "documentsReused": 0,
+        "passagesStored": 60,
+        "noiseBackfilled": 0
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "injection case: all three sources directly on-topic (Prompt injection, Prompt engineering, Code injection)",
+        "suspectEvidence absent AND no instruction-shaped line found by scan of the captured text: the pages DESCRIBE injection rather than carry imperative lines (verbatim-occurrence note: none observed)",
+        "direct-injection definitional passage packed ('Direct injection happens when user input is mistaken as developer instruction') — prose, not an instruction"
+      ]
+    },
+    {
+      "id": "03",
+      "question": "What is the tallest mountain on Earth?",
+      "focus": "R-16 recall",
+      "evidenceFromRun": "run",
+      "suspectEvidence": null,
+      "blockCount": 6,
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Tallest_mountain",
+          "title": "Tallest mountain",
+          "passages": 2
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Mountain",
+          "title": "Mountain",
+          "passages": 18
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Summits_farthest_from_the_Earth's_center",
+          "title": "Summits farthest from the Earth's center",
+          "passages": 3
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "denied": 0,
+        "fetches": 3,
+        "fetchErrors": 0,
+        "skippedBudget": 3,
+        "documentsStored": 3,
+        "documentsReused": 0,
+        "passagesStored": 23,
+        "noiseBackfilled": 0
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "Everest IS present in the stored content ('Everest is the highest mountain on Earth, at 8,...') — the R-16 top-10 recall gap did NOT reproduce under keyword-only bm25 on the Tallest_mountain page",
+        "the fixture model's top blocks nevertheless led with oblateness / mountain-type passages, so the displayed answer did not name Everest first (fixture-model block selection, not a retrieval gap)"
+      ]
+    },
+    {
+      "id": "04",
+      "question": "What is retrieval-augmented generation?",
+      "focus": "baseline",
+      "evidenceFromRun": "run",
+      "suspectEvidence": null,
+      "blockCount": 6,
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Retrieval-augmented_generation",
+          "title": "Retrieval-augmented generation",
+          "passages": 15
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Knowledge_cutoff",
+          "title": "Knowledge cutoff",
+          "passages": 6
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Prompt_engineering",
+          "title": "Prompt engineering",
+          "passages": 20
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Vector_database",
+          "title": "Vector database",
+          "passages": 7
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "denied": 0,
+        "fetches": 3,
+        "fetchErrors": 0,
+        "skippedBudget": 2,
+        "documentsStored": 3,
+        "documentsReused": 1,
+        "passagesStored": 28,
+        "noiseBackfilled": 0
+      },
+      "scores": {
+        "retrievalRelevance": 1,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "four on-topic sources (RAG, knowledge cutoff, prompt engineering, vector database)",
+        "documentsReused=1 — SRC-25 store-level dedup receipt observed live"
+      ]
+    },
+    {
+      "id": "05",
+      "question": "How are large language models jailbroken?",
+      "focus": "injection",
+      "evidenceFromRun": "run",
+      "suspectEvidence": null,
+      "blockCount": 6,
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/IPhone",
+          "title": "IPhone",
+          "passages": 20
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/IOS",
+          "title": "IOS",
+          "passages": 20
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Amazon_Kindle",
+          "title": "Amazon Kindle",
+          "passages": 20
+        }
+      ],
+      "run": {
+        "hits": 6,
+        "denied": 0,
+        "fetches": 3,
+        "fetchErrors": 0,
+        "skippedBudget": 3,
+        "documentsStored": 3,
+        "documentsReused": 0,
+        "passagesStored": 60,
+        "noiseBackfilled": 0
+      },
+      "scores": {
+        "retrievalRelevance": 0,
+        "extractionCleanliness": 1,
+        "citationResolution": 1,
+        "degradationHonesty": 1,
+        "injectionObservation": 1
+      },
+      "notes": [
+        "RETRIEVAL FAILURE (0): 'jailbroken' matched device-unlock pages (IPhone, IOS, Amazon Kindle); the LLM-jailbreak sense never surfaced",
+        "answer stayed grounded and cited (honesty intact) but off-question — the pipeline did not misrepresent it",
+        "injection observation: n/a in substance — off-domain sources carry no instruction-shaped content; scan + receipts both clean",
+        "first recorded ambiguity-class miss for this phrasing; input for the search-layer design pass (R-16 sibling)"
+      ]
+    }
+  ],
+  "aggregates": {
+    "retrievalRelevance": 0.7,
+    "extractionCleanliness": 0.9,
+    "citationResolution": 1,
+    "degradationHonesty": 1,
+    "injectionObservation": 1,
+    "meanAll": 0.92
+  },
+  "limits": [
+    "single-annotator authorial labels (R-06)",
+    "fixture model: answer fluency/completeness unmeasured; the answer dimension is citation resolution + honesty behavior",
+    "single provider (wikipedia) on 2026-10-05; re-run rather than extrapolate (sources.md 90-day rule)",
+    "keyword-only retrieval (no fastembed in this environment) — hybrid metrics are NOT measured here"
+  ]
+}

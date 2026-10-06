@@ -1,6 +1,6 @@
 # Plan 013 — answer-path evidence hardening (R-12)
 
-Status: proposed (2026-09-23)
+Status: done (2026-10-05) — ANS-10 → ANS-13 complete; R-12 mitigated with residuals (plans/risks.md).
 
 Trigger: risks.md R-12 — "when a live model lands, treat fetched text as
 adversarial (ANS-02 scope + QUAL gate)". The openai-compat adapter landed
@@ -75,7 +75,7 @@ stays owner-gated (dated sources.md entry + paid grant where billable).
 | ANS-10 | Contracts evidence-framing module (pure): `neutralizePassageText` + framing helpers + suspect detector; red-first unit tests over the attack corpus, plus an offline regression pass of the helper over existing `evals/datasets` passages (no behavior claim beyond the corpus) | done (2026-09-23, agent) | agent | below    |
 | ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | done (2026-10-05)        | agent | below    |
 | ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | done (2026-10-05)        | agent | below    |
-| ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded                                                                                                | proposed                 | agent | below    |
+| ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded                                                                                                | done (2026-10-05)        | agent | below    |
 
 ## Decomposition (htn-planner workflow per plan 009)
 
@@ -258,3 +258,67 @@ untrusted data):`; the system prompt cites "passage id from the provided
 
 **Status:** done. **Next:** ANS-13 (`review-security` pass + QUAL run-016 with
 injection cases; risks.md R-12 → mitigated with residuals).
+
+### ANS-13 evidence (2026-10-05, agent) — security review + QUAL run-017 + R-12 mitigation
+
+**review-security pass (skill procedure, ANS-10→ANS-12 diff):**
+
+- Trust boundaries: new input = the same untrusted passage text (now
+  neutralized+framed at pack time) and a local model-cache directory (QF-02);
+  new outputs = advisory receipts (`passageId` + marker codes) on the answer
+  payload and the `onSuspectEvidence` event; new privilege = NONE (no new
+  capabilities/permissions; plugin manifest unchanged, policy check green).
+- SSRF: unchanged (no new fetches). Residual recorded: the fastembed model
+  download is third-party egress outside safe-fetch by ADR 0009's design.
+- Injection: adversarial fixtures now exist on the answer path (ANS-11 corpus +
+  ANS-13 security fixtures). Rendering unchanged (text nodes, data only).
+- Authz: receipts are built only from the owner's packed passages; new
+  cross-owner fixture asserts another owner's flagged passage never appears.
+- Money: unchanged (one bounded call; reserve/settle untouched).
+- Workflows: untouched.
+- Production requests: receipts are redaction-safe by construction (ids and
+  stable codes only) — asserted against a leak list including passage text,
+  question, and hostile phrases.
+- Findings: no code blocker. One characterization note: the new security
+  fixtures passed on first run (they characterize already-shipped ANS-11/12
+  behavior; the red-first discipline applied to the ANS-11/12 slices).
+
+**Files:** `tests/security/answer-receipts.test.ts` (new, 4 fixtures),
+`docs/quality-gate.md` (injection-case protocol section: ≥2 injection cases per
+run, receipts + verbatim note as the observation channels),
+`evals/quality/run-017-2026-10-05.json` (new run artifact),
+`plans/risks.md` (R-12 → mitigated with residuals + evidence section).
+
+**QUAL run-017 (live, fixture model):** pipeline = wikipedia (single provider,
+live), fixture model, keyword-only bm25 (no ONNX download in this environment),
+`:memory:` db, port 18201 (verified free before start; process tree killed after;
+post-kill healthz refused), ≥30s pacing. 5 cases incl. **2 injection cases**.
+
+- Aggregates: retrieval **0.7**, extraction **0.9**, citation **1.0**, honesty
+  **1.0**, injection observation **1.0**, meanAll **0.92**.
+- Injection cases: 0 `suspectEvidence` receipts and 0 instruction-shaped lines
+  in the captured text — the pages DESCRIBE injection rather than carry
+  imperative lines; no receipt changed any answer.
+- Notable honest findings: (1) **case 05 retrieval 0** — "jailbroken" matched
+  device-unlock pages (iPhone/iOS/Kindle); the LLM-jailbreak sense never
+  surfaced (ambiguity-class miss, R-16 sibling). (2) **R-16 did not reproduce**
+  here: the Tallest_mountain page (with Everest verbatim) surfaced under
+  keyword-only bm25; the fixture model's top blocks simply did not lead with it.
+  (3) case 01 extraction 0.5 (RDBMS comparison table remnants).
+- Limits: single-annotator labels; fixture model (answer quality unmeasured);
+  single provider on one date; keyword-only (no hybrid measurement); captures
+  retain block text only, so detector recall inside unquoted passages is
+  unmeasured.
+
+**Commands:** `npx vitest run tests/security/answer-receipts.test.ts` → **4/4
+passed**; `npx vitest run` → **52 files, 585/585**; `npm run check:fast` →
+**5/5 PASS**; `npm run signals -- verify --set feedback` → **green**. Live run
+driver + captures: gitignored `.spikes/qual-017/` (scratch per AGENTS.md).
+
+**Residuals:** recorded in `plans/risks.md` under R-12 (declarative prompt is
+not a guarantee; live-model steering unmeasurable until owner-gated activation;
+detector precision/recall unmeasured; question/follow-up fields still raw).
+
+**Status:** done. Plan 013 (ANS-10 → ANS-13) is complete: the R-12 structural
+defenses are in place, measured where measurement is possible offline, and the
+live re-measure remains owner-gated.
