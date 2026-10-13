@@ -10,10 +10,10 @@ evidence.
 
 ## Tasks
 
-| ID     | Task                                                                                                                                                                                | Status            | Owner | Evidence                                                     |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | ------------------------------------------------------------ |
-| DHC-05 | Update AGENTS/dev-signals/HTN/implementation/security/distillation guides; add the focused production-readiness skill; add the local do-harness method catalog and plan index entry | done (2026-09-24) | agent | below                                                        |
-| DHC-06 | Publish the upstream custom-sensor gate issue in `d-o-hub/do-harness` when the GitHub credential has issue-write permission                                                         | blocked           | agent | GitHub 403; body at `/tmp/opencode/do-harness-task-gates.md` |
+| ID     | Task                                                                                                                                                                                | Status                             | Owner | Evidence                                       |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----- | ---------------------------------------------- |
+| DHC-05 | Update AGENTS/dev-signals/HTN/implementation/security/distillation guides; add the focused production-readiness skill; add the local do-harness method catalog and plan index entry | done (2026-09-24)                  | agent | below                                          |
+| DHC-06 | Publish the upstream custom-sensor gate issue in `d-o-hub/do-harness` when the GitHub credential has issue-write permission                                                         | closed, not published (2026-10-13) | agent | resolved upstream v0.2.1 — see plan 017 DHC-10 |
 
 ## Guard rails
 
@@ -101,3 +101,10 @@ all configured sensors passing.
 
 The full draft is preserved at `/tmp/opencode/do-harness-task-gates.md`; issue
 creation returned `403 Resource not accessible by integration`.
+
+**Outcome (2026-10-13, plan 017 DHC-10):** upstream v0.2.1 resolves method
+gates from `plans/methods.json` to the configured sensor names (probe:
+`task advance` on `write-acceptance-test` gates on `tests`, not the old
+hard-coded `test`), so the defect was fixed upstream before this issue ever
+published. The report is deliberately **not** filed — a stale bug report
+would misinform upstream. Draft kept above as history.

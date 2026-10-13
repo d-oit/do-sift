@@ -1063,7 +1063,10 @@ describe("composeApp openai-compat model (offline end-to-end via seams)", () => 
 
   /** Self-contained stub: echoes the PACKED evidence ids from the incoming
    * request (like the fixture model) so the ANS-03 citation gate passes.
-   * Research never calls it; the first call is always the answer call. */
+   * Research never calls it; the first call is always the answer call.
+   * Since ANS-11 the evidence arrives as one JSON record per line
+   * (`{"id":…,"text":…}`), so the stub reads ids from the record fields —
+   * the same wire contract the system prompt gives a real model. */
   function modelSeam(log: ModelLog): { fetchImpl: FetchLike } {
     const fetchImpl: FetchLike = async (url: string, init?: RequestInit) => {
       log.push({ url, init });
@@ -1072,7 +1075,16 @@ describe("composeApp openai-compat model (offline end-to-end via seams)", () => 
       };
       const content = body.messages?.[1]?.content ?? "";
       const ids = [
-        ...new Set([...content.matchAll(/\[([^\]\s]+)\]/gu)].map((m) => m[1] as string)),
+        ...new Set(
+          content.split("\n").flatMap((line) => {
+            try {
+              const rec = JSON.parse(line) as { id?: unknown };
+              return typeof rec.id === "string" ? [rec.id] : [];
+            } catch {
+              return [];
+            }
+          }),
+        ),
       ].slice(0, 2);
       const envelope = {
         id: "chatcmpl-test-1",
