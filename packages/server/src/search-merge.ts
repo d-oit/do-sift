@@ -110,6 +110,12 @@ export function createMergedSearchProvider(
   readonly providers: Array<SearchProvider>;
   /** Per-provider outcomes of the most recent search call. */
   lastHealth(): ProviderHealthEntry[];
+  /** Search and return both merged hits and the per-call health receipt. */
+  searchWithHealth(
+    query: SearchQuery,
+    limits: SearchLimits,
+    signal?: AbortSignal,
+  ): Promise<{ hits: SearchHit[]; health: ProviderHealthEntry[] }>;
 } {
   if (providers.length < 2) {
     throw new Error("createMergedSearchProvider needs at least two providers");
@@ -118,49 +124,62 @@ export function createMergedSearchProvider(
   if (new Set(names).size !== names.length) {
     throw new Error("createMergedSearchProvider needs distinct providers");
   }
-  let health: ProviderHealthEntry[] = [];
+  let lastHealthState: ProviderHealthEntry[] = [];
+
+  async function searchWithHealth(
+    query: SearchQuery,
+    limits: SearchLimits,
+    signal?: AbortSignal,
+  ): Promise<{ hits: SearchHit[]; health: ProviderHealthEntry[] }> {
+    const callHealth: ProviderHealthEntry[] = [];
+    const results = await Promise.all(
+      providers.map(async (provider, index) => {
+        try {
+          const hits = await provider.search(query, limits, signal);
+          callHealth[index] = { provider: provider.name, ok: true };
+          return { ok: true as const, hits };
+        } catch (e) {
+          // cancellation propagates; provider failure degrades to
+          // survivors — the per-hit provider provenance shows which
+          // sources contributed; typed error only if ALL fail
+          if (
+            (e instanceof Error && e.name === "AbortError") ||
+            (typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "aborted")
+          ) {
+            throw e;
+          }
+          callHealth[index] = {
+            provider: provider.name,
+            ok: false,
+            error: (e instanceof Error ? e.message : String(e)).slice(0, 200),
+          };
+          return { ok: false as const, hits: [] };
+        }
+      }),
+    );
+    lastHealthState = callHealth;
+    if (results.every((r) => !r.ok)) {
+      throw new MergedSearchError(
+        `every search provider failed (${names.join(", ")}) for "${query.text.slice(0, 64)}"`,
+      );
+    }
+    const hits = mergeSearchHits(
+      results.map((r) => r.hits),
+      limits.maxHits,
+    );
+    return { hits, health: callHealth };
+  }
+
   return {
     providers,
-    lastHealth: () => health,
+    lastHealth: () => lastHealthState,
     get name() {
       return `merged(${names.join("+")})`;
     },
+    searchWithHealth,
     async search(query: SearchQuery, limits: SearchLimits, signal?: AbortSignal) {
-      health = [];
-      const results = await Promise.all(
-        providers.map(async (provider, index) => {
-          try {
-            const hits = await provider.search(query, limits, signal);
-            health[index] = { provider: provider.name, ok: true };
-            return { ok: true as const, hits };
-          } catch (e) {
-            // cancellation propagates; provider failure degrades to
-            // survivors — the per-hit provider provenance shows which
-            // sources contributed; typed error only if ALL fail
-            if (
-              (e instanceof Error && e.name === "AbortError") ||
-              (typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "aborted")
-            ) {
-              throw e;
-            }
-            health[index] = {
-              provider: provider.name,
-              ok: false,
-              error: (e instanceof Error ? e.message : String(e)).slice(0, 200),
-            };
-            return { ok: false as const, hits: [] };
-          }
-        }),
-      );
-      if (results.every((r) => !r.ok)) {
-        throw new MergedSearchError(
-          `every search provider failed (${names.join(", ")}) for "${query.text.slice(0, 64)}"`,
-        );
-      }
-      return mergeSearchHits(
-        results.map((r) => r.hits),
-        limits.maxHits,
-      );
+      const { hits } = await searchWithHealth(query, limits, signal);
+      return hits;
     },
   };
 }
