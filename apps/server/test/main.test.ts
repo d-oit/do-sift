@@ -382,7 +382,7 @@ describe("composeApp (fixture mode, offline end-to-end)", () => {
           headers: { "content-type": "application/json" },
         });
       }
-      if (url.startsWith("https://api.marginalia.nu")) {
+      if (url.startsWith("https://api.marginalia.nu/")) {
         if (isRun1) {
           // Run 1: marginalia fails after delay (allowing Run 2 to start in parallel)
           await delay(30);
