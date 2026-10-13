@@ -323,6 +323,120 @@ describe("composeApp (fixture mode, offline end-to-end)", () => {
       await app.close();
     }
   });
+
+  it("concurrent research runs maintain isolated providerHealth receipts when resets/writes interleave", async () => {
+    const config: AppConfig = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_SEARCH_PROVIDER: "wikipedia,marginalia",
+      DO_SIFT_MODEL_PROVIDER: "fixture",
+      DO_SIFT_DEV_BYPASS: "1",
+      DO_SIFT_DEV_OWNER: "owner-a",
+      DO_SIFT_FETCH_ALLOWLIST: "en.wikipedia.org,api.marginalia.nu",
+    });
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const WIKI_SEARCH = {
+      query: {
+        search: [
+          {
+            ns: 0,
+            title: "SQLite",
+            pageid: 1,
+            size: 1,
+            wordcount: 1,
+            snippet: "SQLite is a database engine.",
+            timestamp: "2026-01-01T00:00:00Z",
+          },
+        ],
+      },
+    };
+    const WIKI_EXTRACT = {
+      query: {
+        pages: [
+          {
+            pageid: 1,
+            ns: 0,
+            title: "SQLite",
+            extract: "SQLite embeds the whole database in a single portable file.",
+          },
+        ],
+      },
+    };
+
+    const fetchImpl: FetchLike = async (url) => {
+      const isRun1 =
+        url.includes("question+1") || url.includes("question%201") || url.includes("question1");
+      if (url.includes("list=search")) {
+        if (isRun1) {
+          // Run 1: wikipedia succeeds
+          return new Response(JSON.stringify(WIKI_SEARCH), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        // Run 2: wikipedia fails
+        return new Response("500 Internal Server Error", { status: 500 });
+      }
+      if (url.includes("prop=extracts")) {
+        return new Response(JSON.stringify(WIKI_EXTRACT), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.startsWith("https://api.marginalia.nu")) {
+        if (isRun1) {
+          // Run 1: marginalia fails after delay (allowing Run 2 to start in parallel)
+          await delay(30);
+          return new Response("504 Gateway Time-out", { status: 504 });
+        }
+        // Run 2: marginalia succeeds
+        return new Response(
+          JSON.stringify({
+            license: "CC-BY-NC-SA 4.0",
+            page: 1,
+            pages: 1,
+            query: "test",
+            results: [],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`stub fetch got an unexpected url: ${url}`);
+    };
+
+    const dns: DnsResolver = { lookup: async () => ["93.184.216.34"] };
+    const app = await composeApp(config, { dbUrl: ":memory:", port: 0, fetchImpl, dns });
+    try {
+      const base = `http://127.0.0.1:${app.port}`;
+      const run1Promise = fetch(`${base}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "question 1" }),
+      });
+      // Start run 2 almost immediately so search calls overlap
+      await delay(5);
+      const run2Promise = fetch(`${base}/api/research`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "question 2" }),
+      });
+
+      const [res1, res2] = await Promise.all([run1Promise, run2Promise]);
+      expect(res1.status).toBe(200);
+      expect(res2.status).toBe(200);
+      const sse1 = await res1.text();
+      const sse2 = await res2.text();
+
+      // Run 1: wikipedia ok, marginalia failed
+      expect(sse1).toContain('{"provider":"wikipedia","ok":true}');
+      expect(sse1).toContain('{"provider":"marginalia","ok":false');
+
+      // Run 2: wikipedia failed, marginalia ok
+      expect(sse2).toContain('{"provider":"wikipedia","ok":false');
+      expect(sse2).toContain('{"provider":"marginalia","ok":true}');
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", () => {

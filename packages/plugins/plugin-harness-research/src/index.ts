@@ -12,7 +12,13 @@
  * the CORE-08 policy plugin extends this with robots/ToS registries.
  */
 import { createHash } from "node:crypto";
-import { SearchLimits, SearchQuery, isSiteDenied, type SearchProvider } from "@do-sift/contracts";
+import {
+  SearchLimits,
+  SearchQuery,
+  isSiteDenied,
+  type SearchHit,
+  type SearchProvider,
+} from "@do-sift/contracts";
 import type { PluginContext, PluginInstance } from "@do-sift/kernel";
 import {
   backfillPassageEmbeddings,
@@ -294,7 +300,28 @@ export function createResearchHarness(
         }
 
         try {
-          const hits = await deps.search.search(query, limits, signal);
+          let hits;
+          const searchProvider = deps.search as SearchProvider & {
+            searchWithHealth?: (
+              query: SearchQuery,
+              limits: SearchLimits,
+              signal?: AbortSignal,
+            ) => Promise<{
+              hits: SearchHit[];
+              health: Array<{ provider: string; ok: boolean; error?: string | undefined }>;
+            }>;
+            lastHealth?: () => Array<{ provider: string; ok: boolean; error?: string | undefined }>;
+          };
+          if (typeof searchProvider.searchWithHealth === "function") {
+            const outcome = await searchProvider.searchWithHealth(query, limits, signal);
+            hits = outcome.hits;
+            summary.providerHealth = outcome.health;
+          } else {
+            hits = await deps.search.search(query, limits, signal);
+            if (typeof searchProvider.lastHealth === "function") {
+              summary.providerHealth = searchProvider.lastHealth();
+            }
+          }
           summary.hits = hits.length;
           throwIfAborted(signal);
 
