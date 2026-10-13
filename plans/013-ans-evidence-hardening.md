@@ -73,8 +73,8 @@ stays owner-gated (dated sources.md entry + paid grant where billable).
 | ID     | Task                                                                                                                                                                                                                                                                             | Status                   | Owner | Evidence |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- | -------- |
 | ANS-10 | Contracts evidence-framing module (pure): `neutralizePassageText` + framing helpers + suspect detector; red-first unit tests over the attack corpus, plus an offline regression pass of the helper over existing `evals/datasets` passages (no behavior claim beyond the corpus) | done (2026-09-23, agent) | agent | below    |
-| ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | done (2026-10-12, agent) | agent | below    |
-| ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | proposed                 | agent | below    |
+| ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | done (2026-10-13, agent) | agent | below    |
+| ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | done (2026-10-13, agent) | agent | below    |
 | ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded                                                                                                | proposed                 | agent | below    |
 
 ## Decomposition (htn-planner workflow per plan 009)
@@ -152,7 +152,7 @@ documented alternative but must preserve the same parse-back property.
 
 **Status:** done. **Next:** ANS-11 (wire `buildChatBody` onto neutralize+frame).
 
-### ANS-11 evidence (2026-10-12, agent) — buildChatBody on the hardened framing
+### ANS-11 evidence (2026-10-13, agent) — buildChatBody on the hardened framing
 
 **Files:** `packages/plugins/plugin-model-openai-compat/src/index.ts`
 (`buildChatBody` now packs `frameEvidenceLine(p.id,
@@ -200,3 +200,49 @@ before any first live activation or cached rows would silently mask the
 prompt change. R-12 residuals unchanged until ANS-13.
 
 **Status:** done. **Next:** ANS-12 (suspect receipts + pr2 bump).
+
+### ANS-12 evidence (2026-10-13, agent) — suspect receipts + pr2 bump
+
+**Files:** `packages/server/src/answer.ts` (`SuspectReceipt` + `detectSuspects`
+over the packed RAW excerpts — the model's actual exposure, pre-neutralization
+per ANS-10; `AnswerOutcome.suspectEvidence` on the run path only, mirroring
+`reconciliation`; `promptRevision` default pr1 → **pr2** — the ANS-11
+framing is a different prompt, D5: old rows must miss),
+`packages/server/src/server.ts` (`AnswerHttpResponse.suspectEvidence` on the
+wire; `OperationalEvent` becomes the discriminated union
+`HttpRequestEvent | AnswerSuspectEvent`, and the answer handler emits an
+`answer.suspect` receipt — redacted like every operational receipt: counts
+
+- stable marker codes only, never question or passage text),
+  `packages/server/src/runtime.ts` (answerResponse pass-through),
+  `packages/server/test/answer.test.ts` (4 tests),
+  `packages/server/test/server.test.ts` (1 test).
+
+**Design as shipped:** receipt is `{ passages, markers }` — suspect-passage
+count over the packed set + sorted union of stable codes. Advisory only: the
+grounded answer is delivered unchanged (`degraded`/`evidenceOnly` untouched);
+clean evidence reports the explicit empty receipt `{0, []}` (the detector
+looked); cache hits and the empty-evidence path OMIT it (nothing re-ran) —
+the `reconciliation` precedent. The `answer.suspect` event fires whenever the
+receipt exists (QUAL-gate measurability + live monitoring).
+
+**Commands:** red first — 4 new tests failed (`suspectEvidence` undefined;
+pr1 default served the old cache row); after the implementation, one fixture
+correction: the hostile passage needed query terms to rank (bm25 retrieval is
+the gate, and a hostile page that ranks is the real threat) → **58/58**
+across `answer.test.ts` + `server.test.ts`; `npm run check:fast` → **5/5**;
+`do-harness task add … --method vertical-event-slice` → task 3,
+`verify --record --set verification --task 3` → **all 7 PASS**, 5× `task
+advance` → `task done 3`. Full-suite handoff numbers: the final `npm run
+check` (exit 0, all 7) + `npm run signals -- verify --set verification`
+(green) post-date every edit in this slice.
+
+**Risks / open questions:** detector precision is advisory-loose (documented
+ANS-10 trade-off) — a noisy receipt never blocks; precision/recall over real
+pages still needs the QUAL run (ANS-13). `suspectEvidence` is not persisted
+with the answer row (cache hits report nothing rather than a stored receipt) —
+if QUAL needs per-answer receipts over time, a storage column + migration is
+a separate `migrate-storage` slice.
+
+**Status:** done. **Next:** ANS-13 (`review-security` pass + QUAL run +
+risks.md R-12 → mitigated with residuals).

@@ -503,6 +503,48 @@ describe("answer surface (ANS-05)", () => {
     expect(ownerSeen).toBe("owner-alice"); // auth attribution reached the callback
   });
 
+  it("carries the suspect receipt on the payload and emits answer.suspect (ANS-12)", async () => {
+    const events: OperationalEvent[] = [];
+    const eventServer = createResearchServer({
+      auth: makeAuth(true),
+      runResearch,
+      onEvent: (event) => events.push(event),
+      answer: async () => ({
+        requestId: "req-ans-2",
+        answerId: "ans-2",
+        cached: false,
+        degraded: false,
+        evidenceOnly: false,
+        suspectEvidence: { passages: 1, markers: ["role-mimicry"] },
+        blocks: [{ kind: "paragraph", text: "Grounded claim.", citations: ["ev-1"] }],
+      }),
+    } as ResearchServerOptions);
+    const eventPort = await listen(eventServer);
+    try {
+      const res = await fetch(`http://127.0.0.1:${eventPort}/api/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "is this evidence hostile?" }),
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as {
+        suspectEvidence?: { passages: number; markers: string[] };
+      };
+      expect(payload.suspectEvidence).toEqual({ passages: 1, markers: ["role-mimicry"] });
+      const suspect = events.find((e) => e.type === "answer.suspect");
+      expect(suspect).toMatchObject({
+        type: "answer.suspect",
+        passages: 1,
+        markers: ["role-mimicry"],
+        requestId: expect.any(String),
+      });
+      // redaction: receipts carry counts and codes, never question text
+      expect(JSON.stringify(suspect)).not.toContain("hostile");
+    } finally {
+      eventServer.close();
+    }
+  });
+
   it("refuses forged tokens (401) and malformed bodies (400)", async () => {
     expect(
       (await post("/api/answer", { question: "q" }, { authorization: "Bearer forged" })).status,

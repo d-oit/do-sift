@@ -1,7 +1,7 @@
 # GitHub hardening for do-sift
 
 Adapted from `d-oit/rust-2026-template`'s `docs/github-hardening.md`
-(analyzed 2026-10-12). This is **advisory guidance**: applying branch
+(analyzed 2026-10-13). This is **advisory guidance**: applying branch
 rulesets, enabling features, or adding `CODEOWNERS` are repository-settings
 actions owned by the maintainer (see "Approval boundaries" in `AGENTS.md` —
 changing `.github/workflows` also needs explicit approval). Nothing in this

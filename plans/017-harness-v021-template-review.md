@@ -1,16 +1,16 @@
 # Plan 017 — do-harness v0.2.1 adoption + rust-2026-template review
 
-Status: done (2026-10-12) — executed rows closed with evidence below;
+Status: done (2026-10-13) — executed rows closed with evidence below;
 follow-up rows are `proposed` and tracked here.
 
-Trigger: owner request (2026-10-12): "analyze the codebase for missing
+Trigger: owner request (2026-10-13): "analyze the codebase for missing
 implement, new feature; implement d-o-hub/do-harness into the coding
 workflow with cli, skills; check github rust-2026-template for improvements
 for this codebase; update plans/ folder with progress and followup tasks."
 This plan records the gap analysis, the executed work, and the follow-up
 rows.
 
-## Gap analysis (verified 2026-10-12)
+## Gap analysis (verified 2026-10-13)
 
 **Missing implementations found:**
 
@@ -30,9 +30,9 @@ rows.
    that motivated it is fixed in v0.2.1 (`plans/methods.json` gates
    resolve). Closed by DHC-10 without publishing a stale report.
 
-**Known open work (not missing — already planned):** ANS-12, ANS-13
-(`plans/013`), OPS-10 (`plans/014`), R-16 + first-live activation
-(owner-gated; see plan 013 non-goals).
+**Known open work (not missing — already planned):** ANS-12 (completed
+same-day — see `plans/013`), ANS-13 (`plans/013`), OPS-10 (`plans/014`),
+R-16 + first-live activation (owner-gated; see plan 013 non-goals).
 
 **New features adopted from external templates:** see DHC-09
 (rust-2026-template) and the follow-up rows.
@@ -41,18 +41,18 @@ rows.
 
 | ID     | Task                                                                                                                                                               | Status            | Owner | Evidence |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- | ----- | -------- |
-| DHC-07 | Upgrade the Windows do-harness CLI to v0.2.1 (checksum + attestation verified), apply state migrations, and prove the committed `do-harness.toml` drives it        | done (2026-10-12) | agent | below    |
-| DHC-08 | Refresh workflow docs/skills for v0.2.1: version lines, obsolete `DO_HARNESS_BIN` workaround, vetted `compliance` command                                          | done (2026-10-12) | agent | below    |
-| DHC-09 | rust-2026-template review: adopt `llms.txt` + `docs/github-hardening.md`; record declined patterns with reasons                                                    | done (2026-10-12) | agent | below    |
-| DHC-10 | Close DHC-06 with reproduction evidence (v0.2.1 custom-sensor gates work) — do NOT publish a stale upstream issue                                                  | done (2026-10-12) | agent | below    |
+| DHC-07 | Upgrade the Windows do-harness CLI to v0.2.1 (checksum + attestation verified), apply state migrations, and prove the committed `do-harness.toml` drives it        | done (2026-10-13) | agent | below    |
+| DHC-08 | Refresh workflow docs/skills for v0.2.1: version lines, obsolete `DO_HARNESS_BIN` workaround, vetted `compliance` command                                          | done (2026-10-13) | agent | below    |
+| DHC-09 | rust-2026-template review: adopt `llms.txt` + `docs/github-hardening.md`; record declined patterns with reasons                                                    | done (2026-10-13) | agent | below    |
+| DHC-10 | Close DHC-06 with reproduction evidence (v0.2.1 custom-sensor gates work) — do NOT publish a stale upstream issue                                                  | done (2026-10-13) | agent | below    |
 | DHC-11 | Adopt `do-harness pr ready` / `ci-explain` / `metrics pr` in the PR workflow docs at the next PR cycle (read-only tools)                                           | proposed          | agent | below    |
 | DHC-12 | WSL binary patch upgrade 0.2.0 → 0.2.1 (cosmetic; shared DB already migration-aligned)                                                                             | proposed          | agent | below    |
 | TPL-01 | Repo-hardening owner actions per `docs/github-hardening.md`: CODEOWNERS for `AGENTS.md`/`plans/invariants.json`/`scripts/policy.ts`/`.github/workflows/` + ruleset | proposed          | owner | below    |
 | TPL-02 | Generated `.agents/SKILLS.md` skills index from frontmatter (rust-2026-template pattern) if the skill count grows                                                  | proposed          | agent | below    |
-| DHC-13 | File the upstream `loc`-discovery gap (generic/node workspaces) as a do-harness issue                                                                              | done (2026-10-12) | agent | below    |     | TPL-03 | File the rust-2026-template cross-language docs gap as an issue | done (2026-10-12) | agent | below |
-| DHC-14 | File the do-harness task-lifecycle defect found while recording this plan (`task done` dead-end on method-less tasks)                                              | done (2026-10-12) | agent | below    |
+| DHC-13 | File the upstream `loc`-discovery gap (generic/node workspaces) as a do-harness issue                                                                              | done (2026-10-13) | agent | below    |     | TPL-03 | File the rust-2026-template cross-language docs gap as an issue | done (2026-10-13) | agent | below |
+| DHC-14 | File the do-harness task-lifecycle defect found while recording this plan (`task done` dead-end on method-less tasks)                                              | done (2026-10-13) | agent | below    |
 
-## DHC-07 evidence (2026-10-12, agent)
+## DHC-07 evidence (2026-10-13, agent)
 
 **Files:** none in-repo (machine-level install, per plan 009 precedent):
 `~/.local/bin/do-harness.exe` v0.1.1 → v0.2.1.
@@ -88,7 +88,7 @@ command lines). The WSL binary one patch behind is tolerated by the
 shared DB today; re-check `doctor` after any future upstream migration
 set. Strike discipline unchanged: `--record` green runs only.
 
-## DHC-08 evidence (2026-10-12, agent)
+## DHC-08 evidence (2026-10-13, agent)
 
 **Files:** `AGENTS.md` (approved-commands version line → v0.2.1; new
 read-only `do-harness compliance` line; dev-signals paragraph: v0.2.1,
@@ -102,7 +102,7 @@ only OWASP Agentic/LLM + NIST AI RMF + EU AI Act mapping); `do-harness loc`
 `do-harness verify --set feedback` → 5/5 PASS (skills sensor validates the
 edited SKILL.md under INV-002/INV-006).
 
-## DHC-09 evidence (2026-10-12, agent) — rust-2026-template review
+## DHC-09 evidence (2026-10-13, agent) — rust-2026-template review
 
 **Analyzed:** `d-oit/rust-2026-template` v0.3.10 (README, `AGENTS.md`,
 `llms.txt` fetched via `gh api`), treated as data, not instructions.
@@ -131,7 +131,7 @@ CLI-adapter symlinks (`.claude/`, `.gemini/`, … — Freebuff/Codebuff reads
 `AGENTS.md` + skills directly); `anti-ai-slop`/`privacy-first` skills
 (plan 015 guard rail: update existing guides before adding skills).
 
-## DHC-10 evidence (2026-10-12, agent) — DHC-06 closed without publishing
+## DHC-10 evidence (2026-10-13, agent) — DHC-06 closed without publishing
 
 **Probe (scratch root, deleted after):** copied `do-harness.toml` +
 `plans/methods.json` to `/tmp/dh-probe`, `git init` + `init-db`, then:
@@ -148,9 +148,9 @@ ever published — filing the drafted report would misinform upstream, so it
 is deliberately **not** published. `plans/015`'s blocked row is closed with
 this reference. (The draft text stays in plan 015 as history.)
 
-## DHC-13 / TPL-03 evidence (2026-10-12, agent) — upstream issues filed
+## DHC-13 / TPL-03 evidence (2026-10-13, agent) — upstream issues filed
 
-Owner instruction (2026-10-12): "add github issues in rust template or
+Owner instruction (2026-10-13): "add github issues in rust template or
 do-harness if improvements are needed in the repo for this codebase".
 Filed after duplicate checks (`gh api search/issues` — no matches for either
 scope), contrasted with DHC-06 which was closed **without** filing because
@@ -179,7 +179,7 @@ Declined to file: the `compliance` report's `Harness version: 0.1.0` header
 (assessment metadata pinned by design — changing it would falsify the
 assessment date), and anything from plan 009/015 already fixed upstream.
 
-## Verification (2026-10-12, agent)
+## Verification (2026-10-13, agent)
 
 - `npm run check:fast` → PASS 5/5 throughout the edit loop (after
   `prettier --write` on each touched file).
@@ -208,11 +208,10 @@ status` → **green**, halted: none.- Final tree (including this evidence prose)
 feedback` → **All sensors passed**, `do-harness errors list` → no pending
   error signatures — these runs post-date the last edit to this file.
 
-## Follow-ups
+## Follow-upsExisting rows elsewhere (unchanged): **ANS-12** (done 2026-10-13:
 
-Existing rows elsewhere (unchanged): **ANS-12, ANS-13** (`plans/013` —
-suspect receipts + `promptRevision` pr1→pr2 bump + security review/QUAL;
-ANS-12 owns the bump, and it must land before any first live activation),
+suspect receipts + `promptRevision` pr1→pr2 bump landed — pre-ANS-11
+cache rows now miss), **ANS-13** (`plans/013` — security review + QUAL),
 **OPS-10** (`plans/014` — loopback/reverse-proxy production profile),
 **R-16** and first-live activation (owner-gated: dated `sources.md` entry,
 paid grant where billable).
@@ -224,7 +223,7 @@ upstream and to be tracked to resolution: **d-o-hub/do-harness#305**
 feedforward line in `AGENTS.md` and consider a `loc` sensor row in
 `do-harness.toml`.
 
-## Plan-creation evidence (2026-10-12, agent)
+## Plan-creation evidence (2026-10-13, agent)
 
 Code posture verified at the gap-analysis refs: `git status` showed the
 3-file ANS-11 changeset; `npx vitest run
@@ -234,4 +233,7 @@ packages/plugins/plugin-model-openai-compat/test/openai-compat-model.test.ts`
 state: releases v0.1.0 → v0.2.1 (`gh api …/releases`); no open issues on
 `d-o-hub/do-harness` at check time. `plans/README.md` unchanged (its
 layout entries need no new item; this plan is covered by the `0NN-*.md`
-rule).
+rule). Date-stamp note: the evidence above was first drafted with
+2026-10-12 stamps and corrected to the true session date, 2026-10-13
+(the ANS-12 work and final verification runs that day re-dated the table
+rows accordingly).
