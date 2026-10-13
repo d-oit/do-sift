@@ -217,4 +217,38 @@ describe("search-health receipt (SRC-17)", () => {
     await merged.search(QUERY, LIMITS);
     expect(merged.lastHealth().every((h) => h.ok)).toBe(true);
   });
+
+  it("concurrent searchWithHealth calls maintain distinct health receipts without state bleeding", async () => {
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    let callCount = 0;
+    const a = stub("wikipedia", async () => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error("run 1 wikipedia failed");
+      }
+      return [hit("wikipedia", "https://a.test/1", 0)];
+    });
+    const b = stub("marginalia", async () => {
+      if (callCount === 1) {
+        await delay(30);
+        return [hit("marginalia", "https://b.test/1", 0)];
+      }
+      throw new Error("run 2 marginalia failed");
+    });
+    const merged = createMergedSearchProvider([a, b]);
+
+    const res1Promise = merged.searchWithHealth(QUERY, LIMITS);
+    const res2Promise = merged.searchWithHealth(QUERY, LIMITS);
+
+    const [res1, res2] = await Promise.all([res1Promise, res2Promise]);
+
+    expect(res1.health).toEqual([
+      { provider: "wikipedia", ok: false, error: "run 1 wikipedia failed" },
+      { provider: "marginalia", ok: true },
+    ]);
+    expect(res2.health).toEqual([
+      { provider: "wikipedia", ok: true },
+      { provider: "marginalia", ok: false, error: "run 2 marginalia failed" },
+    ]);
+  });
 });

@@ -181,8 +181,6 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
   let search: SearchProvider;
   let fetchPage: (fetchUrl: string, signal?: AbortSignal) => Promise<PageContent>;
   let extract: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
-  /** SRC-17: set only for merged compositions; single-provider runs stay undefined. */
-  let mergedProvider: ReturnType<typeof createMergedSearchProvider> | undefined;
 
   if (config.searchProviders[0] === "fixture") {
     search = new FakeSearchProvider({ hits: FIXTURE_SEARCH_HITS });
@@ -227,9 +225,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     search =
       liveAdapters.length === 1
         ? liveAdapters[0]!
-        : (mergedProvider = createMergedSearchProvider(
-            liveAdapters as [SearchProvider, SearchProvider],
-          ));
+        : createMergedSearchProvider(liveAdapters as [SearchProvider, SearchProvider]);
 
     // SRC-03 extraction: readability over fetched HTML (offline plugin).
     const readability = createReadabilityExtractor();
@@ -397,14 +393,8 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
 
   const server = createResearchServer({
     auth,
-    runResearch: async (ownerId, question, onSource, signal): Promise<ResearchRunOutcome> => {
-      const summary = await runtime.runResearch(ownerId, question, onSource, signal);
-      // SRC-17: surface per-provider sub-search health in the run summary
-      // (merged compositions only) — degradation becomes first-class in
-      // the measurement instead of provenance-only.
-      if (mergedProvider === undefined) return summary;
-      return { ...summary, providerHealth: mergedProvider.lastHealth() };
-    },
+    runResearch: (ownerId, question, onSource, signal): Promise<ResearchRunOutcome> =>
+      runtime.runResearch(ownerId, question, onSource, signal),
     // OPS-09: readiness is a dependency probe, while /healthz remains a
     // constant liveness signal. The probe is deliberately storage-only: it
     // does not call providers or expose owner/evidence data.
