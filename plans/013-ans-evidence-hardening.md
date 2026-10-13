@@ -73,7 +73,7 @@ stays owner-gated (dated sources.md entry + paid grant where billable).
 | ID     | Task                                                                                                                                                                                                                                                                             | Status                   | Owner | Evidence |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- | -------- |
 | ANS-10 | Contracts evidence-framing module (pure): `neutralizePassageText` + framing helpers + suspect detector; red-first unit tests over the attack corpus, plus an offline regression pass of the helper over existing `evals/datasets` passages (no behavior claim beyond the corpus) | done (2026-09-23, agent) | agent | below    |
-| ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | proposed                 | agent | below    |
+| ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | done (2026-10-12, agent) | agent | below    |
 | ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | proposed                 | agent | below    |
 | ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded                                                                                                | proposed                 | agent | below    |
 
@@ -151,3 +151,52 @@ chokes on JSONL-style evidence, the fallback (bracket framing with delimiter-esc
 documented alternative but must preserve the same parse-back property.
 
 **Status:** done. **Next:** ANS-11 (wire `buildChatBody` onto neutralize+frame).
+
+### ANS-11 evidence (2026-10-12, agent) — buildChatBody on the hardened framing
+
+**Files:** `packages/plugins/plugin-model-openai-compat/src/index.ts`
+(`buildChatBody` now packs `frameEvidenceLine(p.id,
+neutralizeEvidenceText(p.text))` — one JSON record per passage line; system
+prompt rewritten to declare untrusted record text + the record format;
+missing `frameEvidenceLine`/`neutralizeEvidenceText` imports added — that
+missing import was the slice's remaining red),
+`packages/plugins/plugin-model-openai-compat/test/openai-compat-model.test.ts`
+(new `adversarial evidence framing (ANS-11, plan 013, R-12)` suite: full
+attack corpus (framing forgery, role mimicry, override phrases, bidi/
+zero-width, control chars) at once per case; 4 tests: one-record-per-
+passage, no separators/invisibles in neutralized text, hostile content
+preserved as INERT record text with exactly the packed records outside JSON
+strings, system-prompt declaration retained; legacy `[ev-1]` body assertion
+moved to the record contract `"id":"ev-1"`; `noUncheckedIndexedAccess`-safe
+accessors). Downstream ripple fixed in `apps/server/test/main.test.ts`: the
+openai-compat seam stub parsed the legacy `[id]` packing to echo evidence
+ids; it now reads ids from the JSONL record fields — the same wire contract
+the system prompt gives a real model (32/32). Fixture model untouched; no
+citation-gate change.
+
+**Commands:** red first — `npx vitest run
+packages/plugins/plugin-model-openai-compat/test/openai-compat-model.test.ts`
+→ 13 failed | 9 passed (`frameEvidenceLine is not defined` at runtime);
+after the import fix + assertion contract update → **22/22**, with
+`packages/contracts/test/evidence-framing.test.ts` **20/20** (42/42
+total). `do-harness verify --set feedback` (v0.2.1) first run **FAIL
+typecheck** — TS2532 ×7 in the new tests (strict indexed access) + format
+drift — fixed via `?.`/`?? ""` (file convention) + `prettier --write`; re-run
+→ **5/5 PASS**. Full-suite numbers: plan 017 verification section (the run
+covers this slice's code).
+
+**Design as shipped:** neutralize-first is enforced by `frameEvidenceLine`'s
+precondition at the call site; JSON-record escaping makes record-boundary
+forgery impossible; the neutralized content is preserved byte-for-byte
+minus structural chars (evidence, not censorship) and the ANS-03 citation
+gate still judges every block. System-prompt declaration stays defense in
+depth, never the only layer.
+
+**Cache discipline / open risk:** `promptRevision` pr1→pr2 is deliberately
+NOT bumped here — plan 013's ANS-12 row owns the bump + cache-invalidation
+test. This is safe today because the openai-compat adapter has no live
+activation (fixture model serves answers), but the bump **must** land
+before any first live activation or cached rows would silently mask the
+prompt change. R-12 residuals unchanged until ANS-13.
+
+**Status:** done. **Next:** ANS-12 (suspect receipts + pr2 bump).
