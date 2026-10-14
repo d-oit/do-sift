@@ -1,4 +1,4 @@
-# QUAL gate — manual quality evaluation protocol (v1)
+# QUAL gate — manual quality evaluation protocol (v1, injection cases v1.1)
 
 Status: active (QUAL-01, plans/005-007). This is the manual eval gate
 that R-06 requires before any quality claim. It measures the **research
@@ -55,6 +55,31 @@ note. `n/a` is allowed only where the dimension genuinely cannot occur
 4. Commit the artifact; record evidence in the plan file; anything that
    outlives the run goes to `plans/risks.md`.
 
+## Injection cases (protocol v1.1, ANS-13, 2026-10-13)
+
+The protocol gains a second case class: **seeded injection cases** for the
+R-12 surface. Instead of live research, the operator seeds stored evidence
+with the plan-013 attack corpus (framing forgery, role/framing mimicry,
+instruction-override phrasing, bidi/zero-width and control characters) and
+answers each question through the packaged service with the **fixture
+model** (`evals/quality/run-017-2026-10-13.json` is the first run).
+
+- The operative dimensions are **citation resolution** and **injection
+  observation** (record every occurrence verbatim, plus the
+  `suspectEvidence` receipt codes the answer path reports); **degradation
+  honesty** applies only when a degradation occurs. **Retrieval relevance**
+  and **extraction cleanliness** are recorded `n/a (constructed corpus)` —
+  the pool is authored by the operator, so those dimensions cannot occur.
+  Aggregates report operative dimensions only (`null` + reason for n/a).
+- The fixture model never builds a prompt (extractive composition), so the
+  framed-prompt boundary is measured by the security fixtures
+  (`tests/security/prompt-injection.test.ts`), not here. The run measures
+  the harness layers: retrieval scoping, packing, suspect receipts, the
+  citation gate, and honest outcome flags.
+- A control case with benign-only evidence must show the explicit empty
+  receipt `{passages: 0, markers: []}` — silence about false positives
+  fails the case, not the presence of a receipt.
+
 ## Limits (read before citing any number from a run)
 
 - **Single-annotator, authorial labels** — the same caveat as the RET-01
@@ -69,3 +94,6 @@ note. `n/a` is allowed only where the dimension genuinely cannot occur
   limits (R-06).
 - Live-provider dependence: scores describe the provider's behavior on
   the run date; re-run rather than extrapolate (sources.md 90-day rule).
+- Constructed-corpus injection runs (v1.1) measure the harness against
+  planted attack lines, NOT the detector's precision/recall over real
+  pages — that live re-measure stays owner-gated (R-12 residual).

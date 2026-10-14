@@ -44,7 +44,7 @@ export interface ResearchRunOutcome {
   providerHealth?: Array<{ provider: string; ok: boolean; error?: string | undefined }> | undefined;
 }
 
-export interface OperationalEvent {
+export interface HttpRequestEvent {
   type: "http.request";
   requestId: string;
   method: string;
@@ -53,6 +53,18 @@ export interface OperationalEvent {
   outcome: "success" | "client_error" | "server_error" | "unavailable" | "canceled";
   durationMs: number;
 }
+
+/** ANS-12 (plan 013, R-12): advisory suspect-evidence receipt. Redacted
+ * like every operational receipt — passage counts and stable marker codes
+ * only, never question or passage text. */
+export interface AnswerSuspectEvent {
+  type: "answer.suspect";
+  requestId: string;
+  passages: number;
+  markers: string[];
+}
+
+export type OperationalEvent = HttpRequestEvent | AnswerSuspectEvent;
 
 export interface ResearchServerOptions {
   /** CORE-04 AuthService-shaped: resolves the owner or throws AuthError. */
@@ -118,6 +130,12 @@ export interface AnswerHttpResponse {
       }
     | undefined;
   reconciliation?: { overrun: boolean; deltaInput: number; deltaOutput: number } | undefined;
+  /**
+   * ANS-12 advisory suspect receipt over the packed evidence (counts +
+   * stable marker codes); absent on cache hits and empty-evidence answers.
+   * Never degrades the answer by itself.
+   */
+  suspectEvidence?: { passages: number; markers: string[] } | undefined;
 }
 
 const MAX_QUESTION = 512;
@@ -476,6 +494,15 @@ async function handleAnswer(
 
     try {
       const payload = await options.answer(ownerId, question, cancellation.signal);
+      if (payload.suspectEvidence !== undefined) {
+        // ANS-12: advisory receipt for the QUAL gate and live monitoring.
+        options.onEvent?.({
+          type: "answer.suspect",
+          requestId: httpRequestId,
+          passages: payload.suspectEvidence.passages,
+          markers: payload.suspectEvidence.markers,
+        });
+      }
       if (!cancellation.signal.aborted && canWrite()) {
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(payload));
@@ -519,7 +546,7 @@ export function createResearchServer(options: ResearchServerOptions): Server {
 
     const emit = (): void => {
       const status = res.statusCode;
-      const outcome: OperationalEvent["outcome"] = failed
+      const outcome: HttpRequestEvent["outcome"] = failed
         ? "server_error"
         : clientAborted
           ? "canceled"
