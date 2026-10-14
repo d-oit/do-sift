@@ -22,7 +22,8 @@ export type Capability = z.infer<typeof Capability>;
  * Capabilities that can never activate from config alone: they need a
  * recorded, explicit grant (and stay disabled in CI entirely). INV-003.
  */
-export const GRANT_REQUIRED: readonly Capability[] = ["paid", "computer"] as const;
+// `browser` is a stop-and-ask boundary in AGENTS.md: it needs a recorded grant too (#60).
+export const GRANT_REQUIRED: readonly Capability[] = ["paid", "computer", "browser"] as const;
 
 const SemVer = z.string().regex(/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/, "must be a semantic version");
 

@@ -359,6 +359,15 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     await compat.activate({
       events: { emit: () => {} },
       pluginName: "model-openai-compat",
+      // #57: the operator-chosen baseURL host is the only host this direct
+      // activation may contact (it bypasses the kernel grant path).
+      network: {
+        assertHostAllowed: (host: string) => {
+          if (host !== new URL(oc.baseURL).hostname) {
+            throw new Error(`model host "${host}" is not the configured baseURL host`);
+          }
+        },
+      },
       config: {
         baseURL: oc.baseURL,
         modelId: oc.modelId,
@@ -425,7 +434,13 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     client,
     port,
     async close() {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      // #62: stop accepting, drain briefly, then force-close idle SSE sockets
+      // that would otherwise keep server.close() pending forever.
+      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+      const forced = setTimeout(() => server.closeAllConnections(), 2_000);
+      forced.unref();
+      await closed;
+      clearTimeout(forced);
       await client.close();
     },
   };
@@ -456,6 +471,9 @@ export async function main(env: Record<string, string | undefined> = process.env
   );
 
   const shutdown = (): void => {
+    // #62: hard exit so a stuck provider or socket can never hang SIGINT/SIGTERM
+    const hardExit = setTimeout(() => process.exit(1), 10_000);
+    hardExit.unref();
     void app.close().then(() => process.exit(0));
   };
   process.once("SIGINT", shutdown);

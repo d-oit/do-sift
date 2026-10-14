@@ -148,37 +148,6 @@ describe("episodes, jobs, usage ledger", () => {
     expect((await repos.jobs.get("owner-a", jobId))?.lastError).toBe("boom");
     expect(await repos.jobs.get("owner-b", jobId)).toBeUndefined(); // cross-owner negative
   });
-
-  it("sums daily usage per owner", async () => {
-    await repos.usage.insert({
-      ownerId: "owner-a",
-      kind: "reservation",
-      inputTokens: 1000,
-      outputTokens: 200,
-      day: "2026-09-07",
-      state: "settled",
-    });
-    await repos.usage.insert({
-      ownerId: "owner-a",
-      kind: "settlement",
-      inputTokens: 500,
-      outputTokens: 100,
-      day: "2026-09-07",
-      state: "settled",
-    });
-    await repos.usage.insert({
-      ownerId: "owner-b",
-      kind: "reservation",
-      inputTokens: 999,
-      outputTokens: 999,
-      day: "2026-09-07",
-      state: "settled",
-    });
-    const a = await repos.usage.sumTokensForDay("owner-a", "2026-09-07");
-    expect(a).toEqual({ inputTokens: 1500, outputTokens: 300 });
-    const b = await repos.usage.sumTokensForDay("owner-b", "2026-09-07");
-    expect(b).toEqual({ inputTokens: 999, outputTokens: 999 }); // isolated per owner
-  });
 });
 
 describe("cross-owner writes (review-security fixtures)", () => {

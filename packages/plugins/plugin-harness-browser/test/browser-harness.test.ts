@@ -237,6 +237,7 @@ describe("capability + kernel round-trip", () => {
       });
       return instance;
     });
+    kernel.grant("harness-browser", "browser");
     await kernel.activate("harness-browser");
     const runLog = await instance?.run(task(), {
       actions: [{ kind: "navigate", url: "https://example.test/" }],

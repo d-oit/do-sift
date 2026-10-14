@@ -69,6 +69,20 @@ describe("blob round-trip", () => {
   });
 });
 
+describe("blob decoding bounds (#56)", () => {
+  it("decodes only the view window of a sliced Uint8Array", () => {
+    const vector = [1.5, -2, 4];
+    const backing = new Uint8Array(vectorToBlob([9, 9, 9, 9]).byteLength + 12 + 12);
+    backing.set(vectorToBlob(vector), 12); // embedded between foreign bytes
+    const slice = backing.subarray(12, 12 + 12);
+    expect(blobToVector(slice)).toEqual(vector);
+  });
+
+  it("rejects a BLOB whose length is not a whole number of floats", () => {
+    expect(() => blobToVector(new Uint8Array(6))).toThrow(RangeError);
+  });
+});
+
 describe("cosineSimilarity", () => {
   it("is 1 for identical, 0 for orthogonal, negative for opposite", () => {
     expect(cosineSimilarity([1, 0], [1, 0])).toBeCloseTo(1);
@@ -123,6 +137,39 @@ describe("store + searchByEmbedding", () => {
       ids.map((passageId, i) => ({ passageId, ownerId: "owner-a", vector: [1 - i * 0.1, 1] })),
     );
     expect(await searchByEmbedding(client, "owner-a", "m1", [1, 1], 2)).toHaveLength(2);
+  });
+});
+
+describe("per-model embeddings coexist (#55)", () => {
+  it("storing a second model keeps the first model's vector", async () => {
+    const p = await seedPassage("owner-a", "multi-model text");
+    await storePassageEmbeddings(client, "m1", [
+      { passageId: p, ownerId: "owner-a", vector: [1, 0] },
+    ]);
+    await storePassageEmbeddings(client, "m2", [
+      { passageId: p, ownerId: "owner-a", vector: [0, 1] },
+    ]);
+    const m1 = await searchByEmbedding(client, "owner-a", "m1", [1, 0], 10);
+    const m2 = await searchByEmbedding(client, "owner-a", "m2", [0, 1], 10);
+    expect(m1.map((h) => h.passageId)).toEqual([p]);
+    expect(m1[0]?.score).toBeCloseTo(1);
+    expect(m2.map((h) => h.passageId)).toEqual([p]);
+    expect(m2[0]?.score).toBeCloseTo(1);
+  });
+
+  it("re-storing the same (passage, model) replaces only that row", async () => {
+    const p = await seedPassage("owner-a", "replace text");
+    await storePassageEmbeddings(client, "m1", [
+      { passageId: p, ownerId: "owner-a", vector: [1, 0] },
+    ]);
+    await storePassageEmbeddings(client, "m2", [
+      { passageId: p, ownerId: "owner-a", vector: [0, 1] },
+    ]);
+    await storePassageEmbeddings(client, "m1", [
+      { passageId: p, ownerId: "owner-a", vector: [0, -1] },
+    ]);
+    const rows = await client.execute("SELECT model_id FROM passage_embeddings ORDER BY model_id");
+    expect(rows.rows.map((r) => String(r.model_id))).toEqual(["m1", "m2"]);
   });
 });
 

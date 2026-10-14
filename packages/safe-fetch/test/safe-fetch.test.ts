@@ -189,6 +189,29 @@ describe("DNS rebinding guard", () => {
 });
 
 describe("redirects", () => {
+  it("strips credential headers when a redirect leaves the origin (#59)", async () => {
+    const inits: RequestInit[] = [];
+    const fetchImpl = makeFetch((url, init) => {
+      inits.push(init ?? {});
+      return url.endsWith("/one")
+        ? htmlResponse("", 302, { location: "https://b.test/two" })
+        : htmlResponse("final");
+    });
+    const res = await safeFetch(
+      "https://a.test/one",
+      makeOptions({
+        fetchImpl,
+        headers: { authorization: "Bearer secret", cookie: "sid=1", "user-agent": "ua" },
+      }),
+    );
+    expect(res.redirects).toBe(1);
+    expect(inits[0]?.headers).toMatchObject({ authorization: "Bearer secret", cookie: "sid=1" });
+    const cross = inits[1]?.headers as Record<string, string>;
+    expect(cross.authorization).toBeUndefined();
+    expect(cross.cookie).toBeUndefined();
+    expect(cross["user-agent"]).toBe("ua");
+  });
+
   it("follows a same-site redirect", async () => {
     const fetchImpl = makeFetch((url) =>
       url.endsWith("/one") ? htmlResponse("", 302, { location: "/two" }) : htmlResponse("final"),

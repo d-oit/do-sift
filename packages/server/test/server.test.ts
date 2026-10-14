@@ -618,7 +618,10 @@ describe("answer surface (ANS-05)", () => {
     expect((await fetch(`${baseUrl()}/api/answer`)).status).toBe(405);
     const failed = await post("/api/answer", { question: "boom" });
     expect(failed.status).toBe(500);
-    expect(await failed.json()).toMatchObject({ error: "model exploded" });
+    // #61: the internal message never reaches the client
+    const body = await failed.json();
+    expect(body).toMatchObject({ error: "internal error" });
+    expect(JSON.stringify(body)).not.toContain("model exploded");
   });
 
   it("answers 501 when the answer surface is not configured (authed caller informed)", async () => {

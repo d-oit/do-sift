@@ -149,6 +149,12 @@ describe("kernel secrets service (CORE-02)", () => {
 });
 
 describe("kernel round-trip (FND-07)", () => {
+  const paidBase = () => ({
+    ...greeterJson,
+    kind: "model",
+    capabilities: ["paid"],
+    permissions: { networkHosts: [], secrets: [] },
+  });
   const factory: PluginFactory = (ctx) => createGreeter(ctx);
 
   it("activates a granted-free plugin and deactivates it", async () => {
@@ -173,7 +179,7 @@ describe("kernel round-trip (FND-07)", () => {
     kernel.register(paid, factory);
     await expect(kernel.activate("paid-plugin")).rejects.toBeInstanceOf(CapabilityError);
 
-    kernel.grant("paid");
+    kernel.grant("paid-plugin", "paid");
     await expect(kernel.activate("paid-plugin")).resolves.toBeUndefined();
   });
 
@@ -186,8 +192,39 @@ describe("kernel round-trip (FND-07)", () => {
     };
     const kernel = new Kernel("ci");
     kernel.register(paid, factory);
-    kernel.grant("paid");
+    kernel.grant("paid-plugin-ci", "paid");
     await expect(kernel.activate("paid-plugin-ci")).rejects.toThrow(/cannot activate in ci/);
+  });
+
+  it("a grant for one plugin does not authorize another plugin (#60)", async () => {
+    const kernel = new Kernel("local");
+    const a = { ...paidBase(), name: "paid-a" };
+    const b = { ...paidBase(), name: "paid-b" };
+    kernel.register(a, () => ({ activate() {}, deactivate() {} }));
+    kernel.register(b, () => ({ activate() {}, deactivate() {} }));
+    kernel.grant("paid-a", "paid");
+    await expect(kernel.activate("paid-a")).resolves.toBeUndefined();
+    await expect(kernel.activate("paid-b")).rejects.toBeInstanceOf(CapabilityError);
+  });
+
+  it("activation-scoped grants do not persist after the activation (#60)", async () => {
+    const kernel = new Kernel("local");
+    kernel.register({ ...paidBase(), name: "paid-plugin" }, () => ({
+      activate() {},
+      deactivate() {},
+    }));
+    await kernel.activate("paid-plugin", { grants: ["paid"] });
+    await kernel.deactivate("paid-plugin");
+    await expect(kernel.activate("paid-plugin")).rejects.toBeInstanceOf(CapabilityError);
+  });
+
+  it("browser capability requires an explicit grant (#60)", async () => {
+    const kernel = new Kernel("local");
+    kernel.register({ ...paidBase(), name: "browser-x", capabilities: ["browser"] }, () => ({
+      activate() {},
+      deactivate() {},
+    }));
+    await expect(kernel.activate("browser-x")).rejects.toBeInstanceOf(CapabilityError);
   });
 
   it("blocks network hosts outside the manifest allowlist", async () => {

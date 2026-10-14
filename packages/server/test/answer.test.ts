@@ -235,6 +235,47 @@ describe("answer service (ANS-03)", () => {
   });
 });
 
+describe("failure hygiene and cache safety (issues #51, #52)", () => {
+  it("settles the reservation and fails the request when persisting the answer throws (#51)", async () => {
+    await seedEvidence();
+    const model = new FakeModelProvider();
+    const brokenRepos = Object.create(repos) as Repositories;
+    Object.assign(brokenRepos, {
+      answers: {
+        ...repos.answers,
+        insert: async () => {
+          throw new Error("disk full");
+        },
+      },
+    });
+    await expect(
+      createAnswerService({ ...makeDeps(model), repositories: brokenRepos }).answer({
+        ownerId: "owner-a",
+        question: QUESTION,
+      }),
+    ).rejects.toThrow("disk full");
+
+    const open = await client.execute(
+      "SELECT COUNT(*) AS n FROM usage_ledger WHERE owner_id = 'owner-a' AND kind = 'reservation' AND state = 'open'",
+    );
+    expect(Number(open.rows[0]?.n)).toBe(0); // no permanently held reservation
+    const requests = await client.execute("SELECT status FROM requests WHERE owner_id = 'owner-a'");
+    expect(requests.rows.map((r) => String(r.status))).toEqual(["failed"]);
+  });
+
+  it("never serves a degraded answer from cache; the next identical question retries (#52)", async () => {
+    await seedEvidence();
+    const model = new FakeModelProvider({ citationBehavior: "hallucinate" });
+    const svc = createAnswerService(makeDeps(model));
+
+    const first = await svc.answer({ ownerId: "owner-a", question: QUESTION });
+    expect(first.degraded).toBe(true);
+    const second = await svc.answer({ ownerId: "owner-a", question: QUESTION });
+    expect(second.cached).toBe(false);
+    expect(model.calls).toHaveLength(2); // the model was asked again
+  });
+});
+
 describe("exact-answer cache (ANS-04, D5)", () => {
   it("serves a repeat question from the cache with zero model calls", async () => {
     await seedEvidence();

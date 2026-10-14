@@ -476,26 +476,45 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         throw e;
       }
 
-      const answerId = await deps.repositories.answers.insert({
-        ownerId: task.ownerId,
-        requestId,
-        blocks: answer.blocks,
-        evidenceOnly: answer.evidenceOnly,
-        cacheKey,
-        evidenceFromRun: basis,
-        usage: answer.usage
-          ? {
-              inputTokens: answer.usage.inputTokens,
-              outputTokens: answer.usage.outputTokens,
-              model: answer.usage.model,
-              estimated: answer.usage.estimated,
-            }
-          : undefined,
-        promptRevision: revisions.promptRevision,
-        policyRevision: revisions.policyRevision,
-        modelRevision: revisions.modelRevision,
-      });
-      await deps.repositories.requests.complete(task.ownerId, requestId);
+      let answerId: string;
+      try {
+        answerId = await deps.repositories.answers.insert({
+          ownerId: task.ownerId,
+          requestId,
+          blocks: answer.blocks,
+          evidenceOnly: answer.evidenceOnly,
+          // degraded answers are never cached: the next identical question retries (#52)
+          cacheKey: degraded ? undefined : cacheKey,
+          evidenceFromRun: basis,
+          usage: answer.usage
+            ? {
+                inputTokens: answer.usage.inputTokens,
+                outputTokens: answer.usage.outputTokens,
+                model: answer.usage.model,
+                estimated: answer.usage.estimated,
+              }
+            : undefined,
+          promptRevision: revisions.promptRevision,
+          policyRevision: revisions.policyRevision,
+          modelRevision: revisions.modelRevision,
+        });
+        await deps.repositories.requests.complete(task.ownerId, requestId);
+      } catch (e) {
+        // persistence failed after a successful reservation: settle so the cap is not
+        // drained by a request that never reached a terminal state (#51)
+        if (deps.budget !== undefined && reservationId !== undefined) {
+          await deps.budget
+            .settle({
+              ownerId: task.ownerId,
+              reservationId,
+              actual: actual ?? { inputTokens: 0, outputTokens: 0 },
+              nowMs: Date.now(),
+            })
+            .catch(() => {});
+        }
+        await deps.repositories.requests.fail(task.ownerId, requestId).catch(() => {});
+        throw e;
+      }
 
       if (deps.budget !== undefined && reservationId !== undefined) {
         const settled = await deps.budget.settle({

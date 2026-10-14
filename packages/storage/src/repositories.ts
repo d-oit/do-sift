@@ -690,18 +690,6 @@ export class Repositories {
       });
       return id;
     },
-    /** Sum of reserved/settled token usage for an owner on a UTC day (daily caps). */
-    sumTokensForDay: async (
-      ownerId: string,
-      day: string,
-    ): Promise<{ inputTokens: number; outputTokens: number }> => {
-      const res = await this.client.execute({
-        sql: "SELECT COALESCE(SUM(input_tokens), 0) AS i, COALESCE(SUM(output_tokens), 0) AS o FROM usage_ledger WHERE owner_id = ? AND day = ?",
-        args: [ownerId, day],
-      });
-      const row = res.rows[0];
-      return { inputTokens: Number(row?.i ?? 0), outputTokens: Number(row?.o ?? 0) };
-    },
     setState: async (ownerId: string, id: string, state: UsageEntryRow["state"]): Promise<void> => {
       await this.client.execute({
         sql: "UPDATE usage_ledger SET state = ? WHERE id = ? AND owner_id = ?",

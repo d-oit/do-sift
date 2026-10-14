@@ -34,6 +34,7 @@ const OWNER_IDS = [
   "attacker",
   "expire-owner",
   "report-owner",
+  "stale-owner",
 ] as const;
 
 beforeAll(async () => {
@@ -260,6 +261,35 @@ describe("settle", () => {
 });
 
 describe("expireDue", () => {
+  it("an overdue open hold stops counting against caps even if nothing called expireDue (#53)", async () => {
+    const svc = new BudgetService(client, { ...CAPS, maxInputTokens: 4_000 });
+    // crashed worker: reserves the whole cap and never settles
+    await svc.reserve({
+      ownerId: "stale-owner",
+      request: { ...REQUEST, deadlineMs: 10 },
+      estimatedInputTokens: 1,
+      nowMs: T0,
+    });
+    // before the deadline the hold still blocks
+    await expect(
+      svc.reserve({
+        ownerId: "stale-owner",
+        request: REQUEST,
+        estimatedInputTokens: 1,
+        nowMs: T0 + 5,
+      }),
+    ).rejects.toMatchObject({ kind: "cap-exceeded" });
+    // after the deadline a new reservation succeeds without any manual expiry
+    await expect(
+      svc.reserve({
+        ownerId: "stale-owner",
+        request: REQUEST,
+        estimatedInputTokens: 1,
+        nowMs: T0 + 13,
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it("expires overdue holds and releases the cap budget", async () => {
     const svc = new BudgetService(client, { ...CAPS, maxInputTokens: 4_000 });
     const { id } = await svc.reserve({

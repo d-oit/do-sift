@@ -49,6 +49,7 @@ export interface OpenAICompatModelConfig {
   modelId?: unknown;
   responseFormat?: unknown;
   schemaName?: unknown;
+  maxOutputTokens?: unknown;
   termsAcceptedAt?: unknown;
   sourcesEntry?: unknown;
 }
@@ -124,9 +125,11 @@ export interface OpenAICompatModelInstance extends PluginInstance {
   readonly modelId: string;
 }
 
+/** Loopback per RFC 1122/4291: localhost, all of 127/8, and ::1 (URL hostnames keep the brackets). #57 */
 function isLoopbackHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host === "::1") return true;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
 }
 
 function parseBaseURL(value: unknown): string {
@@ -171,9 +174,18 @@ function parseBaseURL(value: unknown): string {
  * emits a JSON record whose escaping forbids record-boundary forgery. The
  * passage's CONTENT is preserved as inert record text — neutralization is
  * structural, not censorship. */
+/** Output-token cap default and ceiling (#58): every billable completion is bounded. */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+export const MAX_OUTPUT_TOKENS_CEILING = 8192;
+
 export function buildChatBody(
   req: SynthesisRequestT,
-  options: { model: string; schemaName: string; mode: ResponseFormatMode },
+  options: {
+    model: string;
+    schemaName: string;
+    mode: ResponseFormatMode;
+    maxOutputTokens?: number;
+  },
 ): Record<string, unknown> {
   const evidenceLines = req.passages.map((p) =>
     frameEvidenceLine(p.id, neutralizeEvidenceText(p.text)),
@@ -195,6 +207,7 @@ export function buildChatBody(
         };
   return {
     model: options.model,
+    max_completion_tokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
     messages: [
       {
         role: "system",
@@ -232,6 +245,7 @@ export function createOpenAICompatModel(
   let modelId = "";
   let mode: ResponseFormatMode = "strict";
   let schemaName = "grounded_answer";
+  let maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS;
   let activated = false;
 
   return {
@@ -260,6 +274,8 @@ export function createOpenAICompatModel(
         );
       }
       baseURL = parseBaseURL(cfg.baseURL);
+      // #57: the provider host is network I/O and must be declared in the manifest's networkHosts.
+      context.network.assertHostAllowed(new URL(baseURL).hostname);
       if (typeof cfg.modelId !== "string" || cfg.modelId.trim().length === 0) {
         throw new ModelProviderError(
           "http",
@@ -288,6 +304,20 @@ export function createOpenAICompatModel(
           );
         }
         schemaName = cfg.schemaName.trim();
+      }
+      if (cfg.maxOutputTokens !== undefined) {
+        if (
+          typeof cfg.maxOutputTokens !== "number" ||
+          !Number.isInteger(cfg.maxOutputTokens) ||
+          cfg.maxOutputTokens < 1 ||
+          cfg.maxOutputTokens > MAX_OUTPUT_TOKENS_CEILING
+        ) {
+          throw new ModelProviderError(
+            "http",
+            `activation refused: config.maxOutputTokens must be an integer 1..${MAX_OUTPUT_TOKENS_CEILING} when provided`,
+          );
+        }
+        maxOutputTokens = cfg.maxOutputTokens;
       }
       activated = true;
       context.events.emit("model-openai-compat.activated", { modelId, baseURL, mode });
@@ -320,7 +350,9 @@ export function createOpenAICompatModel(
         res = await fetchImpl(url, {
           method: "POST",
           headers,
-          body: JSON.stringify(buildChatBody(req, { model: modelId, schemaName, mode })),
+          body: JSON.stringify(
+            buildChatBody(req, { model: modelId, schemaName, mode, maxOutputTokens }),
+          ),
           signal: effectiveSignal,
         });
       } catch (e) {

@@ -123,9 +123,9 @@ function baseConfig(overrides: Record<string, unknown> = {}): Record<string, unk
 }
 
 describe("manifest", () => {
-  it("declares kind model with zero capabilities and no preset hosts/secrets", () => {
+  it("declares kind model with only the network capability and no preset hosts/secrets", () => {
     expect(manifestJson.kind).toBe("model");
-    expect(manifestJson.capabilities).toEqual([]);
+    expect(manifestJson.capabilities).toEqual(["network"]);
     expect(manifestJson.permissions).toEqual({ networkHosts: [], secrets: [] });
   });
 });
@@ -422,11 +422,67 @@ describe("adversarial evidence framing (ANS-11, plan 013, R-12)", () => {
   });
 });
 
+describe("network capability (#57)", () => {
+  it("refuses activation when the baseURL host is not in networkHosts", async () => {
+    const kernel = new Kernel("local");
+    kernel.register({ ...manifestJson, config: baseConfig() }, () =>
+      createOpenAICompatModel({
+        fetchImpl: async () => completionEnvelope(GOOD_CONTENT, PROVIDER_USAGE),
+      }),
+    );
+    await expect(kernel.activate("model-openai-compat")).rejects.toThrow(
+      /not allowed to contact host/,
+    );
+  });
+
+  it.each(["http://127.0.0.2:11434/v1", "http://[::1]:11434/v1", "http://localhost:11434/v1"])(
+    "accepts loopback http for %s",
+    (url) => {
+      const plugin = createOpenAICompatModel({
+        fetchImpl: async () => completionEnvelope(GOOD_CONTENT, PROVIDER_USAGE),
+      });
+      return expect(
+        plugin.activate({
+          pluginName: "model-openai-compat",
+          kind: "model",
+          config: { ...baseConfig(), baseURL: url },
+          logger: { info() {}, warn() {} },
+          events: { emit() {} },
+          network: { assertHostAllowed() {} },
+          secrets: { assertNameAllowed() {}, resolve: async () => "" },
+        } as never),
+      ).resolves.toBeUndefined();
+    },
+  );
+
+  it("refuses non-loopback http even for 127-prefixed lookalikes", () => {
+    const plugin = createOpenAICompatModel({
+      fetchImpl: async () => completionEnvelope(GOOD_CONTENT, PROVIDER_USAGE),
+    });
+    return expect(
+      plugin.activate({
+        pluginName: "model-openai-compat",
+        kind: "model",
+        config: { ...baseConfig(), baseURL: "http://127.evil.example/v1" },
+        logger: { info() {}, warn() {} },
+        events: { emit() {} },
+        network: { assertHostAllowed() {} },
+        secrets: { assertNameAllowed() {}, resolve: async () => "" },
+      } as never),
+    ).rejects.toThrow(/not loopback/);
+  });
+});
+
 describe("kernel round-trip", () => {
   it("registers, activates, completes, and deactivates via the kernel", async () => {
     const kernel = new Kernel("local");
     let instance: OpenAICompatModelInstance | undefined;
-    kernel.register({ ...manifestJson, config: baseConfig() }, () => {
+    const manifest = {
+      ...manifestJson,
+      permissions: { networkHosts: ["api.example.test"], secrets: [] },
+      config: baseConfig(),
+    };
+    kernel.register(manifest, () => {
       const plugin = createOpenAICompatModel({
         fetchImpl: async () => completionEnvelope(GOOD_CONTENT, PROVIDER_USAGE),
       });
@@ -438,5 +494,28 @@ describe("kernel round-trip", () => {
     expect(draft?.blocks).toHaveLength(2);
     await kernel.deactivate("model-openai-compat");
     await expect(instance?.complete(request())).rejects.toThrow(/not activated/);
+  });
+});
+
+describe("output token cap (#58)", () => {
+  it("sends a bounded max_completion_tokens by default", () => {
+    const body = buildChatBody(request(), {
+      model: "m",
+      schemaName: "grounded_answer",
+      mode: "strict",
+    });
+    expect(body.max_completion_tokens).toBe(1024);
+  });
+
+  it("refuses an output cap outside 1..8192 at activation", async () => {
+    await expect(activated(baseConfig({ maxOutputTokens: 0 }))).rejects.toBeInstanceOf(
+      ModelProviderError,
+    );
+    await expect(activated(baseConfig({ maxOutputTokens: 8193 }))).rejects.toBeInstanceOf(
+      ModelProviderError,
+    );
+    await expect(activated(baseConfig({ maxOutputTokens: 1.5 }))).rejects.toBeInstanceOf(
+      ModelProviderError,
+    );
   });
 });
