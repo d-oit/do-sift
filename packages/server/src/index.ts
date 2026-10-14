@@ -15,6 +15,7 @@ export type {
   AnswerTask,
   UsageReconciliation,
 } from "./answer.js";
+export { MetricsRegistry } from "./metrics.js";
 export { createRuntime } from "./runtime.js";
 export type { Runtime, RuntimeOptions } from "./runtime.js";
 export {

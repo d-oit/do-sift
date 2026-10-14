@@ -27,6 +27,7 @@ import {
 } from "@do-sift/plugin-search-wikipedia";
 import { pinnedFetch, safeFetch, type DnsResolver, type FetchLike } from "@do-sift/safe-fetch";
 import {
+  MetricsRegistry,
   createMergedSearchProvider,
   createResearchServer,
   createRuntime,
@@ -400,8 +401,11 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     },
   );
 
+  // #67: owner-authenticated Prometheus text at GET /metrics.
+  const metrics = new MetricsRegistry();
   const server = createResearchServer({
     auth,
+    metrics,
     runResearch: (ownerId, question, onSource, signal): Promise<ResearchRunOutcome> =>
       runtime.runResearch(ownerId, question, onSource, signal),
     // OPS-09: readiness is a dependency probe, while /healthz remains a
