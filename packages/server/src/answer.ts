@@ -467,7 +467,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
           requestId,
           blocks: answer.blocks,
           evidenceOnly: answer.evidenceOnly,
-          cacheKey,
+          cacheKey: degraded ? undefined : cacheKey,
           evidenceFromRun: basis,
           usage: answer.usage
             ? {
