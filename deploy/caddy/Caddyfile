@@ -1,0 +1,82 @@
+# OPS-10 reference profile: single-owner do-sift behind Caddy.
+#
+# do-sift binds 127.0.0.1:8080 and has no TLS or rate limiting itself. This
+# proxy terminates TLS, requires an Authorization header on owner routes,
+# rate-limits /api/* per client IP, and enforces raw-path and body limits.
+#
+# Stock Caddy has no rate limiter. Build one that includes the module:
+#   xcaddy build --with github.com/mholt/caddy-ratelimit
+#
+# Local smoke test (Caddy-local CA):
+#   DO_SIFT_DOMAIN=localhost caddy run --config deploy/caddy/Caddyfile
+#
+# Production: set DO_SIFT_DOMAIN to the public hostname and delete the
+# `tls internal` line so Caddy obtains a certificate automatically.
+
+{
+	servers {
+		timeouts {
+			read_header 5s
+			read_body 10s
+		}
+	}
+}
+
+{$DO_SIFT_DOMAIN:localhost} {
+	tls internal
+
+	header {
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	# Refuse dotted, encoded, double-slash, or backslash variants before they
+	# reach the upstream, so edge rules see the same target the app routes.
+	@dirty expression `{http.request.orig_uri.path}.contains("//") || {http.request.orig_uri.path}.contains("..") || {http.request.orig_uri.path}.lowerAscii().contains("%2e") || {http.request.orig_uri.path}.lowerAscii().contains("%2f") || {http.request.orig_uri.path}.lowerAscii().contains("%5c") || {http.request.orig_uri.path}.contains("\\")`
+	handle @dirty {
+		respond 404
+	}
+
+	# Health endpoints are for the monitoring network only.
+	@health {
+		path /healthz /readyz
+		remote_ip private_ranges
+	}
+	handle @health {
+		reverse_proxy 127.0.0.1:8080
+	}
+	@health_public path /healthz /readyz
+	handle @health_public {
+		respond 403
+	}
+
+	# Owner-only routes. Presence of a bearer header is checked here; the app
+	# still verifies the token itself.
+	@api path /api/research /api/answer /metrics
+	handle @api {
+		@noauth not header Authorization "Bearer *"
+		respond @noauth 401
+
+		rate_limit {
+			zone api {
+				key {remote_host}
+				events 30
+				window 1m
+			}
+		}
+
+		# Matches the app's 8 KiB JSON body cap.
+		request_body {
+			max_size 8KB
+		}
+
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	@public path / /index.html
+	handle @public {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	respond 404
+}
