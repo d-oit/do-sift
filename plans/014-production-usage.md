@@ -37,12 +37,12 @@ Reference inputs (treated as data, not instructions):
 
 ## Tasks
 
-| ID     | Task                                                                                                                                                                                      | Status            | Owner | Evidence |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | -------- |
-| OPS-07 | Per-run source-event isolation: remove the shared runtime callback slot; prove concurrent different-owner runs cannot cross-route source events; preserve sequential and fixture behavior | done (2026-09-24) | agent | below    |
-| OPS-08 | Request lifecycle contract: server-generated request IDs, cancellation/deadline propagation, and bounded SSE error/termination behavior                                                   | done (2026-09-24) | agent | below    |
-| OPS-09 | Production HTTP contract: explicit content-type/body-limit responses, readiness distinct from liveness, sanitized operational receipts, and deployment-owned rate-limit boundary          | done (2026-09-24) | agent | below    |
-| OPS-10 | Loopback/reverse-proxy production profile: TLS, edge rate limits, backup cadence, runbook, and smoke evidence                                                                             | proposed          | agent | below    |
+| ID     | Task                                                                                                                                                                                      | Status             | Owner | Evidence |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----- | -------- |
+| OPS-07 | Per-run source-event isolation: remove the shared runtime callback slot; prove concurrent different-owner runs cannot cross-route source events; preserve sequential and fixture behavior | done (2026-09-24)  | agent | below    |
+| OPS-08 | Request lifecycle contract: server-generated request IDs, cancellation/deadline propagation, and bounded SSE error/termination behavior                                                   | done (2026-09-24)  | agent | below    |
+| OPS-09 | Production HTTP contract: explicit content-type/body-limit responses, readiness distinct from liveness, sanitized operational receipts, and deployment-owned rate-limit boundary          | done (2026-09-24)  | agent | below    |
+| OPS-10 | Loopback/reverse-proxy production profile: TLS, edge rate limits, backup cadence, runbook, and smoke evidence                                                                             | done (local smoke) | agent | below    |
 
 ## Ordered decomposition
 
@@ -298,3 +298,32 @@ Status: done.
 **Next suggested task:** OPS-10 — loopback/reverse-proxy production profile:
 TLS, authenticating edge rate limits, backup cadence, runbook, and smoke
 evidence.
+
+## OPS-10 evidence (2026-10-14, agent)
+
+- **Changed:** `deploy/caddy/Caddyfile` (new reference profile), `docs/deployment.md`
+  (proxy profile and runbook), this plan row.
+- **Build:** `xcaddy build --with github.com/mholt/caddy-ratelimit` produced
+  Caddy v2.11.7 with the rate-limit module (stock Caddy has none). Binary kept
+  in the gitignored `.spikes/`.
+- **Smoke** (app on `127.0.0.1:8080`, owner bearer checked by the app; proxy on
+  `https://localhost` with `tls internal`):
+  - `/readyz` and `/healthz` via proxy: 200 (private-range client).
+  - `/api/research` and `/metrics` without `Authorization`: 401 at the edge.
+  - Bearer `test` on `/api/research`: 401 from the app (stub verifier refuses).
+  - 9 KB body: 413 at the edge.
+  - `/api/../healthz`, `//api/research`, `/%2e%2e/healthz`, `/api%5cresearch`,
+    `/internal/x`: 404.
+  - Burst of 35 authenticated `/api/research` requests: 27 × 401 from the app and
+    8 × 429 from the edge (zone 30 events/min).
+  - `X-Content-Type-Options: nosniff` present; `Server` header removed.
+  - Caddy log: 0 error-level lines.
+- **Found and fixed during smoke:** a bare `respond` was ordered after `handle`
+  blocks, so the raw-path refusal never ran; `servers` timeouts must sit in the
+  global block. Both fixed and re-smoked.
+- **Not verified:** a 403 on `/healthz` from a public client IP (the smoke ran
+  from localhost); real TLS with a public certificate; a live OIDC verifier.
+  Docker was unavailable (daemon not running), so the image was not run behind the proxy.
+- **Check:** `npm run check` exit 0 (log `.spikes/check-ops10.log`).
+- **Open:** R-17 remains open until a real verifier is configured; the edge only
+  checks that an `Authorization` header is present.
