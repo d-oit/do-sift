@@ -1,6 +1,7 @@
 # Plan 013 — answer-path evidence hardening (R-12)
 
-Status: proposed (2026-09-23)
+Status: done (2026-10-13) — all rows closed; R-12 moved to mitigated in
+`plans/risks.md` with the three closure residuals recorded.
 
 Trigger: risks.md R-12 — "when a live model lands, treat fetched text as
 adversarial (ANS-02 scope + QUAL gate)". The openai-compat adapter landed
@@ -73,9 +74,8 @@ stays owner-gated (dated sources.md entry + paid grant where billable).
 | ID     | Task                                                                                                                                                                                                                                                                             | Status                   | Owner | Evidence |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- | -------- |
 | ANS-10 | Contracts evidence-framing module (pure): `neutralizePassageText` + framing helpers + suspect detector; red-first unit tests over the attack corpus, plus an offline regression pass of the helper over existing `evals/datasets` passages (no behavior claim beyond the corpus) | done (2026-09-23, agent) | agent | below    |
-| ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | proposed                 | agent | below    |
-| ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | proposed                 | agent | below    |
-| ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded                                                                                                | proposed                 | agent | below    |
+| ANS-11 | openai-compat `buildChatBody` on the hardened framing (neutralized text, unforgeable delimiters); adversarial body-shape tests (forged ids, role mimicry, control chars cannot escape); fixture model untouched; plugin policy tests stay green                                  | done (2026-10-13, agent) | agent | below    |
+| ANS-12 | Answer-service suspect receipts: `AnswerOutcome` field + event (advisory only) + `promptRevision` pr2 bump + cache-invalidation test                                                                                                                                             | done (2026-10-13, agent) | agent | below    |     | ANS-13 | `review-security` pass with attack-fixture evidence + QUAL run-016 (fixture model; injection cases added to the protocol run) + risks.md R-12 → mitigated with residuals recorded | done (2026-10-13, agent) | agent | below |
 
 ## Decomposition (htn-planner workflow per plan 009)
 
@@ -151,3 +151,156 @@ chokes on JSONL-style evidence, the fallback (bracket framing with delimiter-esc
 documented alternative but must preserve the same parse-back property.
 
 **Status:** done. **Next:** ANS-11 (wire `buildChatBody` onto neutralize+frame).
+
+### ANS-11 evidence (2026-10-13, agent) — buildChatBody on the hardened framing
+
+**Files:** `packages/plugins/plugin-model-openai-compat/src/index.ts`
+(`buildChatBody` now packs `frameEvidenceLine(p.id,
+neutralizeEvidenceText(p.text))` — one JSON record per passage line; system
+prompt rewritten to declare untrusted record text + the record format;
+missing `frameEvidenceLine`/`neutralizeEvidenceText` imports added — that
+missing import was the slice's remaining red),
+`packages/plugins/plugin-model-openai-compat/test/openai-compat-model.test.ts`
+(new `adversarial evidence framing (ANS-11, plan 013, R-12)` suite: full
+attack corpus (framing forgery, role mimicry, override phrases, bidi/
+zero-width, control chars) at once per case; 4 tests: one-record-per-
+passage, no separators/invisibles in neutralized text, hostile content
+preserved as INERT record text with exactly the packed records outside JSON
+strings, system-prompt declaration retained; legacy `[ev-1]` body assertion
+moved to the record contract `"id":"ev-1"`; `noUncheckedIndexedAccess`-safe
+accessors). Downstream ripple fixed in `apps/server/test/main.test.ts`: the
+openai-compat seam stub parsed the legacy `[id]` packing to echo evidence
+ids; it now reads ids from the JSONL record fields — the same wire contract
+the system prompt gives a real model (32/32). Fixture model untouched; no
+citation-gate change.
+
+**Commands:** red first — `npx vitest run
+packages/plugins/plugin-model-openai-compat/test/openai-compat-model.test.ts`
+→ 13 failed | 9 passed (`frameEvidenceLine is not defined` at runtime);
+after the import fix + assertion contract update → **22/22**, with
+`packages/contracts/test/evidence-framing.test.ts` **20/20** (42/42
+total). `do-harness verify --set feedback` (v0.2.1) first run **FAIL
+typecheck** — TS2532 ×7 in the new tests (strict indexed access) + format
+drift — fixed via `?.`/`?? ""` (file convention) + `prettier --write`; re-run
+→ **5/5 PASS**. Full-suite numbers: plan 017 verification section (the run
+covers this slice's code).
+
+**Design as shipped:** neutralize-first is enforced by `frameEvidenceLine`'s
+precondition at the call site; JSON-record escaping makes record-boundary
+forgery impossible; the neutralized content is preserved byte-for-byte
+minus structural chars (evidence, not censorship) and the ANS-03 citation
+gate still judges every block. System-prompt declaration stays defense in
+depth, never the only layer.
+
+**Cache discipline / open risk:** `promptRevision` pr1→pr2 is deliberately
+NOT bumped here — plan 013's ANS-12 row owns the bump + cache-invalidation
+test. This is safe today because the openai-compat adapter has no live
+activation (fixture model serves answers), but the bump **must** land
+before any first live activation or cached rows would silently mask the
+prompt change. R-12 residuals unchanged until ANS-13.
+
+**Status:** done. **Next:** ANS-12 (suspect receipts + pr2 bump).
+
+### ANS-12 evidence (2026-10-13, agent) — suspect receipts + pr2 bump
+
+**Files:** `packages/server/src/answer.ts` (`SuspectReceipt` + `detectSuspects`
+over the packed RAW excerpts — the model's actual exposure, pre-neutralization
+per ANS-10; `AnswerOutcome.suspectEvidence` on the run path only, mirroring
+`reconciliation`; `promptRevision` default pr1 → **pr2** — the ANS-11
+framing is a different prompt, D5: old rows must miss),
+`packages/server/src/server.ts` (`AnswerHttpResponse.suspectEvidence` on the
+wire; `OperationalEvent` becomes the discriminated union
+`HttpRequestEvent | AnswerSuspectEvent`, and the answer handler emits an
+`answer.suspect` receipt — redacted like every operational receipt: counts
+
+- stable marker codes only, never question or passage text),
+  `packages/server/src/runtime.ts` (answerResponse pass-through),
+  `packages/server/test/answer.test.ts` (4 tests),
+  `packages/server/test/server.test.ts` (1 test).
+
+**Design as shipped:** receipt is `{ passages, markers }` — suspect-passage
+count over the packed set + sorted union of stable codes. Advisory only: the
+grounded answer is delivered unchanged (`degraded`/`evidenceOnly` untouched);
+clean evidence reports the explicit empty receipt `{0, []}` (the detector
+looked); cache hits and the empty-evidence path OMIT it (nothing re-ran) —
+the `reconciliation` precedent. The `answer.suspect` event fires whenever the
+receipt exists (QUAL-gate measurability + live monitoring).
+
+**Commands:** red first — 4 new tests failed (`suspectEvidence` undefined;
+pr1 default served the old cache row); after the implementation, one fixture
+correction: the hostile passage needed query terms to rank (bm25 retrieval is
+the gate, and a hostile page that ranks is the real threat) → **58/58**
+across `answer.test.ts` + `server.test.ts`; `npm run check:fast` → **5/5**;
+`do-harness task add … --method vertical-event-slice` → task 3,
+`verify --record --set verification --task 3` → **all 7 PASS**, 5× `task
+advance` → `task done 3`. Full-suite handoff numbers: the final `npm run
+check` (exit 0, all 7) + `npm run signals -- verify --set verification`
+(green) post-date every edit in this slice.
+
+**Risks / open questions:** detector precision is advisory-loose (documented
+ANS-10 trade-off) — a noisy receipt never blocks; precision/recall over real
+pages still needs the QUAL run (ANS-13). `suspectEvidence` is not persisted
+with the answer row (cache hits report nothing rather than a stored receipt) —
+if QUAL needs per-answer receipts over time, a storage column + migration is
+a separate `migrate-storage` slice.
+
+**Status:** done. **Next:** ANS-13 (`review-security` pass + QUAL run +
+risks.md R-12 → mitigated with residuals).
+
+### ANS-13 evidence (2026-10-13, agent) — security review + QUAL injection run + R-12 closure
+
+**Files:** `docs/security-review-2026-10-13.md` (new — the review note per
+the `review-security` skill: trust-boundary enumeration over the
+ANS-10/11/12 change set, recurring-offender check, 7 findings with fixture
+names, residuals), `tests/security/prompt-injection.test.ts` (new — 4
+composite fixtures over the seam no layer suite covered end-to-end:
+stored hostile evidence → pack → frame → consumer parse-back → citation
+gate → suspect receipt; plus the F4 id-drift tripwire),
+`docs/quality-gate.md` (protocol **v1.1** injection-case extension:
+operative dimensions, n/a rules, control-case rule, constructed-corpus
+limit), `evals/quality/run-017-2026-10-13.json` (the executed run),
+`plans/risks.md` (R-12 → **mitigated** + the three closure residuals),
+this file.
+
+**Review findings:** 6× PASS (frame forgery-bounded; forged ids inert →
+evidence-only, no repair loop; receipts advisory + redacted; cache/pr2
+invalidation pinned; layering holds; SSRF/authz/money/plugins/workflows
+untouched) + **F4 [LOW, accepted]** — `EvidenceId` accepts whitespace ids
+that `frameEvidenceLine` rejects; unreachable via storage (randomUUID,
+verified) and fails CLOSED at the frame boundary; tightening `EvidenceId`
+was rejected because it would convert a graceful citation-gate rejection
+of hostile model output into a schema failure at the response boundary.
+Pinned by fixture so any drift trips re-review. Standing caveat recorded:
+a validated citation is not entailment (R-06).
+
+**QUAL run:** numbering note — the row says "run-016", but run-016 already
+exists (2026-09-21, live-pool run), so the injection-case run is **run-017**
+(artifact + this evidence keep the row's task text stable). Executed
+offline: plan-013 attack corpus seeded per case into scratch DBs, answered
+through the PACKAGED service (composeApp) with the fixture model; driver
+`.spikes/qual-run-017.ts` (throwaway, gitignored), raw captures under
+gitignored `.do-harness/qual-run-017/`. Results: **4/4 cases** —
+citationResolution 1.0, injectionObservation 1.0 (operative dims; other
+dims n/a by construction); suspect receipts fired exactly per planted
+class (case-01: all six codes), control case clean `{0, []}`; hostile
+passages with topical terms WERE retrieved into the answer pool (the R-12
+precondition observed); `answer.suspect` receipts redacted (counts + codes
+only) in the raw log; 0 degradations, 7 blocks / 7 citations. Limits in
+the artifact repeat: constructed corpus (live precision/recall unmeasured),
+fixture model builds no prompt (frame boundary measured by the security
+fixtures), single-annotator, NOT model quality (R-06).
+
+**Risks closed:** R-12 register row → mitigated with the three plan-013
+residuals recorded (system prompt ≠ guarantee; live steering unmeasured
+until owner-gated first activation + live QUAL re-measure; detector
+precision loose/unmeasured over real pages).
+
+**Commands:** `npx vitest run tests/security/prompt-injection.test.ts` →
+**4/4 green** (characterization fixtures against the shipped defenses —
+the red/green cycle lived in ANS-10/11/12); `npx tsx .spikes/qual-run-017.ts`
+→ 4 cases captured, receipts per class; full-suite + both-runner numbers
+at handoff (final runs post-date every edit in this slice).
+
+**Status:** done — plan 013 closed. **Next suggested:** OPS-10 (plan 014)
+or plan 017 follow-ups (DHC-11/TPL-01); first-live activation remains
+owner-gated (dated sources.md entry + paid grant where billable).

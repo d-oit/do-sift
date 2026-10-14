@@ -1,0 +1,76 @@
+# do-sift
+
+> Research with receipts: a plugin-based, token-frugal web research engine —
+> every answer claim cites stored evidence.
+>
+> Token-efficient project context for LLM/agent sessions (adapted from the
+> rust-2026-template layered-docs model; maintained by hand — regenerate
+> deliberately when the layout changes). Version: see `package.json`.
+
+## Documentation Map
+
+- **README.md** — human-first product overview and quick start.
+- **AGENTS.md** — canonical agent contract: ground rules, engineering model,
+  approved commands, approval boundaries. SSOT for agents.
+- **.agents/skills/** — executable task knowledge (`SKILL.md` per skill).
+- **plans/** — project memory: milestone plans with task rows + evidence,
+  `invariants.json` (machine-checked), `risks.md`, `sources.md` (dated
+  commercial facts), `adr/` (immutable once accepted), `methods.json`
+  (do-harness task-gate catalog).
+- **docs/** — deployment, quality gate, release, security-review notes.
+- **CHANGELOG.md** — Keep-a-Changelog record for the unreleased 0.1.0.
+
+## Architecture
+
+```
+do-sift/
+├── apps/server/             # packaged service entrypoint (env-configured)
+├── packages/kernel/         # plugin kernel: manifest validation, capabilities
+├── packages/contracts/      # shared zod contracts (incl. evidence-framing)
+├── packages/storage/        # storage + repositories
+├── packages/server/         # research/answer runtime + HTTP server
+├── packages/safe-fetch/     # guarded fetching (SSRF/private-net refusals)
+├── packages/plugins/        # search/model/browser/storage/policy adapters
+├── scripts/                 # check pipeline, policy.ts (enforced), dev-harness/
+├── evals/                   # offline eval datasets + quality runs
+├── migrations/              # storage schema migrations
+└── plans/                   # decision records and task evidence
+```
+
+## Key Properties (invariants enforced — see `plans/invariants.json`)
+
+- Search mode makes **zero** LLM calls; answer mode is exactly one bounded
+  synthesis call.
+- Untrusted content (fetched pages, search results, manifests) is data,
+  never instructions.
+- Plugins get capability-checked services from the kernel context — never
+  raw `fs`/`net`; `paid`/`computer` capabilities need a recorded grant.
+- Citations are validated against stored evidence; invalid citations
+  degrade to evidence-only output (no repair loop).
+- Budgets are reserved atomically in `usage_ledger` before external calls.
+- No Python in maintained code or tooling.
+
+## Agent Workflow (short form)
+
+1. Read the plan row + invariants before coding (`htn-planner`).
+2. Red before green (`implement-slice`).
+3. Verify with exit codes: `npm run signals -- verify --set feedback`, then
+   `npm run check` before handoff. Upstream runner: `do-harness verify
+   --record --set verification --task <ID>` (v0.2.1; same sensors).
+4. Record evidence (files, commands, results, risks) in the plan file.
+5. Sensor firing twice → update the guide (`skill-distiller`), not the
+   symptom.
+
+## Commands
+
+```bash
+npm run check:fast     # fast gate (format, lint, typecheck, policy, skills)
+npm run check          # full gate incl. tests + offline evals
+npm run signals -- status   # receipt freshness (green|stale|red|missing)
+do-harness doctor      # upstream CLI diagnostics (ADR 0008)
+do-harness compliance  # read-only OWASP/NIST/EU AI Act posture mapping
+```
+
+Everything billable, credentialed, or publishable is owner-gated — see
+"Approval boundaries" in AGENTS.md before touching keys, deploys, or
+releases.

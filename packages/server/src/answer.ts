@@ -22,8 +22,10 @@ import {
   CitationError,
   estimateTokens,
   normalizeQuestion,
+  suspectEvidenceMarkers,
   validateCitations,
   type Answer,
+  type EvidenceMarker,
   type ModelProvider,
   type SynthesisRequest,
 } from "@do-sift/contracts";
@@ -93,6 +95,14 @@ export interface UsageReconciliation {
   deltaOutput: number;
 }
 
+/** ANS-12 (plan 013, R-12): advisory suspect receipt over the packed raw
+ * evidence — passage count plus stable marker codes. A measurability
+ * receipt for the QUAL gate and live monitoring, never a filter. */
+export interface SuspectReceipt {
+  passages: number;
+  markers: EvidenceMarker[];
+}
+
 export interface AnswerOutcome {
   requestId: string | undefined;
   answerId: string;
@@ -114,6 +124,12 @@ export interface AnswerOutcome {
   usage?: Answer["usage"] | undefined;
   /** Settle-time reconciliation of actual usage vs the reservation. */
   reconciliation?: UsageReconciliation | undefined;
+  /**
+   * ANS-12 advisory suspect receipt over the PACKED evidence (run path
+   * only, like `reconciliation`; absent on cache hits and the empty-
+   * evidence path). Never degrades an answer by itself.
+   */
+  suspectEvidence?: SuspectReceipt | undefined;
 }
 
 /**
@@ -160,6 +176,22 @@ function packPassages(
   return packed;
 }
 
+/** ANS-12: advisory detector over the packed RAW excerpts (exactly what
+ * the model is exposed to — the detector runs pre-neutralization, per
+ * ANS-10). Pure and deterministic; nothing here ever alters a path. */
+function detectSuspects(packed: Array<{ id: string; text: string }>): SuspectReceipt {
+  const markers = new Set<EvidenceMarker>();
+  let passages = 0;
+  for (const p of packed) {
+    const found = suspectEvidenceMarkers(p.text);
+    if (found.length > 0) {
+      passages += 1;
+      for (const m of found) markers.add(m);
+    }
+  }
+  return { passages, markers: [...markers].sort() };
+}
+
 function evidenceOnlyAnswer(
   ownerId: string,
   question: string,
@@ -191,9 +223,10 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
     // noise-classified passages excluded from packing; p1: ANS-08 —
     // retrieval became question-scoped.)
     policyRevision: options.revisions?.policyRevision ?? "p4",
-    // pr1: packing semantics changed in ANS-02 (output budget reserved from
-    // the input ceiling) — revision bump invalidates pre-ANS-02 cache rows.
-    promptRevision: options.revisions?.promptRevision ?? "pr1",
+    // pr2: ANS-11 — evidence packs as neutralized JSON records, a
+    // different prompt than pr1's `[id] text` lines; the bump (D5)
+    // invalidates pre-ANS-11 cache rows. (pr1: ANS-02 packing semantics.)
+    promptRevision: options.revisions?.promptRevision ?? "pr2",
     modelRevision: options.revisions?.modelRevision ?? "m0",
   };
 
@@ -375,6 +408,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         maxInputTokens,
         maxOutputTokens,
       );
+      const suspect = detectSuspects(packed);
       const request: SynthesisRequest = {
         question: task.question,
         passages: packed,
@@ -486,6 +520,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         evidenceFromRun: basis,
         usage: answer.usage,
         reconciliation,
+        suspectEvidence: suspect,
       };
     },
   };

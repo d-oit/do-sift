@@ -198,6 +198,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
         blocks: stored.blocks,
         ...(outcome.usage === undefined ? {} : { usage: outcome.usage }),
         ...(outcome.reconciliation === undefined ? {} : { reconciliation: outcome.reconciliation }),
+        ...(outcome.suspectEvidence === undefined
+          ? {}
+          : { suspectEvidence: outcome.suspectEvidence }),
       };
     },
   };
