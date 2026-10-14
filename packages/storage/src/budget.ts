@@ -74,8 +74,25 @@ function utcDay(nowMs: number): string {
   return new Date(nowMs).toISOString().slice(0, 10);
 }
 
-/** Usage held against caps: open reservation maxima + settled actuals. */
-async function heldUsage(tx: Transaction, ownerId: string, day: string): Promise<HeldUsage> {
+/** Mark this owner's overdue open reservations 'expired' inside a transaction. */
+async function expireDueTx(tx: Transaction, ownerId: string, nowMs: number): Promise<number> {
+  const res = await tx.execute({
+    sql: `UPDATE usage_ledger SET state = 'expired'
+          WHERE owner_id = ? AND kind = 'reservation' AND state = 'open'
+            AND expires_at IS NOT NULL AND expires_at < ?`,
+    args: [ownerId, new Date(nowMs).toISOString()],
+  });
+  return res.rowsAffected;
+}
+
+/** Usage held against caps: non-expired open reservation maxima + settled actuals. */
+async function heldUsage(
+  tx: Transaction,
+  ownerId: string,
+  day: string,
+  nowMs?: number,
+): Promise<HeldUsage> {
+  const nowIso = nowMs !== undefined ? new Date(nowMs).toISOString() : null;
   const res = await tx.execute({
     sql: `SELECT COALESCE(SUM(input_tokens), 0) AS i,
                  COALESCE(SUM(output_tokens), 0) AS o,
@@ -83,9 +100,9 @@ async function heldUsage(tx: Transaction, ownerId: string, day: string): Promise
                  COALESCE(SUM(fetches), 0) AS f
           FROM usage_ledger
           WHERE owner_id = ? AND day = ?
-            AND ((kind = 'reservation' AND state = 'open')
+            AND ((kind = 'reservation' AND state = 'open' AND (? IS NULL OR expires_at IS NULL OR expires_at >= ?))
               OR (kind = 'settlement' AND state = 'settled'))`,
-    args: [ownerId, day],
+    args: [ownerId, day, nowIso, nowIso],
   });
   const row = res.rows[0];
   return {
@@ -139,9 +156,11 @@ export class BudgetService {
     const day = utcDay(input.nowMs);
     const expiresAt = new Date(reservation.expiresAtMs).toISOString();
 
+    await this.expireDue(input.ownerId, input.nowMs);
+
     const tx = await this.client.transaction("write");
     try {
-      const held = await heldUsage(tx, input.ownerId, day);
+      const held = await heldUsage(tx, input.ownerId, day, input.nowMs);
       if (held.inputTokens + reservation.inputTokens > this.caps.maxInputTokens) {
         throw new BudgetServiceError(
           "cap-exceeded",
@@ -200,6 +219,8 @@ export class BudgetService {
    * it never blocks the write.
    */
   async settle(input: SettleInput): Promise<SettleResult> {
+    await this.expireDue(input.ownerId, input.nowMs);
+
     const tx = await this.client.transaction("write");
     try {
       const res = await tx.execute({
@@ -268,14 +289,9 @@ export class BudgetService {
   async expireDue(ownerId: string, nowMs: number): Promise<number> {
     const tx = await this.client.transaction("write");
     try {
-      const res = await tx.execute({
-        sql: `UPDATE usage_ledger SET state = 'expired'
-              WHERE owner_id = ? AND kind = 'reservation' AND state = 'open'
-                AND expires_at IS NOT NULL AND expires_at < ?`,
-        args: [ownerId, new Date(nowMs).toISOString()],
-      });
+      const count = await expireDueTx(tx, ownerId, nowMs);
       await tx.commit();
-      return res.rowsAffected;
+      return count;
     } catch (e) {
       await tx.rollback().catch(() => {});
       throw e;
@@ -286,7 +302,7 @@ export class BudgetService {
   async heldForDay(ownerId: string, nowMs: number): Promise<HeldUsage> {
     const tx = await this.client.transaction("read");
     try {
-      const held = await heldUsage(tx, ownerId, utcDay(nowMs));
+      const held = await heldUsage(tx, ownerId, utcDay(nowMs), nowMs);
       await tx.commit();
       return held;
     } catch (e) {

@@ -34,6 +34,9 @@ const OWNER_IDS = [
   "attacker",
   "expire-owner",
   "report-owner",
+  "auto-expire-owner",
+  "auto-settle-owner",
+  "auto-report-owner",
 ] as const;
 
 beforeAll(async () => {
@@ -257,6 +260,25 @@ describe("settle", () => {
       }),
     ).rejects.toMatchObject({ kind: "reservation-not-open" }); // no double settle
   });
+
+  it("automatically expires overdue open reservation on settle and rejects", async () => {
+    const svc = new BudgetService(client, CAPS);
+    const { id } = await svc.reserve({
+      ownerId: "auto-settle-owner",
+      request: { ...REQUEST, deadlineMs: 100 },
+      estimatedInputTokens: 1,
+      nowMs: T0 + 500,
+    });
+    await expect(
+      svc.settle({
+        ownerId: "auto-settle-owner",
+        reservationId: id,
+        actual: { inputTokens: 10, outputTokens: 5 },
+        nowMs: T0 + 700,
+      }),
+    ).rejects.toMatchObject({ kind: "reservation-not-open" });
+    expect(await stateOf(id)).toBe("expired");
+  });
 });
 
 describe("expireDue", () => {
@@ -289,6 +311,34 @@ describe("expireDue", () => {
       }),
     ).resolves.toBeDefined();
   });
+
+  it("automatically releases cap budget when deadline passes without explicit expireDue call", async () => {
+    const svc = new BudgetService(client, { ...CAPS, maxInputTokens: 4_000 });
+    const { id } = await svc.reserve({
+      ownerId: "auto-expire-owner",
+      request: { ...REQUEST, deadlineMs: 10 },
+      estimatedInputTokens: 1,
+      nowMs: T0 + 100,
+    });
+    await expect(
+      svc.reserve({
+        ownerId: "auto-expire-owner",
+        request: REQUEST,
+        estimatedInputTokens: 1,
+        nowMs: T0 + 105,
+      }),
+    ).rejects.toMatchObject({ kind: "cap-exceeded" });
+
+    await expect(
+      svc.reserve({
+        ownerId: "auto-expire-owner",
+        request: REQUEST,
+        estimatedInputTokens: 1,
+        nowMs: T0 + 115,
+      }),
+    ).resolves.toBeDefined();
+    expect(await stateOf(id)).toBe("expired");
+  });
 });
 
 describe("heldForDay", () => {
@@ -318,5 +368,23 @@ describe("heldForDay", () => {
     });
     const held = await svc.heldForDay("report-owner", T0 + 3_000);
     expect(held).toMatchObject({ inputTokens: 4_500, outputTokens: 750 }); // 500 actual + 4000 open, not 8000
+  });
+
+  it("excludes overdue open reservations from held calculation", async () => {
+    const svc = new BudgetService(client, CAPS);
+    await svc.reserve({
+      ownerId: "auto-report-owner",
+      request: { ...REQUEST, deadlineMs: 100 },
+      estimatedInputTokens: 1,
+      nowMs: T0 + 10_000,
+    });
+    expect(await svc.heldForDay("auto-report-owner", T0 + 10_050)).toMatchObject({
+      inputTokens: 4_000,
+      outputTokens: 700,
+    });
+    expect(await svc.heldForDay("auto-report-owner", T0 + 10_150)).toMatchObject({
+      inputTokens: 0,
+      outputTokens: 0,
+    });
   });
 });
