@@ -1,8 +1,10 @@
 /**
- * Production OIDC verifier (R-17). Verifies an RS256-signed id token against
- * the provider's JWKS, then checks iss / aud / exp / nbf. Uses only
- * node:crypto and the global fetch: no third-party JWT library, and the
- * algorithm is pinned to RS256 so `none` and HS* confusion are refused.
+ * Production OIDC verifier (R-17). Verifies an RS256- or ES384-signed id
+ * token against the provider's JWKS, then checks iss / aud / exp / nbf. Uses
+ * only node:crypto and the global fetch: no third-party JWT library. The
+ * algorithm is pinned to an explicit allowlist (RS256, ES384), and each alg
+ * may only verify with a key of its own type and curve, so `none`, HS*, and
+ * RSA/EC key-confusion attacks are refused.
  *
  * Fail closed: any malformed token, unknown key, bad signature, or failed
  * claim check throws; the AuthService maps that to `invalid-token`.
@@ -38,6 +40,29 @@ interface Jwk extends JsonWebKey {
   alg?: string;
   use?: string;
 }
+
+interface AlgSpec {
+  /** JWA name, as it appears in the token header and the JWK `alg`. */
+  name: string;
+  kty: "RSA" | "EC";
+  /** Required JWK `crv` for EC keys. */
+  crv?: string;
+  digest: "SHA256" | "SHA384";
+  /** ECDSA signatures in JWS are raw r||s, not DER. */
+  dsaEncoding?: "ieee-p1363";
+}
+
+/** The explicit algorithm allowlist. Anything else is refused. */
+const ALG_SPECS: Record<string, AlgSpec> = {
+  RS256: { name: "RS256", kty: "RSA", digest: "SHA256" },
+  ES384: {
+    name: "ES384",
+    kty: "EC",
+    crv: "P-384",
+    digest: "SHA384",
+    dsaEncoding: "ieee-p1363",
+  },
+};
 
 function decodeSegment(segment: string): Buffer {
   if (!/^[A-Za-z0-9_-]*$/.test(segment)) throw new Error("malformed base64url segment");
@@ -88,17 +113,26 @@ export class JwksOidcVerifier implements OidcVerifier {
     const [headerSeg, payloadSeg, signatureSeg] = parts as [string, string, string];
 
     const header = decodeJsonObject(headerSeg);
-    if (header.alg !== "RS256") throw new Error("unsupported alg");
+    const spec =
+      typeof header.alg === "string" && Object.hasOwn(ALG_SPECS, header.alg)
+        ? ALG_SPECS[header.alg]
+        : undefined;
+    if (spec === undefined) throw new Error("unsupported alg");
     const kid = typeof header.kid === "string" ? header.kid : undefined;
 
-    const key = await this.findKey(kid);
+    const key = await this.findKey(kid, spec);
     const signature = decodeSegment(signatureSeg);
-    const verifier = createVerify("RSA-SHA256");
+    const verifier = createVerify(spec.digest);
     verifier.update(`${headerSeg}.${payloadSeg}`);
     verifier.end();
-    if (!verifier.verify(createPublicKey({ key, format: "jwk" }), signature)) {
-      throw new Error("bad signature");
-    }
+    const publicKey = createPublicKey({ key, format: "jwk" });
+    const ok = verifier.verify(
+      spec.dsaEncoding === undefined
+        ? publicKey
+        : { key: publicKey, dsaEncoding: spec.dsaEncoding },
+      signature,
+    );
+    if (!ok) throw new Error("bad signature");
 
     const claims = decodeJsonObject(payloadSeg);
     this.checkClaims(claims);
@@ -122,25 +156,26 @@ export class JwksOidcVerifier implements OidcVerifier {
     }
   }
 
-  private async findKey(kid: string | undefined): Promise<Jwk> {
+  private async findKey(kid: string | undefined, spec: AlgSpec): Promise<Jwk> {
     const stale = this.now() - this.fetchedAt >= this.jwksTtlMs;
     if (stale) await this.refresh();
-    let key = this.pickKey(kid);
+    let key = this.pickKey(kid, spec);
     // An unknown kid may mean the provider rotated keys: refresh once, rate-limited.
     if (key === undefined && !stale && this.now() - this.fetchedAt >= KID_REFRESH_MIN_MS) {
       await this.refresh();
-      key = this.pickKey(kid);
+      key = this.pickKey(kid, spec);
     }
     if (key === undefined) throw new Error("no matching signing key");
     return key;
   }
 
-  private pickKey(kid: string | undefined): Jwk | undefined {
+  private pickKey(kid: string | undefined, spec: AlgSpec): Jwk | undefined {
     const candidates = this.keys.filter(
       (k) =>
-        k.kty === "RSA" &&
+        k.kty === spec.kty &&
         (k.use === undefined || k.use === "sig") &&
-        (k.alg === undefined || k.alg === "RS256"),
+        (k.alg === undefined || k.alg === spec.name) &&
+        (spec.crv === undefined || k.crv === spec.crv),
     );
     if (kid !== undefined) return candidates.find((k) => k.kid === kid);
     return candidates.length === 1 ? candidates[0] : undefined;
@@ -163,7 +198,10 @@ export class JwksOidcVerifier implements OidcVerifier {
     const body = (await res.json()) as { keys?: unknown };
     if (!Array.isArray(body.keys)) throw new Error("JWKS has no keys array");
     this.keys = body.keys.filter(
-      (k): k is Jwk => typeof k === "object" && k !== null && (k as Jwk).kty === "RSA",
+      (k): k is Jwk =>
+        typeof k === "object" &&
+        k !== null &&
+        ((k as Jwk).kty === "RSA" || (k as Jwk).kty === "EC"),
     );
     this.fetchedAt = this.now();
   }

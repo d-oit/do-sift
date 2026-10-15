@@ -171,6 +171,49 @@ describe("JwksOidcVerifier: keys and transport", () => {
   });
 });
 
+describe("JwksOidcVerifier: ES384 keys", () => {
+  const ec = generateKeyPairSync("ec", { namedCurve: "P-384" });
+
+  function ecJwk(kid: string): Record<string, unknown> {
+    return { ...ec.publicKey.export({ format: "jwk" }), kid, alg: "ES384", use: "sig" };
+  }
+
+  function signEs384(payload: Record<string, unknown>, kid = "e1"): string {
+    const header = { alg: "ES384", typ: "JWT", kid };
+    const signingInput = `${b64url(header)}.${b64url(payload)}`;
+    const signer = createSign("SHA384");
+    signer.update(signingInput);
+    signer.end();
+    const sig = signer.sign({ key: ec.privateKey, dsaEncoding: "ieee-p1363" });
+    return `${signingInput}.${sig.toString("base64url")}`;
+  }
+
+  it("verifies a valid ES384 token against a P-384 JWKS key", async () => {
+    const { verifier } = makeVerifier({ keys: () => [ecJwk("e1")] });
+    const identity = await verifier.verifyIdToken(signEs384(validPayload()));
+    expect(identity).toMatchObject({ subject: "owner-alice", issuer: ISSUER });
+  });
+
+  it("rejects a tampered ES384 token", async () => {
+    const { verifier } = makeVerifier({ keys: () => [ecJwk("e1")] });
+    const [h, , s] = signEs384(validPayload()).split(".");
+    const forged = b64url(validPayload({ sub: "owner-bob" }));
+    await expect(verifier.verifyIdToken(`${h}.${forged}.${s}`)).rejects.toThrow(/bad signature/);
+  });
+
+  it("does not verify an ES384 header against an RSA key with the same kid", async () => {
+    const { verifier } = makeVerifier({ keys: () => [jwkOf(primary.publicKey, "k1")] });
+    await expect(verifier.verifyIdToken(signEs384(validPayload(), "k1"))).rejects.toThrow(
+      /no matching/,
+    );
+  });
+
+  it("does not verify an RS256 token against an EC-only JWKS", async () => {
+    const { verifier } = makeVerifier({ keys: () => [ecJwk("k1")] });
+    await expect(verifier.verifyIdToken(sign(validPayload()))).rejects.toThrow(/no matching/);
+  });
+});
+
 describe("JwksOidcVerifier through AuthService", () => {
   it("maps a bad token to invalid-token and an unallowlisted subject to not-allowlisted", async () => {
     const { verifier } = makeVerifier();
