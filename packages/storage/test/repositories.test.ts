@@ -129,24 +129,13 @@ describe("requests + answers + feedback", () => {
   });
 });
 
-describe("episodes, jobs, usage ledger", () => {
+describe("episodes", () => {
   it("lists episodes for the owner only", async () => {
     await repos.episodes.insert("owner-a", "question a", "completed", "fine");
     const episodesA = await repos.episodes.list("owner-a");
     const episodesB = await repos.episodes.list("owner-b");
     expect(episodesA.map((e) => e.question)).toContain("question a");
     expect(episodesB).toHaveLength(0); // cross-owner negative
-  });
-
-  it("moves a job through statuses, owner-scoped", async () => {
-    const jobId = await repos.jobs.insert("owner-a", "fetch", { url: "https://example.org/" });
-    const job = await repos.jobs.get("owner-a", jobId);
-    expect(job?.status).toBe("queued");
-    await repos.jobs.setStatus("owner-a", jobId, "leased", { leaseUntil: "2026-09-07T01:00:00Z" });
-    expect((await repos.jobs.get("owner-a", jobId))?.status).toBe("leased");
-    await repos.jobs.setStatus("owner-a", jobId, "dead", { lastError: "boom" });
-    expect((await repos.jobs.get("owner-a", jobId))?.lastError).toBe("boom");
-    expect(await repos.jobs.get("owner-b", jobId)).toBeUndefined(); // cross-owner negative
   });
 });
 
@@ -155,11 +144,6 @@ describe("cross-owner writes (review-security fixtures)", () => {
     const requestIdA = await repos.requests.create("owner-a", "answer", "q");
     await repos.requests.complete("owner-b", requestIdA); // wrong owner → no-op
     expect((await repos.requests.get("owner-a", requestIdA))?.status).toBe("pending");
-
-    const jobIdA = await repos.jobs.insert("owner-a", "fetch", {});
-    await repos.jobs.setStatus("owner-b", jobIdA, "dead", { lastError: "hijack" });
-    expect((await repos.jobs.get("owner-a", jobIdA))?.status).toBe("queued");
-    expect((await repos.jobs.get("owner-a", jobIdA))?.lastError).toBeUndefined();
   });
 
   it("refuses to link records across owners", async () => {

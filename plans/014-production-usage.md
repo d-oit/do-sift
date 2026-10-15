@@ -325,5 +325,5 @@ evidence.
   from localhost); real TLS with a public certificate; a live OIDC verifier.
   Docker was unavailable (daemon not running), so the image was not run behind the proxy.
 - **Check:** `npm run check` exit 0 (log `.spikes/check-ops10.log`).
-- **Open:** R-17 remains open until a real verifier is configured; the edge only
+- **Open:** R-17: a real RS256/JWKS verifier now exists (`JwksOidcVerifier`, `DO_SIFT_OIDC_*` config; tests in `packages/auth/test/oidc.test.ts`). It stays open until it is pointed at a live IdP and smoke-tested, because no provider is configured yet; the edge only
   checks that an `Authorization` header is present.
