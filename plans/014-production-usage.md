@@ -325,5 +325,18 @@ evidence.
   from localhost); real TLS with a public certificate; a live OIDC verifier.
   Docker was unavailable (daemon not running), so the image was not run behind the proxy.
 - **Check:** `npm run check` exit 0 (log `.spikes/check-ops10.log`).
-- **Open:** R-17: a real RS256/JWKS verifier now exists (`JwksOidcVerifier`, `DO_SIFT_OIDC_*` config; tests in `packages/auth/test/oidc.test.ts`). It stays open until it is pointed at a live IdP and smoke-tested, because no provider is configured yet; the edge only
-  checks that an `Authorization` header is present.
+- **R-17 (closed 2026-10-15):** `JwksOidcVerifier` (`DO_SIFT_OIDC_*`; tests in
+  `packages/auth/test/oidc.test.ts`) smoke-tested against the live Logto tenant
+  `https://lxr5zs.logto.app/oidc`. A client-credentials token (resource
+  `https://lxr5zs.logto.app/api`, ES384) was issued and run through the real
+  composed app's `POST /api/research`: no token → 401, tampered token → 401,
+  live token → 200 with SSE source events. Script: `.spikes/smoke-oidc-route.ts`
+  (gitignored, reads `.env`).
+- **Caddy config:** `deploy/caddy/Caddyfile` passes `caddy validate` with the
+  local `caddy-rl` build (exit 0; a formatting warning remains).
+- **Docker run behind the proxy (2026-10-15):** `docker build -t do-sift:ops10 .`
+  (offline evals ran in-image, exit 0). Container bound to `127.0.0.1:8080` with
+  the Logto OIDC config; healthy. Caddy (`caddy-rl`, `tls internal`) in front:
+  no auth on `/api/research` → 401; live Logto token → 200; `/healthz` → 200;
+  `/api/../healthz` → 404; HTTP → HTTPS 308; zero error-level Caddy log lines.
+- **Still open:** public-IP 403 check and real public TLS (need a public domain).
