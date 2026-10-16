@@ -381,67 +381,68 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         task.question,
       );
 
-      // no evidence → honest empty evidence-only answer, zero model calls
-      if (retrieved.length === 0) {
-        const answer = evidenceOnlyAnswer(task.ownerId, task.question, []);
-        const answerId = await deps.repositories.answers.insert({
-          ownerId: task.ownerId,
-          requestId,
-          blocks: answer.blocks,
-          evidenceOnly: true,
-          cacheKey,
-        });
-        await deps.repositories.requests.complete(task.ownerId, requestId);
-        return {
-          requestId,
-          answerId,
-          cached: false,
-          degraded: true,
-          evidenceOnly: true,
-          evidenceFromRun: undefined,
-        };
-      }
-
-      const packed = packPassages(
-        task.question,
-        retrieved.map((p) => ({ id: p.passageId, text: p.excerpt })),
-        maxInputTokens,
-        maxOutputTokens,
-      );
-      const suspect = detectSuspects(packed);
-      const request: SynthesisRequest = {
-        question: task.question,
-        passages: packed,
-        followUps: [],
-        maxInputTokens,
-        maxOutputTokens,
-      };
-
       let reservationId: string | undefined;
-      if (deps.budget !== undefined) {
-        const { id } = await deps.budget.reserve({
-          ownerId: task.ownerId,
-          requestId,
-          request: {
-            maxInputTokens,
-            maxOutputTokens,
-            maxSearchCalls: 0,
-            maxFetches: 0,
-            deadlineMs: 30_000,
-          },
-          estimatedInputTokens: estimateTokens(
-            [task.question, ...packed.map((p) => p.text)].join(" "),
-          ),
-          nowMs: Date.now(),
-        });
-        reservationId = id;
-      }
-
-      let answer: Answer;
-      let degraded = false;
       let actual: { inputTokens: number; outputTokens: number } | undefined;
-      let reconciliation: UsageReconciliation | undefined;
+      let reservationSettled = false;
+
       try {
+        // no evidence → honest empty evidence-only answer, zero model calls
+        if (retrieved.length === 0) {
+          const answer = evidenceOnlyAnswer(task.ownerId, task.question, []);
+          const answerId = await deps.repositories.answers.insert({
+            ownerId: task.ownerId,
+            requestId,
+            blocks: answer.blocks,
+            evidenceOnly: true,
+            cacheKey,
+          });
+          await deps.repositories.requests.complete(task.ownerId, requestId);
+          return {
+            requestId,
+            answerId,
+            cached: false,
+            degraded: true,
+            evidenceOnly: true,
+            evidenceFromRun: undefined,
+          };
+        }
+
+        const packed = packPassages(
+          task.question,
+          retrieved.map((p) => ({ id: p.passageId, text: p.excerpt })),
+          maxInputTokens,
+          maxOutputTokens,
+        );
+        const suspect = detectSuspects(packed);
+        const request: SynthesisRequest = {
+          question: task.question,
+          passages: packed,
+          followUps: [],
+          maxInputTokens,
+          maxOutputTokens,
+        };
+
+        if (deps.budget !== undefined) {
+          const { id } = await deps.budget.reserve({
+            ownerId: task.ownerId,
+            requestId,
+            request: {
+              maxInputTokens,
+              maxOutputTokens,
+              maxSearchCalls: 0,
+              maxFetches: 0,
+              deadlineMs: 30_000,
+            },
+            estimatedInputTokens: estimateTokens(
+              [task.question, ...packed.map((p) => p.text)].join(" "),
+            ),
+            nowMs: Date.now(),
+          });
+          reservationId = id;
+        }
+
+        let answer: Answer;
+        let degraded = false;
         if (signal?.aborted) throw new AnswerCancelledError();
         const draft = await deps.model.complete(request, signal);
         actual = { inputTokens: draft.usage.inputTokens, outputTokens: draft.usage.outputTokens };
@@ -460,68 +461,69 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
           degraded = true; // no repair loop: degrade to evidence-only
           answer = evidenceOnlyAnswer(task.ownerId, task.question, packed);
         }
-      } catch (e) {
+
+        const answerId = await deps.repositories.answers.insert({
+          ownerId: task.ownerId,
+          requestId,
+          blocks: answer.blocks,
+          evidenceOnly: answer.evidenceOnly,
+          cacheKey,
+          evidenceFromRun: basis,
+          usage: answer.usage
+            ? {
+                inputTokens: answer.usage.inputTokens,
+                outputTokens: answer.usage.outputTokens,
+                model: answer.usage.model,
+                estimated: answer.usage.estimated,
+              }
+            : undefined,
+          promptRevision: revisions.promptRevision,
+          policyRevision: revisions.policyRevision,
+          modelRevision: revisions.modelRevision,
+        });
+        await deps.repositories.requests.complete(task.ownerId, requestId);
+
+        let reconciliation: UsageReconciliation | undefined;
         if (deps.budget !== undefined && reservationId !== undefined) {
-          // model call failed before/without usage: settle zeros, honestly
+          const settled = await deps.budget.settle({
+            ownerId: task.ownerId,
+            reservationId,
+            actual: actual ?? { inputTokens: 0, outputTokens: 0 },
+            nowMs: Date.now(),
+          });
+          reservationSettled = true;
+          reconciliation = {
+            overrun: settled.overrun,
+            deltaInput: settled.deltaInput,
+            deltaOutput: settled.deltaOutput,
+          };
+        }
+
+        return {
+          requestId,
+          answerId,
+          cached: false,
+          degraded,
+          evidenceOnly: answer.evidenceOnly,
+          evidenceFromRun: basis,
+          usage: answer.usage,
+          reconciliation,
+          suspectEvidence: suspect,
+        };
+      } catch (e) {
+        if (deps.budget !== undefined && reservationId !== undefined && !reservationSettled) {
           await deps.budget
             .settle({
               ownerId: task.ownerId,
               reservationId,
-              actual: { inputTokens: 0, outputTokens: 0 },
+              actual: actual ?? { inputTokens: 0, outputTokens: 0 },
               nowMs: Date.now(),
             })
             .catch(() => {});
         }
-        await deps.repositories.requests.fail(task.ownerId, requestId);
+        await deps.repositories.requests.fail(task.ownerId, requestId).catch(() => {});
         throw e;
       }
-
-      const answerId = await deps.repositories.answers.insert({
-        ownerId: task.ownerId,
-        requestId,
-        blocks: answer.blocks,
-        evidenceOnly: answer.evidenceOnly,
-        cacheKey,
-        evidenceFromRun: basis,
-        usage: answer.usage
-          ? {
-              inputTokens: answer.usage.inputTokens,
-              outputTokens: answer.usage.outputTokens,
-              model: answer.usage.model,
-              estimated: answer.usage.estimated,
-            }
-          : undefined,
-        promptRevision: revisions.promptRevision,
-        policyRevision: revisions.policyRevision,
-        modelRevision: revisions.modelRevision,
-      });
-      await deps.repositories.requests.complete(task.ownerId, requestId);
-
-      if (deps.budget !== undefined && reservationId !== undefined) {
-        const settled = await deps.budget.settle({
-          ownerId: task.ownerId,
-          reservationId,
-          actual: actual ?? { inputTokens: 0, outputTokens: 0 },
-          nowMs: Date.now(),
-        });
-        reconciliation = {
-          overrun: settled.overrun,
-          deltaInput: settled.deltaInput,
-          deltaOutput: settled.deltaOutput,
-        };
-      }
-
-      return {
-        requestId,
-        answerId,
-        cached: false,
-        degraded,
-        evidenceOnly: answer.evidenceOnly,
-        evidenceFromRun: basis,
-        usage: answer.usage,
-        reconciliation,
-        suspectEvidence: suspect,
-      };
     },
   };
 }
