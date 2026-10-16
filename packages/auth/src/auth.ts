@@ -106,11 +106,8 @@ export class AuthService {
       let identity: VerifiedIdentity;
       try {
         identity = await this.verifier.verifyIdToken(request.token);
-      } catch (e) {
-        throw new AuthError(
-          "invalid-token",
-          `id token rejected: ${e instanceof Error ? e.message : String(e)}`,
-        );
+      } catch {
+        throw new AuthError("invalid-token", "id token rejected");
       }
       if (!isAllowlisted(identity.subject, this.config.allowlist)) {
         throw new AuthError("not-allowlisted", "verified subject is not an allowlisted owner");

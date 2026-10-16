@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "apiVersion": "1",
   "kind": "model",
-  "description": "OpenAI-compatible chat-completions adapter (offline slice). One bounded POST {baseURL}/chat/completions with response_format json_schema over the DraftAnswer blocks shape; usage from provider counts with estimator fallback. No tools field, no retries. Zero capabilities; https required except loopback http. Not wired into apps/server — live use needs the sources.md gate.",
-  "capabilities": [],
+  "description": "OpenAI-compatible chat-completions adapter (offline slice). One bounded POST {baseURL}/chat/completions with response_format json_schema over the DraftAnswer blocks shape; usage from provider counts with estimator fallback. No tools field, no retries. Declares the network capability; the baseURL host must be listed in permissions.networkHosts before activation. https required except loopback http. Not wired into apps/server — live use needs the sources.md gate.",
+  "capabilities": ["network"],
   "permissions": {
     "networkHosts": [],
     "secrets": []
@@ -14,6 +14,7 @@
     "modelId": "",
     "responseFormat": "strict",
     "schemaName": "grounded_answer",
+    "maxOutputTokens": 1024,
     "termsAcceptedAt": "",
     "sourcesEntry": ""
   },

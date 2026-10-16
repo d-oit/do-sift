@@ -16,7 +16,7 @@ Everything is a plugin
   harnesses, extraction, storage, site-access policy, web console
 
 See `plans/000-product-and-decisions.md` for the full decision log and
-`docs/architecture.md` for the runtime design.
+`docs/deployment.md` ("Architecture in one paragraph") for the runtime design.
 
 ## Constraints (enforced, not aspirational)
 

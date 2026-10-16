@@ -122,13 +122,13 @@ describe("default off + kernel grant gate (INV-003)", () => {
     const local = new Kernel("local");
     local.register(manifest, factory);
     await expect(local.activate("harness-computer")).rejects.toBeInstanceOf(CapabilityError);
-    local.grant("computer");
+    local.grant("harness-computer", "computer");
     await expect(local.activate("harness-computer")).resolves.toBeUndefined();
     await local.deactivate("harness-computer");
 
     const ci = new Kernel("ci");
     ci.register(harnessJson, factory);
-    ci.grant("computer");
+    ci.grant("harness-computer", "computer");
     await expect(ci.activate("harness-computer")).rejects.toThrow(/cannot activate in ci/);
   });
 });

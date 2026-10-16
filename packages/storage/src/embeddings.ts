@@ -36,7 +36,17 @@ export function blobToVector(blob: unknown): number[] {
   if (!(blob instanceof Uint8Array) && !(blob instanceof ArrayBuffer)) {
     throw new TypeError(`expected embedding BLOB, got ${typeof blob}`);
   }
-  return Array.from(new Float32Array(blob instanceof Uint8Array ? blob.buffer : blob));
+  // Honour the view window: a sliced Uint8Array shares a larger ArrayBuffer.
+  if (blob instanceof Uint8Array) {
+    if (blob.byteLength % 4 !== 0) {
+      throw new RangeError(`embedding BLOB length ${blob.byteLength} is not a multiple of 4`);
+    }
+    return Array.from(new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4));
+  }
+  if (blob.byteLength % 4 !== 0) {
+    throw new RangeError(`embedding BLOB length ${blob.byteLength} is not a multiple of 4`);
+  }
+  return Array.from(new Float32Array(blob));
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

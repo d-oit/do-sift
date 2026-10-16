@@ -237,3 +237,9 @@ rule). Date-stamp note: the evidence above was first drafted with
 2026-10-12 stamps and corrected to the true session date, 2026-10-13
 (the ANS-12 work and final verification runs that day re-dated the table
 rows accordingly).
+
+## Evidence: issue batch (#51–#66) — this PR
+
+- Changed: budget/answer/repositories (#51–54), passage_embeddings migration 0009 + blobToVector bounds (#55–56), kernel grant API `grant(plugin, capability)` + manifest/safe-fetch/openai-compat fixes (#57, #59, #60), output token cap (#58), generic 500/401 errors and SSE heartbeat/shutdown (#61–62), per-owner limiter with 429 + Retry-After (#63), retention `pruneOwnerHistory` (#64), `.env.example`, `CONTRIBUTING.md`, README link (#65), `docs/api.md` (#66).
+- Commands: `npm run check` → PASS (prettier, eslint, typecheck, policy, skills, tests, evals). `npm run eval:offline` → PASS (31 cases, 0 network/model calls). Browser e2e test `playwright-driver.test.ts` timed out once at 5s under full parallel load; it passed on its own and was rerun green in the full check.
+- Open / deferred: #67 (CLI, `/metrics`, CI coverage floor) not started. #64 duplicate `Repositories` job/usage write paths and `idx_jobs_runnable` mismatch not yet removed. OPS-10 (TLS/proxy production profile, edge 429 smoke) needs a real proxy and was not done. DHC-11 (PR workflow docs) and DHC-12 (binary upgrade; AGENTS.md already records v0.2.1) not done in this batch. Candidate cap from #56 not implemented.

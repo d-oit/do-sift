@@ -106,6 +106,17 @@ function isIpLiteralHost(hostname: string): boolean {
 /** Resolve the host and refuse any non-public answer. IP literals skip DNS.
  * Returns the VALIDATED addresses (SRC-23): the pinned transport connects
  * directly to one of them instead of re-resolving. */
+/** Headers that carry credentials and must never leave the origin they were sent to (#59). */
+const CREDENTIAL_HEADERS = new Set(["authorization", "cookie", "proxy-authorization"]);
+
+function stripCredentialHeaders(headers: Record<string, string>): Record<string, string> {
+  const kept: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (!CREDENTIAL_HEADERS.has(name.toLowerCase())) kept[name] = value;
+  }
+  return kept;
+}
+
 async function resolveAndValidate(url: URL, dns: DnsResolver): Promise<readonly string[]> {
   if (isIpLiteralHost(url.hostname)) {
     // already validated by assertPublicHttpUrl; bare the IP for the socket
@@ -188,6 +199,7 @@ export async function safeFetch(
   try {
     let current = assertPublicHttpUrl(rawUrl);
     let redirects = 0;
+    let hopHeaders: Record<string, string> | undefined = options.headers;
 
     for (;;) {
       if (abort.signal.aborted) {
@@ -195,10 +207,9 @@ export async function safeFetch(
       }
       // site-policy hook runs on EVERY hop (initial + each redirect target)
       options.checkHost?.(current.hostname);
-      await resolveAndValidate(current, options.dns);
-
       // SRC-23: the addresses returned by validation PIN the connection
       // when the pinned transport is used — the socket never re-resolves.
+      // (#59: a single lookup per hop; the earlier duplicate call is removed.)
       const addresses = await resolveAndValidate(current, options.dns);
       let status: number;
       let responseHeaders: Headers;
@@ -207,7 +218,7 @@ export async function safeFetch(
         // production default: the stdlib pinned transport (R-11 closure)
         const pinned = await pinnedRequest(current, {
           addresses,
-          headers: options.headers ?? {},
+          headers: hopHeaders ?? {},
           signal: abort.signal,
         });
         status = pinned.status;
@@ -219,7 +230,7 @@ export async function safeFetch(
           rejectAbort?.(new SafeFetchError("timeout", `deadline ${timeoutMs}ms exceeded`));
         try {
           const init: RequestInit = { signal: abort.signal, redirect: "manual" };
-          if (options.headers !== undefined) init.headers = options.headers;
+          if (hopHeaders !== undefined) init.headers = hopHeaders;
           // Race the transport against the abort controller: an injected
           // fetchImpl may never settle, so the abort must REJECT the await
           // itself (SRC-24 external-signal semantics).
@@ -261,6 +272,10 @@ export async function safeFetch(
         const validated = assertPublicHttpUrl(next.toString());
         if (validated.protocol === "http:" && current.protocol === "https:") {
           throw new SafeFetchError("redirect", "refusing https→http downgrade");
+        }
+        // #59: credentials never follow a cross-origin redirect.
+        if (validated.origin !== current.origin && hopHeaders !== undefined) {
+          hopHeaders = stripCredentialHeaders(hopHeaders);
         }
         await body?.cancel();
         current = validated;

@@ -67,6 +67,8 @@ export interface AnswerSuspectEvent {
 export type OperationalEvent = HttpRequestEvent | AnswerSuspectEvent;
 
 export interface ResearchServerOptions {
+  /** #63: per-owner concurrency and request-rate limits (defaults apply when omitted). */
+  ownerLimits?: OwnerLimits;
   /** CORE-04 AuthService-shaped: resolves the owner or throws AuthError. */
   auth: {
     authenticateOwner(request: {
@@ -236,6 +238,104 @@ function jsonError(
   res.end(JSON.stringify({ error: message, requestId }));
 }
 
+/** #62: default per-request deadline; the research/answer run is aborted past it. */
+export const DEFAULT_REQUEST_DEADLINE_MS = 120_000;
+/** #62: SSE comment heartbeat so idle streams survive proxies. */
+export const SSE_HEARTBEAT_MS = 15_000;
+
+/** #61: auth failures are client errors (401) only when the auth service
+ * rejected the credential itself. Anything else is a server failure and
+ * gets a generic 500 — the internal message goes to server logs only. */
+function respondAuthFailure(
+  res: ServerResponse,
+  error: unknown,
+  requestId: string,
+  req: IncomingMessage,
+): void {
+  if (error instanceof Error && error.name === "AuthError") {
+    jsonError(res, 401, error.message, requestId, req);
+    return;
+  }
+  console.error(`[${requestId}] auth failure: ${describeError(error)}`);
+  jsonError(res, 500, "internal error", requestId, req);
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? (error.stack ?? error.message) : String(error);
+}
+
+/** #63: per-owner admission for cost-incurring routes. */
+export interface OwnerLimits {
+  maxConcurrentPerOwner: number;
+  maxRequestsPerMinute: number;
+}
+export const DEFAULT_OWNER_LIMITS: OwnerLimits = {
+  maxConcurrentPerOwner: 2,
+  maxRequestsPerMinute: 30,
+};
+
+type Admission = { release: () => void } | { retryAfterSec: number };
+
+export class OwnerLimiter {
+  private readonly inFlight = new Map<string, number>();
+  private readonly starts = new Map<string, number[]>();
+
+  constructor(
+    private readonly limits: OwnerLimits,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  acquire(ownerId: string): Admission {
+    const t = this.now();
+    const recent = (this.starts.get(ownerId) ?? []).filter((ts) => t - ts < 60_000);
+    this.starts.set(ownerId, recent);
+    if (recent.length >= this.limits.maxRequestsPerMinute) {
+      const oldest = recent[0] ?? t;
+      return { retryAfterSec: Math.max(1, Math.ceil((oldest + 60_000 - t) / 1000)) };
+    }
+    const running = this.inFlight.get(ownerId) ?? 0;
+    if (running >= this.limits.maxConcurrentPerOwner) return { retryAfterSec: 1 };
+    recent.push(t);
+    this.inFlight.set(ownerId, running + 1);
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        const left = (this.inFlight.get(ownerId) ?? 1) - 1;
+        if (left <= 0) this.inFlight.delete(ownerId);
+        else this.inFlight.set(ownerId, left);
+      },
+    };
+  }
+}
+
+const limiters = new WeakMap<object, OwnerLimiter>();
+
+/** Admit one run for an owner, or answer 429 with Retry-After. Returns false when refused. */
+function admitOwner(
+  options: ResearchServerOptions,
+  ownerId: string,
+  res: ServerResponse,
+  cancellation: RequestCancellation,
+  requestId: string,
+  req: IncomingMessage,
+): boolean {
+  let limiter = limiters.get(options);
+  if (limiter === undefined) {
+    limiter = new OwnerLimiter(options.ownerLimits ?? DEFAULT_OWNER_LIMITS);
+    limiters.set(options, limiter);
+  }
+  const admission = limiter.acquire(ownerId);
+  if ("retryAfterSec" in admission) {
+    res.setHeader("retry-after", String(admission.retryAfterSec));
+    jsonError(res, 429, "too many requests for this owner", requestId, req);
+    return false;
+  }
+  cancellation.addCleanup(admission.release);
+  return true;
+}
+
 function requestHasBody(req: IncomingMessage): boolean {
   if (req.headers["transfer-encoding"] !== undefined) return true;
   const rawLength = req.headers["content-length"];
@@ -347,17 +447,32 @@ async function readQuestion(req: IncomingMessage, maxBytes: number): Promise<str
 interface RequestCancellation {
   signal: AbortSignal;
   cleanup(): void;
+  addCleanup(fn: () => void): void;
 }
 
-function bindRequestCancellation(req: IncomingMessage, res: ServerResponse): RequestCancellation {
+function bindRequestCancellation(
+  req: IncomingMessage,
+  res: ServerResponse,
+  deadlineMs: number = DEFAULT_REQUEST_DEADLINE_MS,
+): RequestCancellation {
   const controller = new AbortController();
   const abort = (): void => controller.abort();
   req.once("aborted", abort);
   res.once("close", abort);
+  // #62: server-side deadline — a hung provider cannot pin the connection,
+  // libSQL handle, or budget reservation indefinitely.
+  const deadline = setTimeout(abort, deadlineMs);
+  deadline.unref();
   if (req.aborted || res.destroyed) controller.abort();
+  const extraCleanup: Array<() => void> = [];
   return {
     signal: controller.signal,
+    addCleanup(fn: () => void): void {
+      extraCleanup.push(fn);
+    },
     cleanup(): void {
+      clearTimeout(deadline);
+      for (const fn of extraCleanup) fn();
       req.off("aborted", abort);
       res.off("close", abort);
     },
@@ -386,11 +501,13 @@ async function handleResearch(
       ownerId = owner.ownerId;
     } catch (e) {
       if (!cancellation.signal.aborted) {
-        jsonError(res, 401, e instanceof Error ? e.message : "unauthorized", httpRequestId, req);
+        respondAuthFailure(res, e, httpRequestId, req);
       }
       return;
     }
     if (cancellation.signal.aborted) return;
+
+    if (!admitOwner(options, ownerId, res, cancellation, httpRequestId, req)) return;
 
     let question: string;
     try {
@@ -412,6 +529,10 @@ async function handleResearch(
       connection: "keep-alive",
       "x-accel-buffering": "no",
     });
+    const heartbeat = setInterval(() => {
+      if (canWrite() && !cancellation.signal.aborted) res.write(": heartbeat\n\n");
+    }, SSE_HEARTBEAT_MS);
+    heartbeat.unref();
     try {
       const outcome = await options.runResearch(
         ownerId,
@@ -423,18 +544,15 @@ async function handleResearch(
       );
       if (canWrite() && !cancellation.signal.aborted) sse(res, "done", outcome, httpRequestId);
     } catch (e) {
+      console.error(`[${httpRequestId}] research failed: ${describeError(e)}`);
       if (canWrite() && !cancellation.signal.aborted) {
-        sse(
-          res,
-          "error",
-          { message: e instanceof Error ? e.message : "research failed" },
-          httpRequestId,
-        );
+        sse(res, "error", { message: "research failed" }, httpRequestId);
         // The SSE status is already committed as 200, but the operational
         // receipt must still classify a runner failure as a server error.
         throw e;
       }
     } finally {
+      clearInterval(heartbeat);
       if (canWrite()) res.end();
     }
   } finally {
@@ -464,7 +582,7 @@ async function handleAnswer(
       ownerId = owner.ownerId;
     } catch (e) {
       if (!cancellation.signal.aborted) {
-        jsonError(res, 401, e instanceof Error ? e.message : "unauthorized", httpRequestId, req);
+        respondAuthFailure(res, e, httpRequestId, req);
       }
       return;
     }
@@ -476,6 +594,8 @@ async function handleAnswer(
       jsonError(res, 501, "answer surface not configured", httpRequestId, req);
       return;
     }
+
+    if (!admitOwner(options, ownerId, res, cancellation, httpRequestId, req)) return;
 
     let question: string;
     try {
@@ -509,7 +629,8 @@ async function handleAnswer(
       }
     } catch (e) {
       if (!cancellation.signal.aborted && canWrite()) {
-        jsonError(res, 500, e instanceof Error ? e.message : "answer failed", httpRequestId, req);
+        console.error(`[${httpRequestId}] answer failed: ${describeError(e)}`);
+        jsonError(res, 500, "internal error", httpRequestId, req);
       }
     }
   } finally {

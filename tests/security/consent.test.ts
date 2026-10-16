@@ -85,12 +85,12 @@ describe("consent-bypass attempts (CMP-03, fail closed)", () => {
     const local = new Kernel("local");
     local.register(manifest, () => createComputerHarness({ driver }));
     await expect(local.activate("harness-computer")).rejects.toBeInstanceOf(CapabilityError);
-    local.grant("computer");
+    local.grant("harness-computer", "computer");
     await expect(local.activate("harness-computer")).resolves.toBeUndefined();
 
     const ci = new Kernel("ci");
     ci.register(manifest, () => createComputerHarness({ driver }));
-    ci.grant("computer");
+    ci.grant("harness-computer", "computer");
     await expect(ci.activate("harness-computer")).rejects.toThrow(/cannot activate in ci/);
   });
 

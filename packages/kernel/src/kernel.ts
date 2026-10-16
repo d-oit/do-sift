@@ -84,7 +84,8 @@ interface ActivateOptions {
 export class Kernel {
   private readonly plugins = new Map<string, RegisteredPlugin>();
   private readonly active = new Map<string, PluginInstance>();
-  private readonly grants = new Set<Capability>();
+  /** Owner grants keyed by plugin name (#60): a grant for plugin A never authorizes plugin B. */
+  private readonly grants = new Map<string, Set<Capability>>();
 
   constructor(
     private readonly environment: KernelEnvironment = "local",
@@ -109,13 +110,20 @@ export class Kernel {
     return this.active.has(name);
   }
 
-  /** Record owner-granted capabilities (persisted by the caller/UI layer). */
-  grant(...capabilities: readonly Capability[]): void {
-    for (const c of capabilities) this.grants.add(c);
+  /** Record owner-granted capabilities for one named plugin (persisted by the caller/UI layer). */
+  grant(pluginName: string, ...capabilities: readonly Capability[]): void {
+    let set = this.grants.get(pluginName);
+    if (set === undefined) {
+      set = new Set<Capability>();
+      this.grants.set(pluginName, set);
+    }
+    for (const c of capabilities) set.add(c);
   }
 
   async activate(name: string, options: ActivateOptions = {}): Promise<void> {
-    if (options.grants) for (const c of options.grants) this.grants.add(c);
+    // Activation-scoped: options.grants never persist into the kernel (#60).
+    const granted = new Set<Capability>(this.grants.get(name) ?? []);
+    if (options.grants) for (const c of options.grants) granted.add(c);
     const plugin = this.plugins.get(name);
     if (!plugin) throw new Error(`unknown plugin: ${name}`);
     if (this.active.has(name)) throw new Error(`plugin already active: ${name}`);
@@ -127,7 +135,7 @@ export class Kernel {
           `plugin ${name} requires grants for [${needed.join(", ")}] and cannot activate in ci`,
         );
       }
-      const missing = needed.filter((c) => !this.grants.has(c));
+      const missing = needed.filter((c) => !granted.has(c));
       if (missing.length > 0) {
         throw new CapabilityError(
           `plugin ${name} requires explicit grants for [${missing.join(", ")}]`,
