@@ -233,6 +233,34 @@ describe("answer service (ANS-03)", () => {
       "reservation:settled",
     );
   });
+
+  it("settles actuals and fails request when answers.insert throws post-reservation", async () => {
+    await seedEvidence();
+    const model = new FakeModelProvider({ modelId: "fixture-1" });
+    const deps = makeDeps(model);
+    deps.repositories.answers.insert = async () => {
+      throw new Error("disk full");
+    };
+
+    await expect(
+      createAnswerService(deps).answer({ ownerId: "owner-a", question: QUESTION }),
+    ).rejects.toThrow("disk full");
+
+    // the request row is marked failed
+    const requests = await client.execute("SELECT status FROM requests WHERE owner_id = 'owner-a'");
+    expect(requests.rows.map((r) => String(r.status))).toEqual(["failed"]);
+
+    // the budget reservation was settled with actual model usage
+    const ledger = await client.execute(
+      "SELECT kind, state, input_tokens FROM usage_ledger WHERE owner_id = 'owner-a' ORDER BY kind",
+    );
+    expect(ledger.rows.map((r) => `${String(r.kind)}:${String(r.state)}`)).toEqual([
+      "reservation:settled",
+      "settlement:settled",
+    ]);
+    const settlement = ledger.rows.find((r) => String(r.kind) === "settlement");
+    expect(Number(settlement?.input_tokens)).toBeGreaterThan(0);
+  });
 });
 
 describe("exact-answer cache (ANS-04, D5)", () => {
