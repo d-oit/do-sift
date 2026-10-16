@@ -272,6 +272,38 @@ limiting. A reverse proxy must provide TLS, authentication, rate limits, and
 raw-path/body/read-time controls; the dev bypass is refused on a non-loopback
 bind.
 
+### Production reverse-proxy profile (OPS-10)
+
+The reference profile is `deploy/caddy/Caddyfile`. It terminates TLS, requires
+an `Authorization` header on owner routes, applies a per-client rate limit to
+`/api/*` and `/metrics`, caps request bodies at 8 KiB, refuses unknown routes,
+and sets `X-Content-Type-Options: nosniff`. It upstreams to `127.0.0.1:8080`,
+so keep do-sift bound to loopback.
+
+Stock Caddy has no rate limiter. Build one with the module:
+
+```bash
+xcaddy build --with github.com/mholt/caddy-ratelimit
+```
+
+Runbook:
+
+1. Start do-sift on loopback (`DO_SIFT_HOST=127.0.0.1`, dev bypass off, real
+   owner allowlist and providers).
+2. Local smoke: `DO_SIFT_DOMAIN=localhost caddy run --config deploy/caddy/Caddyfile`.
+   Production: set `DO_SIFT_DOMAIN` to the public hostname and remove
+   `tls internal` so Caddy obtains a certificate.
+3. Check `https://<host>/readyz` returns 200 and `/healthz` is reachable only
+   from private ranges.
+4. Verify the edge: an unauthenticated `/api/research` returns 401, an oversize
+   body returns 413, and a burst above 30 requests per minute returns 429.
+
+Limits of this profile: the edge checks only that an `Authorization` header is
+present. The app still verifies the token, so a real OIDC verifier remains
+required before any remote exposure. Caddy normalizes some raw paths, so `//`
+and `%5c` variants are refused only by the matcher on the original URI; check
+that matcher again after any Caddy upgrade.
+
 ## Backups
 
 The database is one file (local mode) — snapshot it with
