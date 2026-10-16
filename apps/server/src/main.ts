@@ -12,7 +12,13 @@
  * (exhaustive when DO_SIFT_FETCH_ALLOWLIST is set).
  */
 import { createClient, type Client } from "@libsql/client";
-import { AuthService, StaticOidcVerifier, isLoopbackAddress } from "@do-sift/auth";
+import {
+  AuthService,
+  JwksOidcVerifier,
+  StaticOidcVerifier,
+  isLoopbackAddress,
+  type OidcVerifier,
+} from "@do-sift/auth";
 import type { ModelProvider, SearchProvider } from "@do-sift/contracts";
 import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
@@ -390,16 +396,22 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     ...(embedder === undefined ? {} : { embedder }),
   });
 
-  const auth = new AuthService(
-    // Empty token map: bearer tokens refuse until a real OIDC verifier
-    // lands (sources.md gate); the loopback dev bypass is the dev path.
-    new StaticOidcVerifier({}),
-    {
-      allowlist: config.owners,
-      devBypass: config.devBypass,
-      ...(config.devOwner === undefined ? {} : { devOwner: config.devOwner }),
-    },
-  );
+  // R-17: a real RS256/JWKS verifier when DO_SIFT_OIDC_* is configured. The
+  // empty stub otherwise, so bearer tokens refuse and only the loopback dev
+  // bypass works.
+  const oidcVerifier: OidcVerifier =
+    config.oidc === undefined
+      ? new StaticOidcVerifier({})
+      : new JwksOidcVerifier({
+          issuer: config.oidc.issuer,
+          audience: config.oidc.audience,
+          jwksUrl: config.oidc.jwksUrl,
+        });
+  const auth = new AuthService(oidcVerifier, {
+    allowlist: config.owners,
+    devBypass: config.devBypass,
+    ...(config.devOwner === undefined ? {} : { devOwner: config.devOwner }),
+  });
 
   // #67: owner-authenticated Prometheus text at GET /metrics.
   const metrics = new MetricsRegistry();

@@ -88,6 +88,25 @@ command lines). The WSL binary one patch behind is tolerated by the
 shared DB today; re-check `doctor` after any future upstream migration
 set. Strike discipline unchanged: `--record` green runs only.
 
+## DHC-11 evidence (2026-10-15, agent)
+
+**Files:** `CONTRIBUTING.md` (Pull requests section: `do-harness pr ready`,
+`pr no-effect`, `metrics pr`, `ci-explain` with read-only note).
+
+**Commands:** `do-harness pr --help`, `ci-explain --help`, `metrics --help`
+vetted before documenting (subcommands exist in the installed v0.2.1 binary).
+
+**Risks:** the docs describe commands that need network `gh` access for
+`pr ready`; not exercised live in this session.
+
+**Status:** done (docs only).
+
+## DHC-12 status (2026-10-15, agent)
+
+Deferred. The upgrade is a machine-level WSL binary install outside this repo,
+recorded as cosmetic. Not performed in this batch: it changes a system install
+and the shared DB is already migration-aligned (`doctor` OK at v0.2.0).
+
 ## DHC-08 evidence (2026-10-13, agent)
 
 **Files:** `AGENTS.md` (approved-commands version line → v0.2.1; new

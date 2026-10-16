@@ -11,14 +11,11 @@ export type {
   DocumentRow,
   EpisodeRow,
   FeedbackRow,
-  JobRow,
   OwnerRow,
   PassageInput,
   PassageNoiseClass,
   PassageRow,
   RequestRow,
-  UsageEntryInput,
-  UsageEntryRow,
 } from "./repositories.js";
 export { BudgetService, BudgetServiceError } from "./budget.js";
 export type { DailyCaps, HeldUsage, ReserveInput, SettleInput, SettleResult } from "./budget.js";
@@ -34,6 +31,7 @@ export {
   blobToVector,
   cosineSimilarity,
   hybridSearch,
+  MAX_EMBEDDING_CANDIDATES,
   rrfFuse,
   searchByEmbedding,
   storePassageEmbeddings,

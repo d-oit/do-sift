@@ -47,3 +47,14 @@ boundaries in `AGENTS.md`.
 
 Record changed files, commands run, results, and open risks in the relevant
 plan file under `plans/`. Keep one task per PR.
+
+Before asking for review or merge, run the read-only harness checks (DHC-11):
+
+```bash
+do-harness pr ready        # merge state, CI checks, unresolved review threads
+do-harness pr no-effect    # confirm the diff has an effective change
+do-harness metrics pr      # PR-loop measures: pushes per green, reruns, waivers
+```
+
+When CI fails, `do-harness ci-explain <run-id>` maps each failure to a local
+repro command. These tools only read state; they do not push, merge, or edit.

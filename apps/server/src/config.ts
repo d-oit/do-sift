@@ -62,6 +62,15 @@ export interface AppConfig {
   embedder?: EmbedderChoice | undefined;
   /** Exhaustive when non-empty (site-access policy semantics). */
   fetchAllowlist: string[];
+  /** R-17: set iff all three DO_SIFT_OIDC_* variables are set. Unset → the
+   * stub verifier refuses every bearer token. */
+  oidc?: OidcEnvConfig | undefined;
+}
+
+export interface OidcEnvConfig {
+  issuer: string;
+  audience: string;
+  jwksUrl: string;
 }
 
 function splitList(raw: string | undefined): string[] {
@@ -233,6 +242,21 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
     throw new Error("DO_SIFT_DEV_OWNER must be in the DO_SIFT_OWNERS allowlist");
   }
 
+  const oidcRaw = {
+    issuer: env.DO_SIFT_OIDC_ISSUER ?? "",
+    audience: env.DO_SIFT_OIDC_AUDIENCE ?? "",
+    jwksUrl: env.DO_SIFT_OIDC_JWKS_URL ?? "",
+  };
+  const oidcSet = [oidcRaw.issuer, oidcRaw.audience, oidcRaw.jwksUrl].filter((v) => v !== "");
+  if (oidcSet.length !== 0 && oidcSet.length !== 3) {
+    throw new Error(
+      "DO_SIFT_OIDC_ISSUER, DO_SIFT_OIDC_AUDIENCE and DO_SIFT_OIDC_JWKS_URL must be set together",
+    );
+  }
+  if (oidcSet.length === 3 && !oidcRaw.jwksUrl.startsWith("https://")) {
+    throw new Error("DO_SIFT_OIDC_JWKS_URL must be an https URL");
+  }
+
   const portRaw = env.DO_SIFT_PORT;
   let port = 8080;
   if (portRaw !== undefined && portRaw !== "") {
@@ -257,5 +281,6 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
       : {}),
     ...(embedderRaw === "fastembed" ? { embedder: "fastembed" as const } : {}),
     fetchAllowlist: splitList(env.DO_SIFT_FETCH_ALLOWLIST),
+    ...(oidcSet.length === 3 ? { oidc: oidcRaw } : {}),
   };
 }

@@ -140,6 +140,13 @@ export interface VectorHit {
  * drops passages flagged at store time with a noise class — NULL
  * (unclassified/legacy) is ALWAYS included, byte-identical when omitted.
  */
+/**
+ * Upper bound on candidate rows decoded per search (#56). Newest first, so an
+ * owner past the cap loses only its oldest embeddings from recall; the cap is
+ * applied in SQL, before any BLOB is decoded.
+ */
+export const MAX_EMBEDDING_CANDIDATES = 5000;
+
 export async function searchByEmbedding(
   client: Client,
   ownerId: string,
@@ -165,13 +172,16 @@ export async function searchByEmbedding(
           FROM passage_embeddings pe
           JOIN passages p ON p.id = pe.passage_id AND p.owner_id = ?
           JOIN documents d ON d.id = p.document_id
-          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}${floorFilter}${noiseClause}`,
+          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}${floorFilter}${noiseClause}
+          ORDER BY pe.created_at DESC
+          LIMIT ?`,
     args: [
       ownerId,
       ownerId,
       modelId,
       ...(documentIds && documentIds.length > 0 ? documentIds : []),
       ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
+      MAX_EMBEDDING_CANDIDATES,
     ],
   });
   return res.rows

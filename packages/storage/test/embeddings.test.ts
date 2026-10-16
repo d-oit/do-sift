@@ -10,6 +10,7 @@ import {
   backfillPassageEmbeddings,
   cosineSimilarity,
   hybridSearch,
+  MAX_EMBEDDING_CANDIDATES,
   rrfFuse,
   searchByEmbedding,
   storePassageEmbeddings,
@@ -93,6 +94,35 @@ describe("cosineSimilarity", () => {
 });
 
 describe("store + searchByEmbedding", () => {
+  it("bounds candidates to the newest MAX_EMBEDDING_CANDIDATES rows (#56)", async () => {
+    const documentId = await repos.documents.insert({
+      ownerId: "owner-a",
+      canonicalUrl: "https://eval.test/candidate-cap",
+      originalUrl: "https://eval.test/candidate-cap",
+      contentHash: "hash-candidate-cap",
+      fetchedAt: "2026-09-13T00:00:00Z",
+      rawText: "cap",
+    });
+    const total = MAX_EMBEDDING_CANDIDATES + 1;
+    // Bulk-seed in SQL: n=0 is the oldest row. BLOB x'0000803F00000000' is [1, 0].
+    await client.execute({
+      sql: `WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
+            INSERT INTO passages (id, owner_id, document_id, excerpt, extraction_status, created_at)
+            SELECT 'cap-' || n, 'owner-a', ?, 'cap excerpt', 'ok', printf('2026-09-13T00:00:00.%06dZ', n) FROM seq`,
+      args: [total - 1, documentId],
+    });
+    await client.execute({
+      sql: `WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
+            INSERT INTO passage_embeddings (passage_id, owner_id, model_id, vector, created_at)
+            SELECT 'cap-' || n, 'owner-a', 'm1', x'0000803F00000000', printf('2026-09-13T00:00:00.%06dZ', n) FROM seq`,
+      args: [total - 1],
+    });
+    const hits = await searchByEmbedding(client, "owner-a", "m1", [1, 0], total);
+    expect(hits).toHaveLength(MAX_EMBEDDING_CANDIDATES);
+    expect(hits.map((h) => h.passageId)).not.toContain("cap-0"); // oldest dropped
+    expect(hits.map((h) => h.passageId)).toContain(`cap-${total - 1}`); // newest kept
+  });
+
   it("ranks by cosine similarity within an owner and model", async () => {
     const pClose = await seedPassage("owner-a", "close passage");
     const pFar = await seedPassage("owner-a", "far passage");
