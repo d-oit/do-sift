@@ -10,6 +10,7 @@
  * about plugins or storage internals.
  */
 import { randomUUID } from "node:crypto";
+import type { MetricsRegistry } from "./metrics.js";
 import {
   createServer as createHttpServer,
   type IncomingMessage,
@@ -100,6 +101,8 @@ export interface ResearchServerOptions {
   pageHtml?: string;
   /** Request body cap in bytes; default 8192. */
   maxBodyBytes?: number;
+  /** #67: when set, GET /metrics serves Prometheus text behind owner auth. */
+  metrics?: MetricsRegistry | undefined;
 }
 
 export interface AnswerHttpResponse {
@@ -169,6 +172,7 @@ function requestPath(rawUrl: string | undefined): string {
     case "/index.html":
     case "/healthz":
     case "/readyz":
+    case "/metrics":
     case "/api/research":
     case "/api/answer":
       return rawPath;
@@ -638,7 +642,22 @@ async function handleAnswer(
   }
 }
 
-export function createResearchServer(options: ResearchServerOptions): Server {
+export function createResearchServer(rawOptions: ResearchServerOptions): Server {
+  // #67: every operational event feeds the optional metrics registry before
+  // the caller's onEvent sink; metrics never alter request behavior.
+  const options: ResearchServerOptions =
+    rawOptions.metrics === undefined
+      ? rawOptions
+      : {
+          ...rawOptions,
+          onEvent: (event) => {
+            try {
+              rawOptions.metrics?.observe(event);
+            } finally {
+              rawOptions.onEvent?.(event);
+            }
+          },
+        };
   const maxBodyBytes = options.maxBodyBytes ?? 8192;
   let readinessInFlight: ReadinessProbe | undefined;
   const probeReadiness = async (): Promise<boolean> => {
@@ -718,6 +737,30 @@ export function createResearchServer(options: ResearchServerOptions): Server {
         if (rejectBodyOnBodylessRoute(req, res, httpRequestId)) return;
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(options.pageHtml ?? DEFAULT_PAGE);
+        return;
+      }
+      if (path === "/metrics" && options.metrics !== undefined) {
+        if (req.method !== "GET") {
+          res.setHeader("allow", "GET");
+          jsonError(res, 405, "method not allowed", httpRequestId, req);
+          return;
+        }
+        const authHeader = req.headers.authorization ?? "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+        try {
+          await options.auth.authenticateOwner({
+            token,
+            clientAddress: req.socket.remoteAddress ?? "",
+          });
+        } catch (e) {
+          respondAuthFailure(res, e, httpRequestId, req);
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "text/plain; version=0.0.4; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        res.end(options.metrics.render());
         return;
       }
       if (path === "/api/research") {

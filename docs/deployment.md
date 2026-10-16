@@ -95,6 +95,37 @@ The entrypoint writes those receipts to stdout; bodies, authorization
 headers, prompts, fetched passages, and provider/model responses are not
 logged.
 
+### Metrics (#67)
+
+`GET /metrics` serves Prometheus text exposition (version 0.0.4) from
+in-process counters. The packaged entrypoint always enables it; embedders
+enable it by passing a `MetricsRegistry` to `createResearchServer`. It requires the same owner bearer token as the API routes; an
+unauthenticated scrape is refused. Counters cover request totals by method,
+fixed route, outcome, and status; request duration sums and counts per route
+and outcome; and suspect-answer evidence (`do_sift_answer_suspect_total`,
+`do_sift_answer_suspect_passages_total`). Routes outside the fixed set are
+labelled `other`, so unknown paths cannot grow cardinality. Counters reset on
+process restart; scrape them from a single instance or aggregate with
+`sum()` across instances.
+
+### Owner and evidence CLI (#67)
+
+`apps/cli` is a read-only operator tool. It reads the same libSQL database as
+the server and never writes, migrates, or deletes. Pass the database with
+`--db` or `DO_SIFT_DB_URL`; the CLI does not read any auth token from the
+environment.
+
+```bash
+npx tsx apps/cli/src/index.ts owners list --db file:do-sift.db
+npx tsx apps/cli/src/index.ts usage show --owner <id> --day 2026-10-14 --db file:do-sift.db
+npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
+```
+
+Every data command requires an explicit `--owner`. `evidence export` writes a
+new file and fails if the path already exists. Exit codes: `0` success, `2`
+usage error, `1` runtime error.
+
 ### Rate-limit ownership
 
 The application deliberately owns **no** in-memory or distributed rate
@@ -240,6 +271,38 @@ selectively with `-p`); the server itself still has no TLS or rate
 limiting. A reverse proxy must provide TLS, authentication, rate limits, and
 raw-path/body/read-time controls; the dev bypass is refused on a non-loopback
 bind.
+
+### Production reverse-proxy profile (OPS-10)
+
+The reference profile is `deploy/caddy/Caddyfile`. It terminates TLS, requires
+an `Authorization` header on owner routes, applies a per-client rate limit to
+`/api/*` and `/metrics`, caps request bodies at 8 KiB, refuses unknown routes,
+and sets `X-Content-Type-Options: nosniff`. It upstreams to `127.0.0.1:8080`,
+so keep do-sift bound to loopback.
+
+Stock Caddy has no rate limiter. Build one with the module:
+
+```bash
+xcaddy build --with github.com/mholt/caddy-ratelimit
+```
+
+Runbook:
+
+1. Start do-sift on loopback (`DO_SIFT_HOST=127.0.0.1`, dev bypass off, real
+   owner allowlist and providers).
+2. Local smoke: `DO_SIFT_DOMAIN=localhost caddy run --config deploy/caddy/Caddyfile`.
+   Production: set `DO_SIFT_DOMAIN` to the public hostname and remove
+   `tls internal` so Caddy obtains a certificate.
+3. Check `https://<host>/readyz` returns 200 and `/healthz` is reachable only
+   from private ranges.
+4. Verify the edge: an unauthenticated `/api/research` returns 401, an oversize
+   body returns 413, and a burst above 30 requests per minute returns 429.
+
+Limits of this profile: the edge checks only that an `Authorization` header is
+present. The app still verifies the token, so a real OIDC verifier remains
+required before any remote exposure. Caddy normalizes some raw paths, so `//`
+and `%5c` variants are refused only by the matcher on the original URI; check
+that matcher again after any Caddy upgrade.
 
 ## Backups
 
