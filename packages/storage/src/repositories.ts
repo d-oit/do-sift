@@ -167,6 +167,45 @@ export interface EpisodeRow {
   createdAt: string;
 }
 
+export interface JobRow {
+  id: string;
+  ownerId: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  status: "queued" | "leased" | "done" | "dead";
+  attempts: number;
+  leaseUntil?: string | undefined;
+  lastError?: string | undefined;
+  updatedAt: string;
+}
+
+export interface UsageEntryInput {
+  ownerId: string;
+  requestId?: string | undefined;
+  kind: "reservation" | "settlement";
+  inputTokens?: number | undefined;
+  outputTokens?: number | undefined;
+  searchCalls?: number | undefined;
+  fetches?: number | undefined;
+  /** UTC calendar day (YYYY-MM-DD) for daily caps. */
+  day: string;
+  state: "open" | "settled" | "expired";
+}
+
+export interface UsageEntryRow {
+  id: string;
+  ownerId: string;
+  requestId?: string | undefined;
+  kind: "reservation" | "settlement";
+  inputTokens: number;
+  outputTokens: number;
+  searchCalls: number;
+  fetches: number;
+  day: string;
+  state: "open" | "settled" | "expired";
+  createdAt: string;
+}
+
 function documentFromRow(row: Row): DocumentRow {
   return {
     id: str(row, "id"),
@@ -223,6 +262,20 @@ function answerFromRow(row: Row): AnswerRow {
     modelRevision: str(row, "model_revision"),
     createdAt: str(row, "created_at"),
     evidenceFromRun: strOrUndefined(row, "evidence_from_run") as AnswerRow["evidenceFromRun"],
+  };
+}
+
+function jobFromRow(row: Row): JobRow {
+  return {
+    id: str(row, "id"),
+    ownerId: str(row, "owner_id"),
+    kind: str(row, "kind"),
+    payload: JSON.parse(str(row, "payload_json")) as Record<string, unknown>,
+    status: str(row, "status") as JobRow["status"],
+    attempts: Number(row.attempts),
+    leaseUntil: strOrUndefined(row, "lease_until"),
+    lastError: strOrUndefined(row, "last_error"),
+    updatedAt: str(row, "updated_at"),
   };
 }
 
@@ -578,6 +631,86 @@ export class Repositories {
         outcome: str(row, "outcome"),
         createdAt: str(row, "created_at"),
       }));
+    },
+  };
+
+  readonly jobs = {
+    insert: async (
+      ownerId: string,
+      kind: string,
+      payload: Record<string, unknown>,
+    ): Promise<string> => {
+      const id = randomUUID();
+      await this.client.execute({
+        sql: "INSERT INTO jobs (id, owner_id, kind, payload_json, status, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 0, ?, ?)",
+        args: [id, ownerId, kind, JSON.stringify(payload), now(), now()],
+      });
+      return id;
+    },
+    get: async (ownerId: string, id: string): Promise<JobRow | undefined> => {
+      const res = await this.client.execute({
+        sql: "SELECT * FROM jobs WHERE id = ? AND owner_id = ?",
+        args: [id, ownerId],
+      });
+      const row = res.rows[0];
+      return row ? jobFromRow(row) : undefined;
+    },
+    setStatus: async (
+      ownerId: string,
+      id: string,
+      status: JobRow["status"],
+      extra?: { leaseUntil?: string; lastError?: string },
+    ): Promise<void> => {
+      await this.client.execute({
+        sql: "UPDATE jobs SET status = ?, lease_until = ?, last_error = ?, updated_at = ? WHERE id = ? AND owner_id = ?",
+        args: [status, extra?.leaseUntil ?? null, extra?.lastError ?? null, now(), id, ownerId],
+      });
+    },
+  };
+
+  readonly usage = {
+    insert: async (u: UsageEntryInput): Promise<string> => {
+      const id = randomUUID();
+      await this.client.execute({
+        sql: `INSERT INTO usage_ledger (id, owner_id, request_id, kind, input_tokens, output_tokens, search_calls, fetches, day, state, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          id,
+          u.ownerId,
+          u.requestId ?? null,
+          u.kind,
+          u.inputTokens ?? 0,
+          u.outputTokens ?? 0,
+          u.searchCalls ?? 0,
+          u.fetches ?? 0,
+          u.day,
+          u.state,
+          now(),
+        ],
+      });
+      return id;
+    },
+    /** Sum of reserved/settled token usage for an owner on a UTC day (daily caps). */
+    sumTokensForDay: async (
+      ownerId: string,
+      day: string,
+    ): Promise<{ inputTokens: number; outputTokens: number }> => {
+      const res = await this.client.execute({
+        sql: `SELECT COALESCE(SUM(input_tokens), 0) AS i, COALESCE(SUM(output_tokens), 0) AS o
+              FROM usage_ledger
+              WHERE owner_id = ? AND day = ?
+                AND ((kind = 'reservation' AND state = 'open')
+                  OR (kind = 'settlement' AND state = 'settled'))`,
+        args: [ownerId, day],
+      });
+      const row = res.rows[0];
+      return { inputTokens: Number(row?.i ?? 0), outputTokens: Number(row?.o ?? 0) };
+    },
+    setState: async (ownerId: string, id: string, state: UsageEntryRow["state"]): Promise<void> => {
+      await this.client.execute({
+        sql: "UPDATE usage_ledger SET state = ? WHERE id = ? AND owner_id = ?",
+        args: [state, id, ownerId],
+      });
     },
   };
 }

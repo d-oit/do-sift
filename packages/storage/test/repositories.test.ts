@@ -129,13 +129,89 @@ describe("requests + answers + feedback", () => {
   });
 });
 
-describe("episodes", () => {
+describe("episodes, jobs, usage ledger", () => {
   it("lists episodes for the owner only", async () => {
     await repos.episodes.insert("owner-a", "question a", "completed", "fine");
     const episodesA = await repos.episodes.list("owner-a");
     const episodesB = await repos.episodes.list("owner-b");
     expect(episodesA.map((e) => e.question)).toContain("question a");
     expect(episodesB).toHaveLength(0); // cross-owner negative
+  });
+
+  it("moves a job through statuses, owner-scoped", async () => {
+    const jobId = await repos.jobs.insert("owner-a", "fetch", { url: "https://example.org/" });
+    const job = await repos.jobs.get("owner-a", jobId);
+    expect(job?.status).toBe("queued");
+    await repos.jobs.setStatus("owner-a", jobId, "leased", { leaseUntil: "2026-09-07T01:00:00Z" });
+    expect((await repos.jobs.get("owner-a", jobId))?.status).toBe("leased");
+    await repos.jobs.setStatus("owner-a", jobId, "dead", { lastError: "boom" });
+    expect((await repos.jobs.get("owner-a", jobId))?.lastError).toBe("boom");
+    expect(await repos.jobs.get("owner-b", jobId)).toBeUndefined(); // cross-owner negative
+  });
+
+  it("sums daily usage per owner", async () => {
+    await repos.usage.insert({
+      ownerId: "owner-a",
+      kind: "reservation",
+      inputTokens: 1000,
+      outputTokens: 200,
+      day: "2026-09-07",
+      state: "open",
+    });
+    await repos.usage.insert({
+      ownerId: "owner-a",
+      kind: "settlement",
+      inputTokens: 500,
+      outputTokens: 100,
+      day: "2026-09-07",
+      state: "settled",
+    });
+    await repos.usage.insert({
+      ownerId: "owner-b",
+      kind: "reservation",
+      inputTokens: 999,
+      outputTokens: 999,
+      day: "2026-09-07",
+      state: "open",
+    });
+    const a = await repos.usage.sumTokensForDay("owner-a", "2026-09-07");
+    expect(a).toEqual({ inputTokens: 1500, outputTokens: 300 });
+    const b = await repos.usage.sumTokensForDay("owner-b", "2026-09-07");
+    expect(b).toEqual({ inputTokens: 999, outputTokens: 999 }); // isolated per owner
+  });
+
+  it("does not double-count settled usage when a reservation is settled", async () => {
+    await repos.owners.ensure("owner-c", "Owner C");
+    const resId = await repos.usage.insert({
+      ownerId: "owner-c",
+      kind: "reservation",
+      inputTokens: 4000,
+      outputTokens: 700,
+      day: "2026-09-07",
+      state: "open",
+    });
+    // While open, reservation ceiling is counted
+    expect(await repos.usage.sumTokensForDay("owner-c", "2026-09-07")).toEqual({
+      inputTokens: 4000,
+      outputTokens: 700,
+    });
+
+    // When settled, reservation is marked 'settled' and settlement row is inserted
+    await repos.usage.setState("owner-c", resId, "settled");
+    await repos.usage.insert({
+      ownerId: "owner-c",
+      kind: "settlement",
+      inputTokens: 1200,
+      outputTokens: 150,
+      day: "2026-09-07",
+      state: "settled",
+    });
+
+    // Must report actual settlement usage only, not 4000 + 1200 = 5200
+    expect(await repos.usage.sumTokensForDay("owner-c", "2026-09-07")).toEqual({
+      inputTokens: 1200,
+      outputTokens: 150,
+    });
   });
 });
 
@@ -144,6 +220,11 @@ describe("cross-owner writes (review-security fixtures)", () => {
     const requestIdA = await repos.requests.create("owner-a", "answer", "q");
     await repos.requests.complete("owner-b", requestIdA); // wrong owner → no-op
     expect((await repos.requests.get("owner-a", requestIdA))?.status).toBe("pending");
+
+    const jobIdA = await repos.jobs.insert("owner-a", "fetch", {});
+    await repos.jobs.setStatus("owner-b", jobIdA, "dead", { lastError: "hijack" });
+    expect((await repos.jobs.get("owner-a", jobIdA))?.status).toBe("queued");
+    expect((await repos.jobs.get("owner-a", jobIdA))?.lastError).toBeUndefined();
   });
 
   it("refuses to link records across owners", async () => {

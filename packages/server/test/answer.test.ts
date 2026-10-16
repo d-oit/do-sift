@@ -233,6 +233,34 @@ describe("answer service (ANS-03)", () => {
       "reservation:settled",
     );
   });
+
+  it("settles actuals and fails request when answers.insert throws post-reservation", async () => {
+    await seedEvidence();
+    const model = new FakeModelProvider({ modelId: "fixture-1" });
+    const deps = makeDeps(model);
+    deps.repositories.answers.insert = async () => {
+      throw new Error("disk full");
+    };
+
+    await expect(
+      createAnswerService(deps).answer({ ownerId: "owner-a", question: QUESTION }),
+    ).rejects.toThrow("disk full");
+
+    // the request row is marked failed
+    const requests = await client.execute("SELECT status FROM requests WHERE owner_id = 'owner-a'");
+    expect(requests.rows.map((r) => String(r.status))).toEqual(["failed"]);
+
+    // the budget reservation was settled with actual model usage
+    const ledger = await client.execute(
+      "SELECT kind, state, input_tokens FROM usage_ledger WHERE owner_id = 'owner-a' ORDER BY kind",
+    );
+    expect(ledger.rows.map((r) => `${String(r.kind)}:${String(r.state)}`)).toEqual([
+      "reservation:settled",
+      "settlement:settled",
+    ]);
+    const settlement = ledger.rows.find((r) => String(r.kind) === "settlement");
+    expect(Number(settlement?.input_tokens)).toBeGreaterThan(0);
+  });
 });
 
 describe("failure hygiene and cache safety (issues #51, #52)", () => {
@@ -353,6 +381,31 @@ describe("exact-answer cache (ANS-04, D5)", () => {
       question: QUESTION,
     });
     expect(third.cached).toBe(true); // same revision → cache holds
+  });
+
+  it("does not serve degraded answers from cache (retries model on subsequent question)", async () => {
+    await seedEvidence();
+    // First call: model produces invalid citations -> answer degrades to evidence-only
+    const model1 = new FakeModelProvider({ citationBehavior: "hallucinate" });
+    const svc1 = createAnswerService(makeDeps(model1));
+    const first = await svc1.answer({ ownerId: "owner-a", question: QUESTION });
+
+    expect(first.cached).toBe(false);
+    expect(first.degraded).toBe(true);
+    expect(first.evidenceOnly).toBe(true);
+
+    const storedFirst = await repos.answers.get("owner-a", first.answerId);
+    expect(storedFirst?.cacheKey).toBeUndefined();
+
+    // Second call with a grounded model: must NOT hit cache, retries model and succeeds
+    const model2 = new FakeModelProvider({ citationBehavior: "grounded" });
+    const svc2 = createAnswerService(makeDeps(model2));
+    const second = await svc2.answer({ ownerId: "owner-a", question: QUESTION });
+
+    expect(second.cached).toBe(false);
+    expect(second.degraded).toBe(false);
+    expect(second.evidenceOnly).toBe(false);
+    expect(model2.calls).toHaveLength(1);
   });
 });
 
