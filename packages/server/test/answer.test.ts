@@ -382,6 +382,31 @@ describe("exact-answer cache (ANS-04, D5)", () => {
     });
     expect(third.cached).toBe(true); // same revision → cache holds
   });
+
+  it("does not serve degraded answers from cache (retries model on subsequent question)", async () => {
+    await seedEvidence();
+    // First call: model produces invalid citations -> answer degrades to evidence-only
+    const model1 = new FakeModelProvider({ citationBehavior: "hallucinate" });
+    const svc1 = createAnswerService(makeDeps(model1));
+    const first = await svc1.answer({ ownerId: "owner-a", question: QUESTION });
+
+    expect(first.cached).toBe(false);
+    expect(first.degraded).toBe(true);
+    expect(first.evidenceOnly).toBe(true);
+
+    const storedFirst = await repos.answers.get("owner-a", first.answerId);
+    expect(storedFirst?.cacheKey).toBeUndefined();
+
+    // Second call with a grounded model: must NOT hit cache, retries model and succeeds
+    const model2 = new FakeModelProvider({ citationBehavior: "grounded" });
+    const svc2 = createAnswerService(makeDeps(model2));
+    const second = await svc2.answer({ ownerId: "owner-a", question: QUESTION });
+
+    expect(second.cached).toBe(false);
+    expect(second.degraded).toBe(false);
+    expect(second.evidenceOnly).toBe(false);
+    expect(model2.calls).toHaveLength(1);
+  });
 });
 
 describe("suspect evidence receipts (ANS-12, plan 013, R-12)", () => {
