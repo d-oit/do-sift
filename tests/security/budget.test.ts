@@ -103,6 +103,44 @@ describe("budget bypass attempts (CORE-10)", () => {
     expect(Number(open.rows[0]?.n)).toBe(1);
   });
 
+  it("crashed worker reservation with past deadline automatically unblocks subsequent reserve", async () => {
+    const budgets = new BudgetService(client, {
+      maxInputTokens: 4_000,
+      maxOutputTokens: 10_000,
+      maxSearchCalls: 100,
+      maxFetches: 100,
+    });
+    // Worker reserves full budget but crashes before settling
+    const { id } = await budgets.reserve({
+      ownerId: "owner-a",
+      request: { ...REQUEST, deadlineMs: 1_000 },
+      estimatedInputTokens: 1,
+      nowMs: T0,
+    });
+    // Next request while reservation is active is blocked
+    await expect(
+      budgets.reserve({
+        ownerId: "owner-a",
+        request: REQUEST,
+        estimatedInputTokens: 1,
+        nowMs: T0 + 500,
+      }),
+    ).rejects.toMatchObject({ kind: "cap-exceeded" });
+
+    // After deadline passes, new reservation succeeds automatically
+    const nextRes = await budgets.reserve({
+      ownerId: "owner-a",
+      request: REQUEST,
+      estimatedInputTokens: 1,
+      nowMs: T0 + 2_000,
+    });
+    expect(nextRes.id).toBeDefined();
+
+    // The crashed reservation was auto-expired
+    const expiredRow = await client.execute("SELECT state FROM usage_ledger WHERE id = ?", [id]);
+    expect(expiredRow.rows[0]?.state).toBe("expired");
+  });
+
   it("expired reservations cannot be settled to free retroactive budget", async () => {
     const budgets = new BudgetService(client, {
       maxInputTokens: 4_000,
