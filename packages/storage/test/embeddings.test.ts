@@ -170,6 +170,56 @@ describe("store + searchByEmbedding", () => {
   });
 });
 
+describe("migration 0009 upgrade", () => {
+  it("upgrades passage_embeddings from passage_id PK to (passage_id, model_id) PK cleanly", async () => {
+    const rawClient = createClient({ url: ":memory:" });
+    const migrations = loadMigrations("migrations");
+    const pre0009 = migrations.filter((m) => m.number < 9);
+    const m0009 = migrations.filter((m) => m.number === 9);
+
+    await applyMigrations(rawClient, pre0009);
+
+    await rawClient.execute({
+      sql: "INSERT INTO owners (id, display_name, created_at) VALUES (?, ?, ?)",
+      args: ["owner-mig", "Owner Mig", "2026-09-13T00:00:00Z"],
+    });
+    await rawClient.execute({
+      sql: "INSERT INTO documents (id, owner_id, canonical_url, original_url, content_hash, fetched_at, raw_text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [
+        "doc-1",
+        "owner-mig",
+        "https://eval.test/1",
+        "https://eval.test/1",
+        "hash-1",
+        "2026-09-13T00:00:00Z",
+        "text",
+        "2026-09-13T00:00:00Z",
+      ],
+    });
+    await rawClient.execute({
+      sql: "INSERT INTO passages (id, owner_id, document_id, excerpt, extraction_status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      args: ["pas-1", "owner-mig", "doc-1", "excerpt text", "ok", "2026-09-13T00:00:00Z"],
+    });
+
+    await storePassageEmbeddings(rawClient, "m1", [
+      { passageId: "pas-1", ownerId: "owner-mig", vector: [1, 0] },
+    ]);
+
+    await applyMigrations(rawClient, m0009);
+
+    await storePassageEmbeddings(rawClient, "m2", [
+      { passageId: "pas-1", ownerId: "owner-mig", vector: [0, 1] },
+    ]);
+
+    const hitsM1 = await searchByEmbedding(rawClient, "owner-mig", "m1", [1, 0], 10);
+    const hitsM2 = await searchByEmbedding(rawClient, "owner-mig", "m2", [0, 1], 10);
+    expect(hitsM1).toHaveLength(1);
+    expect(hitsM1[0]?.passageId).toBe("pas-1");
+    expect(hitsM2).toHaveLength(1);
+    expect(hitsM2[0]?.passageId).toBe("pas-1");
+  });
+});
+
 describe("per-model embeddings coexist (#55)", () => {
   it("storing a second model keeps the first model's vector", async () => {
     const p = await seedPassage("owner-a", "multi-model text");
