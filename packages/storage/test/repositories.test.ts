@@ -156,7 +156,7 @@ describe("episodes, jobs, usage ledger", () => {
       inputTokens: 1000,
       outputTokens: 200,
       day: "2026-09-07",
-      state: "settled",
+      state: "open",
     });
     await repos.usage.insert({
       ownerId: "owner-a",
@@ -172,12 +172,46 @@ describe("episodes, jobs, usage ledger", () => {
       inputTokens: 999,
       outputTokens: 999,
       day: "2026-09-07",
-      state: "settled",
+      state: "open",
     });
     const a = await repos.usage.sumTokensForDay("owner-a", "2026-09-07");
     expect(a).toEqual({ inputTokens: 1500, outputTokens: 300 });
     const b = await repos.usage.sumTokensForDay("owner-b", "2026-09-07");
     expect(b).toEqual({ inputTokens: 999, outputTokens: 999 }); // isolated per owner
+  });
+
+  it("does not double-count settled usage when a reservation is settled", async () => {
+    await repos.owners.ensure("owner-c", "Owner C");
+    const resId = await repos.usage.insert({
+      ownerId: "owner-c",
+      kind: "reservation",
+      inputTokens: 4000,
+      outputTokens: 700,
+      day: "2026-09-07",
+      state: "open",
+    });
+    // While open, reservation ceiling is counted
+    expect(await repos.usage.sumTokensForDay("owner-c", "2026-09-07")).toEqual({
+      inputTokens: 4000,
+      outputTokens: 700,
+    });
+
+    // When settled, reservation is marked 'settled' and settlement row is inserted
+    await repos.usage.setState("owner-c", resId, "settled");
+    await repos.usage.insert({
+      ownerId: "owner-c",
+      kind: "settlement",
+      inputTokens: 1200,
+      outputTokens: 150,
+      day: "2026-09-07",
+      state: "settled",
+    });
+
+    // Must report actual settlement usage only, not 4000 + 1200 = 5200
+    expect(await repos.usage.sumTokensForDay("owner-c", "2026-09-07")).toEqual({
+      inputTokens: 1200,
+      outputTokens: 150,
+    });
   });
 });
 

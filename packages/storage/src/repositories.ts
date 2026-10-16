@@ -696,7 +696,11 @@ export class Repositories {
       day: string,
     ): Promise<{ inputTokens: number; outputTokens: number }> => {
       const res = await this.client.execute({
-        sql: "SELECT COALESCE(SUM(input_tokens), 0) AS i, COALESCE(SUM(output_tokens), 0) AS o FROM usage_ledger WHERE owner_id = ? AND day = ?",
+        sql: `SELECT COALESCE(SUM(input_tokens), 0) AS i, COALESCE(SUM(output_tokens), 0) AS o
+              FROM usage_ledger
+              WHERE owner_id = ? AND day = ?
+                AND ((kind = 'reservation' AND state = 'open')
+                  OR (kind = 'settlement' AND state = 'settled'))`,
         args: [ownerId, day],
       });
       const row = res.rows[0];
