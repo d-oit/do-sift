@@ -196,6 +196,7 @@ describe("request mapping (single bounded OpenAI-shaped call)", () => {
     expect(body.temperature).toBe(0);
     expect(body.stream).toBe(false);
     expect(body.max_tokens).toBe(700);
+    expect(body.max_completion_tokens).toBe(700);
     expect(JSON.stringify(body)).not.toContain('"tools"');
     const format = body.response_format as Record<string, unknown>;
     expect(format.type).toBe("json_schema");
@@ -498,13 +499,31 @@ describe("kernel round-trip", () => {
 });
 
 describe("output token cap (#58)", () => {
-  it("sends a bounded max_completion_tokens by default", () => {
-    const body = buildChatBody(request(), {
+  it("bounds max_completion_tokens and max_tokens by request maxOutputTokens and config maxOutputTokens", () => {
+    const body1 = buildChatBody(request({ maxOutputTokens: 2000 }), {
       model: "m",
       schemaName: "grounded_answer",
       mode: "strict",
     });
-    expect(body.max_completion_tokens).toBe(1024);
+    expect(body1.max_completion_tokens).toBe(1024);
+    expect(body1.max_tokens).toBe(1024);
+
+    const body2 = buildChatBody(request({ maxOutputTokens: 700 }), {
+      model: "m",
+      schemaName: "grounded_answer",
+      mode: "strict",
+    });
+    expect(body2.max_completion_tokens).toBe(700);
+    expect(body2.max_tokens).toBe(700);
+
+    const body3 = buildChatBody(request({ maxOutputTokens: 700 }), {
+      model: "m",
+      schemaName: "grounded_answer",
+      mode: "strict",
+      maxOutputTokens: 500,
+    });
+    expect(body3.max_completion_tokens).toBe(500);
+    expect(body3.max_tokens).toBe(500);
   });
 
   it("refuses an output cap outside 1..8192 at activation", async () => {

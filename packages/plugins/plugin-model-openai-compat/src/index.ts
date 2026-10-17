@@ -205,9 +205,13 @@ export function buildChatBody(
             schema: DRAFT_BLOCKS_JSON_SCHEMA,
           },
         };
+  const maxOutputTokens = Math.min(
+    req.maxOutputTokens,
+    options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+  );
   return {
     model: options.model,
-    max_completion_tokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+    max_completion_tokens: maxOutputTokens,
     messages: [
       {
         role: "system",
@@ -226,7 +230,7 @@ export function buildChatBody(
     ],
     temperature: 0,
     stream: false,
-    max_tokens: req.maxOutputTokens,
+    max_tokens: maxOutputTokens,
     response_format: responseFormat,
   };
 }
