@@ -212,6 +212,34 @@ describe("redirects", () => {
     expect(cross["user-agent"]).toBe("ua");
   });
 
+  it("strips mixed-case credential headers on cross-origin redirects (#59)", async () => {
+    const inits: RequestInit[] = [];
+    const fetchImpl = makeFetch((url, init) => {
+      inits.push(init ?? {});
+      return url.endsWith("/one")
+        ? htmlResponse("", 302, { location: "https://b.test/two" })
+        : htmlResponse("final");
+    });
+    const res = await safeFetch(
+      "https://a.test/one",
+      makeOptions({
+        fetchImpl,
+        headers: {
+          Authorization: "Bearer secret",
+          Cookie: "sid=1",
+          "Proxy-Authorization": "Basic p",
+          "User-Agent": "ua",
+        },
+      }),
+    );
+    expect(res.redirects).toBe(1);
+    const cross = inits[1]?.headers as Record<string, string>;
+    expect(cross.Authorization).toBeUndefined();
+    expect(cross.Cookie).toBeUndefined();
+    expect(cross["Proxy-Authorization"]).toBeUndefined();
+    expect(cross["User-Agent"]).toBe("ua");
+  });
+
   it("follows a same-site redirect", async () => {
     const fetchImpl = makeFetch((url) =>
       url.endsWith("/one") ? htmlResponse("", 302, { location: "/two" }) : htmlResponse("final"),
