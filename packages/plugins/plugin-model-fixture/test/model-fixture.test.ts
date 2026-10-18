@@ -128,7 +128,7 @@ describe("synthesis", () => {
   it("refuses contract-invalid requests", async () => {
     const plugin = await activated();
     const bad = { ...request(), maxOutputTokens: 100_000 }; // override after the valid parse
-    await expect(plugin.complete(bad)).rejects.toThrow(/less than or equal/);
+    await expect(plugin.complete(bad)).rejects.toThrow(/maxOutputTokens/); // zod 3/4 wording differs; the field path is stable
   });
 });
 
