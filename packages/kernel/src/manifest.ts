@@ -44,7 +44,7 @@ export const PluginManifest = z
     kind: PluginKind,
     capabilities: z.array(Capability).max(6).default([]),
     permissions: PluginPermissions.default({ networkHosts: [], secrets: [] }),
-    config: z.record(z.unknown()).default({}),
+    config: z.record(z.string(), z.unknown()).default({}),
     /** Module-relative export that returns the plugin factory. */
     entry: z.string().min(1).max(256),
     description: z.string().min(1).max(512),
