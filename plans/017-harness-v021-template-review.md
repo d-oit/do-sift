@@ -285,3 +285,10 @@ Commands and results:
 Open risks: metrics counters are in-process and reset on restart; the CLI is
 local-DB only (no remote Turso auth path by design); the `apps/cli` package
 has no own `package.json` (same layout as `apps/server`).
+
+## Evidence: open-issue closure and dependency PRs (2026-10-18, agent)
+
+- **PRs merged (squash, CI green):** #90 (scorecard-action 2.5.0), #91 (minor-and-patch group), #92 (zod 3.25.76 → 4.6.7). #92 failed CI at `packages/kernel/src/manifest.ts` (zod 4 requires `z.record(keySchema, valueSchema)`) and at one fixture test that matched zod 3 message wording; both fixed on the PR branch (`1c68c2c`) and the fixture assertion now matches the stable offending field path.
+- **Issue #64 (duplicate write paths):** removed the unused `Repositories.jobs` and `Repositories.usage` raw writers (no production caller; `JobQueue` and `BudgetService` own those paths, with cross-owner coverage in `jobs.test.ts` and `budget.test.ts`). The `idx_jobs_runnable` mismatch no longer exists in the migrations.
+- **Issues #56–#66 verified in code** (closed with links to the landed commits #82/#85): `blobToVector` honors `byteOffset`/`byteLength` (#56); grants are per-plugin and activation-scoped, with `browser` grant-gated (#60); openai-compat declares `network` and host-scoped permissions (#57); generic 500/401 errors, SSE heartbeat and shutdown, per-owner 429, retention pruning, `.env.example`/CONTRIBUTING/README, and `docs/api.md`.
+- **Still open, owner-gated (not agent-runnable):** plan 012 TS-00..TS-04 (paid TypeSafe key + billing/retention decision); TPL-01 repo-hardening (CODEOWNERS/ruleset are owner settings); plan 013 first-live activation.
