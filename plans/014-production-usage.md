@@ -1,6 +1,6 @@
 # Plan 014 — production-safe research execution
 
-Status: in-progress (2026-09-24)
+Status: done (2026-10-18) — OPS-07 through OPS-10 closed; the only open edge items are the public-IP 403 check and public TLS (need a public domain).
 
 Trigger: production usage review of the existing `/api/research` path. The
 current runtime is documented as dev-scale because concurrent research runs

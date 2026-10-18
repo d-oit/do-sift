@@ -1,6 +1,6 @@
 # Plan 015 — workflow guide and skill compaction
 
-Status: in-progress (2026-09-24)
+Status: done (2026-10-18) — DHC-05 done; DHC-06 closed (resolved upstream in v0.2.1, see plan 017 DHC-10).
 
 Trigger: the production review exposed a repeated workflow lesson: the upstream
 `do-harness` task method assumes Rust sensor names, while do-sift uses generic
