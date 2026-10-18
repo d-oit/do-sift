@@ -299,6 +299,22 @@ Runbook:
 4. Verify the edge: an unauthenticated `/api/research` returns 401, an oversize
    body returns 413, and a burst above 30 requests per minute returns 429.
 
+Public-domain smoke checklist (run after step 2 with the real hostname; `H` is
+the host, `T` is a live OIDC token):
+
+- [ ] TLS: `curl -sI https://H/healthz` returns a valid certificate (no `-k`).
+- [ ] HTTP redirect: `curl -sI http://H/healthz` returns 308 to HTTPS.
+- [ ] Readiness: `curl -s -o /dev/null -w '%{http_code}' https://H/readyz` prints `200`.
+- [ ] Auth gate: `curl -s -o /dev/null -w '%{http_code}' -X POST https://H/api/research` prints `401`.
+- [ ] Valid token: the same call with `-H "Authorization: Bearer $T"` prints `200`.
+- [ ] Body limit: a 9 KiB JSON body returns `413` at the edge.
+- [ ] Path refusal: `https://H/api/../healthz` and `https://H/%2e%2e/healthz` return `404`.
+- [ ] Rate limit: 35 authenticated requests in one minute include at least one `429`.
+- [ ] Public IP check: a request from a non-private IP to `/healthz` returns `403`.
+- [ ] Caddy logs contain no error-level lines during the run.
+
+Record the date, the host, and each status code in the plan 014 OPS-10 evidence.
+
 Limits of this profile: the edge checks only that an `Authorization` header is
 present. The app still verifies the token, so a real OIDC verifier remains
 required before any remote exposure. Caddy normalizes some raw paths, so `//`
