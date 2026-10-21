@@ -1,12 +1,22 @@
 /**
  * Dev-signal staleness tests (DSH-07, plan 010): the pure statusVerdict
- * matrix, and a fingerprint-stamped event round-tripping through the store.
+ * matrix, signal-set input fingerprinting, line-ending normalization, set-isolated
+ * invalidation, and fingerprint-stamped events round-tripping through the store.
  */
-import { mkdtemp, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { appendEvent, readEvents, sha256Hex, statusVerdict } from "../index.js";
+import {
+  appendEvent,
+  computeSetFingerprint,
+  isSensorInput,
+  parseEvidenceReceipt,
+  readEvents,
+  sha256Hex,
+  statusVerdict,
+} from "../index.js";
 
 const dirs: string[] = [];
 async function makeDir(): Promise<string> {
@@ -44,6 +54,12 @@ describe("statusVerdict", () => {
       expect(statusVerdict({ status }, undefined)).toBe("red");
     }
   });
+
+  it("red when receipt schemaVersion is unknown (not 1)", () => {
+    expect(statusVerdict({ status: "pass", workspaceSha256: FP_A, schemaVersion: 99 }, FP_A)).toBe(
+      "red",
+    );
+  });
 });
 
 describe("fingerprinted events round-trip through the store", () => {
@@ -63,5 +79,120 @@ describe("fingerprinted events round-trip through the store", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.workspaceSha256).toBe(FP_A);
     expect(events[0]?.chainHash).toMatch(/^[0-9a-f]{64}$/u); // chain intact
+  });
+});
+
+describe("isSensorInput filtering", () => {
+  it("filters sensor inputs accurately and excludes .do-harness/", () => {
+    expect(isSensorInput("format", ".do-harness/evidence.feedback.json")).toBe(false);
+    expect(isSensorInput("format", "src/index.ts")).toBe(true);
+    expect(isSensorInput("format", "evals/quality/test.json")).toBe(false);
+
+    expect(isSensorInput("evals", "evals/quality/test.json")).toBe(true);
+    expect(isSensorInput("evals", "src/index.ts")).toBe(false);
+
+    expect(isSensorInput("release", "migrations/0001_init.sql")).toBe(true);
+    expect(isSensorInput("release", "src/index.ts")).toBe(false);
+  });
+});
+
+describe("computeSetFingerprint", () => {
+  it("generates identical fingerprint across repeated runs over identical inputs", () => {
+    const root = process.cwd();
+    const fp1 = computeSetFingerprint("feedback", root);
+    const fp2 = computeSetFingerprint("feedback", root);
+    expect(fp1).toBeDefined();
+    expect(fp1).toBe(fp2);
+  });
+
+  it("is stable across CRLF vs LF line endings", async () => {
+    const repo = await makeDir();
+    spawnSync("git", ["init"], { cwd: repo });
+    await writeFile(join(repo, "package.json"), '{\n  "name": "demo"\n}\n');
+    await writeFile(join(repo, "tsconfig.json"), '{\n  "compilerOptions": {}\n}\n');
+    await mkdir(join(repo, "src"), { recursive: true });
+
+    // LF file
+    await writeFile(join(repo, "src", "index.ts"), "const x = 1;\nconsole.log(x);\n");
+    spawnSync("git", ["add", "."], { cwd: repo });
+    const fpLF = computeSetFingerprint("feedback", repo);
+
+    // Convert to CRLF file
+    await writeFile(join(repo, "src", "index.ts"), "const x = 1;\r\nconsole.log(x);\r\n");
+    const fpCRLF = computeSetFingerprint("feedback", repo);
+
+    expect(fpLF).toBeDefined();
+    expect(fpLF).toBe(fpCRLF);
+  });
+
+  it("invalidates only affected signal sets when editing set-specific files", async () => {
+    const repo = await makeDir();
+    spawnSync("git", ["init"], { cwd: repo });
+    await writeFile(join(repo, "package.json"), '{\n  "name": "demo"\n}\n');
+    await writeFile(join(repo, "tsconfig.json"), '{\n  "compilerOptions": {}\n}\n');
+    await writeFile(join(repo, "vitest.config.ts"), "export default {};\n");
+    await mkdir(join(repo, "evals"), { recursive: true });
+    await writeFile(join(repo, "evals", "fixture.json"), "{}\n");
+    await mkdir(join(repo, "migrations"), { recursive: true });
+    await writeFile(join(repo, "migrations", "0001_init.sql"), "CREATE TABLE x;\n");
+    spawnSync("git", ["add", "."], { cwd: repo });
+
+    const fb1 = computeSetFingerprint("feedback", repo);
+    const ver1 = computeSetFingerprint("verification", repo);
+    const rel1 = computeSetFingerprint("release", repo);
+
+    // Edit evals fixture (only in verification & release)
+    await writeFile(join(repo, "evals", "fixture.json"), '{"updated": true}\n');
+    const fb2 = computeSetFingerprint("feedback", repo);
+    const ver2 = computeSetFingerprint("verification", repo);
+    const rel2 = computeSetFingerprint("release", repo);
+
+    expect(fb2).toBe(fb1); // feedback set untouched!
+    expect(ver2).not.toBe(ver1); // verification set invalidated!
+    expect(rel2).not.toBe(rel1); // release set invalidated!
+
+    // Edit migrations/0001_init.sql (only in release)
+    await writeFile(join(repo, "migrations", "0001_init.sql"), "CREATE TABLE x (id INT);\n");
+    const fb3 = computeSetFingerprint("feedback", repo);
+    const ver3 = computeSetFingerprint("verification", repo);
+    const rel3 = computeSetFingerprint("release", repo);
+
+    expect(fb3).toBe(fb1); // feedback set untouched!
+    expect(ver3).toBe(ver2); // verification set untouched by migration edit!
+    expect(rel3).not.toBe(rel2); // release set invalidated!
+  });
+
+  it("is not affected by writes inside .do-harness/", async () => {
+    const repo = await makeDir();
+    spawnSync("git", ["init"], { cwd: repo });
+    await writeFile(join(repo, "package.json"), '{\n  "name": "demo"\n}\n');
+    await writeFile(join(repo, "tsconfig.json"), '{\n  "compilerOptions": {}\n}\n');
+    spawnSync("git", ["add", "."], { cwd: repo });
+
+    const fpBefore = computeSetFingerprint("feedback", repo);
+
+    // Write a receipt file in .do-harness/
+    await mkdir(join(repo, ".do-harness"), { recursive: true });
+    await writeFile(join(repo, ".do-harness", "evidence.feedback.json"), "{}\n");
+
+    const fpAfter = computeSetFingerprint("feedback", repo);
+    expect(fpAfter).toBe(fpBefore);
+  });
+});
+
+describe("parseEvidenceReceipt", () => {
+  it("returns undefined for missing, corrupt, or unknown schema version files", async () => {
+    const dir = await makeDir();
+    const missing = parseEvidenceReceipt(join(dir, "evidence.feedback.json"));
+    expect(missing).toBeUndefined();
+
+    await writeFile(join(dir, "evidence.feedback.json"), "NOT_JSON");
+    expect(parseEvidenceReceipt(join(dir, "evidence.feedback.json"))).toBeUndefined();
+
+    await writeFile(
+      join(dir, "evidence.feedback.json"),
+      JSON.stringify({ schemaVersion: 99, set: "feedback" }),
+    );
+    expect(parseEvidenceReceipt(join(dir, "evidence.feedback.json"))).toBeUndefined();
   });
 });

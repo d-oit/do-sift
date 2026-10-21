@@ -8,7 +8,6 @@
  * unhandled crash. All failures print `dev-harness: …` to stderr; stdout is
  * reserved for reports/results. Frozen interface: plans/008-dev-signal-harness.md.
  */
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
@@ -16,9 +15,11 @@ import { join } from "node:path";
 import {
   DEFAULT_STATE_DIR,
   DevHarnessError,
+  EvidenceReport,
   SENSOR_DEFS,
   SIGNAL_SETS,
   appendEvent,
+  computeSetFingerprint,
   readEvents,
   resolveEntry,
   resolveSensor,
@@ -147,34 +148,6 @@ async function cmdInit(stateDir: string, actor: string): Promise<number> {
 
 // ---- verify ----------------------------------------------------------------
 
-/**
- * Workspace fingerprint (DSH-07): content-based — sha-256 over the sorted
- * (path, content hash) pairs of every tracked and untracked non-ignored
- * file. A first porcelain-based design (git status text) was live-verified
- * ineffective: the status output does not change when an already-modified or
- * already-untracked file is edited again, so iterative edits kept stale
- * receipts green. Undefined outside a git repo — staleness is then
- * unjudgeable and stays green (backward compat).
- */
-function computeWorkspaceFingerprint(): string | undefined {
-  const tracked = runGit(["ls-files", "-z"]);
-  const others = runGit(["ls-files", "--others", "--exclude-standard", "-z"]);
-  if (!tracked.ok || !others.ok) return undefined;
-  const paths = [...tracked.output.split("\0"), ...others.output.split("\0")]
-    .filter((p) => p.length > 0)
-    .sort();
-  const hash = createHash("sha256");
-  for (const path of paths) {
-    hash.update(`${path}\0`);
-    try {
-      hash.update(readFileSync(join(process.cwd(), path)));
-    } catch {
-      hash.update("missing"); // tracked file deleted from the worktree
-    }
-  }
-  return hash.digest("hex");
-}
-
 async function cmdVerify(
   stateDir: string,
   set: string,
@@ -183,7 +156,7 @@ async function cmdVerify(
   json: boolean,
   only: string | undefined,
 ): Promise<number> {
-  const workspaceSha256 = computeWorkspaceFingerprint();
+  const workspaceSha256 = computeSetFingerprint(set, process.cwd());
   const { report, exitCode } = await runSignalSet({
     repoRoot: process.cwd(),
     set,
@@ -214,6 +187,22 @@ async function cmdVerify(
 async function cmdStatus(stateDir: string, set: string): Promise<number> {
   const names = sensorNamesForSet(set); // unknown set → usage error (exit 2)
   const events = await readEvents(stateDir); // state-corruption → exit 2
+
+  const receiptPath = join(stateDir, `evidence.${set}.json`);
+  let receiptMalformed = false;
+  if (existsSync(receiptPath)) {
+    try {
+      const raw = readFileSync(receiptPath, "utf8");
+      const json = JSON.parse(raw);
+      const parsed = EvidenceReport.safeParse(json);
+      if (!parsed.success || parsed.data.schemaVersion !== 1) {
+        receiptMalformed = true;
+      }
+    } catch {
+      receiptMalformed = true;
+    }
+  }
+
   const last = new Map<
     string,
     { status: SensorStatus; atUtc: string; workspaceSha256?: string | undefined }
@@ -231,28 +220,34 @@ async function cmdStatus(stateDir: string, set: string): Promise<number> {
       });
     }
   }
-  const current = computeWorkspaceFingerprint();
+  const current = computeSetFingerprint(set, process.cwd());
   console.log(`status (set ${set}, state dir ${stateDir}):`);
   const verdicts: string[] = [];
   for (const name of names) {
     const entry = last.get(name);
-    const verdict = statusVerdict(
-      entry === undefined
-        ? undefined
-        : {
-            status: entry.status,
-            ...(entry.workspaceSha256 === undefined
-              ? {}
-              : { workspaceSha256: entry.workspaceSha256 }),
-          },
-      current,
-    );
+    const verdict = receiptMalformed
+      ? "red"
+      : statusVerdict(
+          entry === undefined
+            ? undefined
+            : {
+                status: entry.status,
+                ...(entry.workspaceSha256 === undefined
+                  ? {}
+                  : { workspaceSha256: entry.workspaceSha256 }),
+              },
+          current,
+        );
     verdicts.push(verdict);
     if (entry === undefined) {
       console.log("MISSING  " + name);
     } else {
       // green keeps the precise PASS tag; red keeps FAIL/ERROR/HALTED
-      const tag = verdict === "stale" ? "STALE" : STATUS_TAGS[entry.status];
+      const tag = receiptMalformed
+        ? "ERROR"
+        : verdict === "stale"
+          ? "STALE"
+          : STATUS_TAGS[entry.status];
       console.log(`${tag}  ${name}  ${entry.atUtc}`);
     }
   }
@@ -262,6 +257,14 @@ async function cmdStatus(stateDir: string, set: string): Promise<number> {
       ? "halted: none"
       : `halted: ${halted.map(([name, strike]) => `${name} (streak ${strike.consecutive})`).join(", ")}`,
   );
+
+  if (receiptMalformed) {
+    console.log(
+      `status: red — evidence receipt evidence.${set}.json is malformed or uses an unknown schema version`,
+    );
+    return 1;
+  }
+
   const allGreen = verdicts.every((v) => v === "green");
   const anyRed = verdicts.some((v) => v === "red");
   const anyStale = verdicts.some((v) => v === "stale");
