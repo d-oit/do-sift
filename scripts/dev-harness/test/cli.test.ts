@@ -7,7 +7,7 @@
  * `npm run check` and the orchestrator's DSH-06 run).
  */
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,6 +191,19 @@ describe("dev-harness CLI (DSH-05)", () => {
     expect(res.stdout).toContain("PASS  format");
     expect(res.stdout).toContain("status: green");
     expect(res.stdout).not.toContain("STALE");
+  });
+
+  it("status flags red and exits 1 when an evidence receipt is malformed or uses unknown schema version", async () => {
+    const dir = await makeStateDir();
+    await seedPass(dir);
+    await writeFile(
+      join(dir, "evidence.feedback.json"),
+      JSON.stringify({ schemaVersion: 99, set: "feedback" }),
+    );
+    const res = runCli(["status", "--set", "feedback", "--state-dir", dir]);
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("status: red");
+    expect(res.stdout).toContain("malformed or uses an unknown schema version");
   });
 
   it("verify --json --only skills runs one real sensor and prints the receipt (DSH-08)", async () => {

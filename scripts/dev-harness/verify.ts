@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { EvidenceReport, SignalSetName, type SensorResult, type WorkflowEvent } from "./schemas.js";
 import { DEFAULT_STATE_DIR, DevHarnessError, appendEvent, readEvents } from "./store.js";
 import { HALT_THRESHOLD, strikeState } from "./strike.js";
+import { computeSetFingerprint } from "./stale.js";
 import {
   SENSOR_DEFS,
   resolveEntry,
@@ -63,7 +64,7 @@ export async function runSignalSet(options: RunSignalSetOptions): Promise<RunSig
     eventsDir,
     nowUtc = defaultNowUtc,
     sensorOverrides,
-    workspaceSha256,
+    workspaceSha256: optionsWorkspaceSha256,
     only,
   } = options;
 
@@ -90,6 +91,8 @@ export async function runSignalSet(options: RunSignalSetOptions): Promise<RunSig
     }
     selected = [only];
   }
+
+  const workspaceSha256 = optionsWorkspaceSha256 ?? computeSetFingerprint(set, repoRoot, registry);
 
   const prior = await readEvents(dir); // state-corruption propagates to the caller
   const strikes = strikeState(prior);
