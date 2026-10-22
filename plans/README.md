@@ -18,9 +18,10 @@ This folder is the project's memory. Agents and humans update it together.
 
 ## Current queue
 
-- `013-ans-evidence-hardening.md` — finish ANS-11 → ANS-13 before any live model activation.
+- `013-ans-evidence-hardening.md` — done (2026-10-13, ANS-10 → ANS-13); live-model steering re-measure stays owner-gated.
 - `014-production-usage.md` — done (OPS-07 through OPS-10); public-domain TLS and public-IP 403 smoke remain owner-side evidence.
-- `015-workflow-compaction.md` — done; DHC-06 closed as resolved upstream (v0.2.1).
+- `015-workflow-compaction.md` — done; DHC-06 closed as resolved upstream (v0.2.1, see plan 017 DHC-10).
+- `017-harness-v021-template-review.md` — done; follow-ups closed: DHC-11 done, TPL-02 done (2026-10-22 hand-maintained `.agents/SKILLS.md`), DHC-12 superseded (WSL absent, Windows 0.3.4 ahead); TPL-01 stays proposed/owner; living docs now pin do-harness v0.3.4.
 - `016-ci-codeql-remediation.md` — closed. The in-repo _advanced_ CodeQL strategy (CI-01, CI-02, CI-03) was superseded: `codeql.yml` and `security.yml` are both deleted (PRs #44, #46) and CodeQL **default setup** is enabled weekly as the repository's only scanning configuration, which cleared the `code_scanning` ruleset gate. `actions/checkout` and `actions/upload-artifact` are now pinned to v7.0.1 (#47, #48); `main` is green and no pull requests are open. The CI-01/02/03 rows and the merge-gate and `Actions: write` sections are historical — read the plan's "Closing outcome" for the current invariants before acting on them.
 
 Older milestone plans remain as historical evidence. Their detailed task
