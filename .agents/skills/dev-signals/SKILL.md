@@ -34,14 +34,14 @@ status, not unverified memory.
    (per-sensor status, exit code, duration, output hash/tail, workspace
    fingerprint). Reference it in task evidence instead of restating results
    from memory. Partial reruns: `npm run signals -- verify --only <sensor>`
-   refreshes one sensor (it must belong to the chosen set).5. The upstream Rust `do-harness` CLI (ADR 0008; `do-harness.toml`; v0.2.1,
+   refreshes one sensor (it must belong to the chosen set).5. The upstream Rust `do-harness` CLI (ADR 0008; `do-harness.toml`; v0.3.4,
    Windows and WSL) runs the same sensors: `do-harness verify --record --set
 <feedback|verification> --task <ID>`, `status --set <set>`, `doctor`. Its
    state sits beside ours under `.do-harness/` (`agent_state.db`,
    `evidence-rust-*.json`); neither runner reads the other, and `npm run
 signals` stays the enforced receipt path. This repository's
    `plans/methods.json` maps task gates to its configured sensor names —
-   v0.2.1 resolves those custom gates from the catalog (the v0.1.1
+   v0.3.4 resolves those custom gates from the catalog (the v0.1.1
    hard-coded Rust-name defect is gone) and finds `do-harness.exe` on the
    Windows PATH, so the `DO_HARNESS_BIN` workaround is obsolete. Record
    green runs only — a recorded FAIL bumps the 3-strike signature.

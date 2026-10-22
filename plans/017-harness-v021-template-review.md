@@ -39,18 +39,18 @@ R-16 + first-live activation (owner-gated; see plan 013 non-goals).
 
 ## Tasks
 
-| ID     | Task                                                                                                                                                               | Status            | Owner | Evidence |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- | ----- | -------- |
-| DHC-07 | Upgrade the Windows do-harness CLI to v0.2.1 (checksum + attestation verified), apply state migrations, and prove the committed `do-harness.toml` drives it        | done (2026-10-13) | agent | below    |
-| DHC-08 | Refresh workflow docs/skills for v0.2.1: version lines, obsolete `DO_HARNESS_BIN` workaround, vetted `compliance` command                                          | done (2026-10-13) | agent | below    |
-| DHC-09 | rust-2026-template review: adopt `llms.txt` + `docs/github-hardening.md`; record declined patterns with reasons                                                    | done (2026-10-13) | agent | below    |
-| DHC-10 | Close DHC-06 with reproduction evidence (v0.2.1 custom-sensor gates work) — do NOT publish a stale upstream issue                                                  | done (2026-10-13) | agent | below    |
-| DHC-11 | Adopt `do-harness pr ready` / `ci-explain` / `metrics pr` in the PR workflow docs at the next PR cycle (read-only tools)                                           | done (2026-10-15) | agent | below    |
-| DHC-12 | WSL binary patch upgrade 0.2.0 → 0.2.1 (cosmetic; shared DB already migration-aligned)                                                                             | proposed          | agent | below    |
-| TPL-01 | Repo-hardening owner actions per `docs/github-hardening.md`: CODEOWNERS for `AGENTS.md`/`plans/invariants.json`/`scripts/policy.ts`/`.github/workflows/` + ruleset | proposed          | owner | below    |
-| TPL-02 | Generated `.agents/SKILLS.md` skills index from frontmatter (rust-2026-template pattern) if the skill count grows                                                  | proposed          | agent | below    |
-| DHC-13 | File the upstream `loc`-discovery gap (generic/node workspaces) as a do-harness issue                                                                              | done (2026-10-13) | agent | below    |     | TPL-03 | File the rust-2026-template cross-language docs gap as an issue | done (2026-10-13) | agent | below |
-| DHC-14 | File the do-harness task-lifecycle defect found while recording this plan (`task done` dead-end on method-less tasks)                                              | done (2026-10-13) | agent | below    |
+| ID     | Task                                                                                                                                                               | Status                  | Owner | Evidence |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ----- | -------- |
+| DHC-07 | Upgrade the Windows do-harness CLI to v0.2.1 (checksum + attestation verified), apply state migrations, and prove the committed `do-harness.toml` drives it        | done (2026-10-13)       | agent | below    |
+| DHC-08 | Refresh workflow docs/skills for v0.2.1: version lines, obsolete `DO_HARNESS_BIN` workaround, vetted `compliance` command                                          | done (2026-10-13)       | agent | below    |
+| DHC-09 | rust-2026-template review: adopt `llms.txt` + `docs/github-hardening.md`; record declined patterns with reasons                                                    | done (2026-10-13)       | agent | below    |
+| DHC-10 | Close DHC-06 with reproduction evidence (v0.2.1 custom-sensor gates work) — do NOT publish a stale upstream issue                                                  | done (2026-10-13)       | agent | below    |
+| DHC-11 | Adopt `do-harness pr ready` / `ci-explain` / `metrics pr` in the PR workflow docs at the next PR cycle (read-only tools)                                           | done (2026-10-15)       | agent | below    |
+| DHC-12 | WSL binary patch upgrade 0.2.0 → 0.2.1 (cosmetic; shared DB already migration-aligned)                                                                             | superseded (2026-10-22) | agent | below    |
+| TPL-01 | Repo-hardening owner actions per `docs/github-hardening.md`: CODEOWNERS for `AGENTS.md`/`plans/invariants.json`/`scripts/policy.ts`/`.github/workflows/` + ruleset | proposed                | owner | below    |
+| TPL-02 | Generated `.agents/SKILLS.md` skills index from frontmatter (rust-2026-template pattern) if the skill count grows                                                  | done (2026-10-22)       | agent | below    |
+| DHC-13 | File the upstream `loc`-discovery gap (generic/node workspaces) as a do-harness issue                                                                              | done (2026-10-13)       | agent | below    |     | TPL-03 | File the rust-2026-template cross-language docs gap as an issue | done (2026-10-13) | agent | below |
+| DHC-14 | File the do-harness task-lifecycle defect found while recording this plan (`task done` dead-end on method-less tasks)                                              | done (2026-10-13)       | agent | below    |
 
 ## DHC-07 evidence (2026-10-13, agent)
 
@@ -292,3 +292,19 @@ has no own `package.json` (same layout as `apps/server`).
 - **Issue #64 (duplicate write paths):** removed the unused `Repositories.jobs` and `Repositories.usage` raw writers (no production caller; `JobQueue` and `BudgetService` own those paths, with cross-owner coverage in `jobs.test.ts` and `budget.test.ts`). The `idx_jobs_runnable` mismatch no longer exists in the migrations.
 - **Issues #56–#66 verified in code** (closed with links to the landed commits #82/#85): `blobToVector` honors `byteOffset`/`byteLength` (#56); grants are per-plugin and activation-scoped, with `browser` grant-gated (#60); openai-compat declares `network` and host-scoped permissions (#57); generic 500/401 errors, SSE heartbeat and shutdown, per-owner 429, retention pruning, `.env.example`/CONTRIBUTING/README, and `docs/api.md`.
 - **Still open, owner-gated (not agent-runnable):** plan 012 TS-00..TS-04 (paid TypeSafe key + billing/retention decision); TPL-01 repo-hardening (CODEOWNERS/ruleset are owner settings); plan 013 first-live activation.
+
+## Evidence: do-harness v0.3.4 doc refresh (2026-10-22, agent)
+
+- **Trigger:** `do-harness --version` → `0.3.4` while living docs still pinned `v0.2.1` (`AGENTS.md` ×2, `.agents/skills/dev-signals/SKILL.md` ×2, `llms.txt` ×1). Plan history (DHC-07/DHC-08/DHC-10) stays at `v0.2.1` by design.
+- **DHC-12 disposition (superseded):** WSL probe `wsl sh -c 'do-harness --version'` → `not found` (no WSL binary on this machine); Windows `0.3.4` is already ahead of the proposed `0.2.0 → 0.2.1` patch. No WSL install performed (machine-level change, shared DB already aligned). Recorded here instead of editing the proposed row.
+- **State hygiene:** `do-harness init-db` → applied migrations to 23 (was 21 applied / 23 known); `do-harness doctor` → migrations aligned, no orphans, chain intact (hook WARNs remain by design per ADR 0008).
+- **Changed:** `AGENTS.md` (approved-commands + dev-signals version lines → v0.3.4), `.agents/skills/dev-signals/SKILL.md` (upstream CLI + gate-resolution lines → v0.3.4), `llms.txt` (upstream runner line → v0.3.4). No sensor argv, no `do-harness.toml`, no plan-table edits.
+- **Commands/results:** `npm run check:fast` → PASS 5/5; `npm run signals -- verify --set feedback` → green; `do-harness verify --set feedback` → All sensors passed; `do-harness list --sets` → feedback/release/verification present.
+- **Risks:** `compliance` header still pins assessment metadata `0.1.0` by design (not bumped); WSL parity unproven on this machine (no binary to probe).
+
+## Evidence: TPL-02 skills index (2026-10-22, agent)
+
+- **Trigger:** 12 skills present, no `.agents/SKILLS.md` map; TPL-02 proposed the rust-2026-template index pattern if the count grows. Adopted hand-maintained (same precedent as `llms.txt` in DHC-09: template auto-generates, generator not justified at 12 skills).
+- **Changed:** `.agents/SKILLS.md` (new: hand-maintained table — skill, when-to-use, path — sourced from each `SKILL.md` frontmatter; procedures stay in the per-skill files). No sensor argv, no `AGENTS.md` wiring (discoverable via `.agents/skills/` layout + `plans/README.md` conventions).
+- **Commands/results:** `npx prettier --write .agents/SKILLS.md` (table alignment fix); `npm run check:fast` → PASS 5/5; `npm run signals -- verify --set feedback` → green. `skills-check.ts` still validates 12 per-skill files (index is a map, not a 13th skill).
+- **Risks:** hand-maintained drift (new skill without index row) — mitigated by the TPL-02 rule to regenerate deliberately when skills change; no auto-generator added.
