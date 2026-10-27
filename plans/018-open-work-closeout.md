@@ -287,6 +287,13 @@ CI on #101 (GitHub Actions, PR head):
 PR state after the run: `MERGEABLE`, merge state `CLEAN`. The PR was left
 unmerged — merging is the owner's decision, not part of this task.
 
+CLS-06 landed on the same branch afterwards: `4babc93` (the splits) and
+`a3e6851` (host-exact default-deny assertion). On the first of those CodeQL
+reported a new high alert on a moved test line; after the fix, all five checks
+passed again on `a3e6851` (`check (linux)`, `check (windows, fast)`,
+`Analyze (actions)`, `Analyze (javascript-typescript)`, `CodeQL`) and the PR
+was `MERGEABLE`/`CLEAN`.
+
 ## Follow-ups
 
 Owner-gated (unchanged, re-verified):
