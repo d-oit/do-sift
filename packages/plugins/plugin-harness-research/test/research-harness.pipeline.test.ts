@@ -61,7 +61,12 @@ describe("research pipeline (SRC-01)", () => {
       config: { maxHits: 6, maxFetches: 3 },
     } as unknown as Parameters<typeof createResearchHarness>[0]);
     await harness.run({ ownerId: "owner-a", question: "q" });
-    expect(fetchLog.every((url) => !url.includes("linkedin.com"))).toBe(true);
+    // Host-exact (and subdomain) assertion, not a URL substring: a URL like
+    // https://example.test/?ref=linkedin.com must not be able to satisfy or
+    // defeat the default-deny check.
+    const isLinkedInHost = (url: string): boolean =>
+      /(^|\.)linkedin\.com$/iu.test(new URL(url).hostname);
+    expect(fetchLog.every((url) => !isLinkedInHost(url))).toBe(true);
   });
 
   it("continues past fetch failures and records them", async () => {

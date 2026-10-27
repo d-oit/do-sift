@@ -207,7 +207,13 @@ server or in-memory DB per importing file, created in that module's
   exposes `resetOwnerSeen()` instead of each split file assigning the imported
   `ownerSeen`;
 - `import … with { type: "json" }` attributes were restored on the split
-  plugin tests (the splitting tool dropped import attributes).
+  plugin tests (the splitting tool dropped import attributes);
+- CodeQL flagged a new high-severity
+  `js/incomplete-url-substring-sanitization` alert on a moved test line
+  (`!url.includes("linkedin.com")`). The assertion now parses the URL and
+  matches the hostname exactly (`/(^|\.)linkedin\.com$/`), which is stricter
+  than the substring check and removes the pattern rather than dismissing the
+  alert.
 
 Commands / results (final tree):
 
