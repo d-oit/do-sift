@@ -142,6 +142,16 @@ export function isSensorInput(sensorName: string, relPath: string): boolean {
     case "skills": {
       return norm === "scripts/skills-check.ts" || norm.startsWith(".agents/skills/");
     }
+    case "governance": {
+      return (
+        norm === "docs/github-hardening.md" ||
+        norm === ".github/CODEOWNERS" ||
+        norm === "scripts/codeowners-check.ts" ||
+        norm.startsWith("scripts/governance/") ||
+        norm === "scripts/check.ts" ||
+        norm === "package.json"
+      );
+    }
     case "tests": {
       if (norm === "vitest.config.ts" || norm === "package.json" || norm === "package-lock.json") {
         return true;

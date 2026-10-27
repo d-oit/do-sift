@@ -6,7 +6,9 @@ rulesets, enabling features, or adding `CODEOWNERS` are repository-settings
 actions owned by the maintainer (see "Approval boundaries" in `AGENTS.md` —
 changing `.github/workflows` also needs explicit approval). Nothing in this
 file is enforced by `scripts/policy.ts`; the enforced checks are the sensor
-pipeline and CI.
+pipeline and CI. One part **is** machine-checked: the `governance` sensor
+(`scripts/codeowners-check.ts`) fails when a path in the table below has no
+explicit, owned `.github/CODEOWNERS` rule, so the two cannot drift apart.
 
 ## Why
 

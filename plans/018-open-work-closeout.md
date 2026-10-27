@@ -29,8 +29,8 @@ Non-`done` rows and their real state:
 | `plans/016`        | residual                  | `release.yml` `validate candidate` is tag/manual-only; audit advisory claim was stale    | audit claim corrected; tag run open |
 
 **Pre-existing CI state.** `main` at `e5283d4` is green (`ci` run 40483665956,
-`scorecard` run 40483666071), and locally `npm run check` → 7/7 PASS,
-`npm audit --json` → `{"total":0}`. The "2 advisories from `fastembed@2.1.0`"
+`scorecard` run 40483666071), and locally `npm run check` → 7/7 PASS at audit
+time (before CLS-07 added the eighth step), `npm audit --json` → `{"total":0}`. The "2 advisories from `fastembed@2.1.0`"
 note in plan 016 was stale: `packages/storage` already declares
 `fastembed@^3.0.0` (lock 3.0.0). There was no pre-existing red check to repair.
 
@@ -42,8 +42,8 @@ note in plan 016 was stale: `packages/storage` already declares
 | CLS-02 | Install/verify do-harness v0.3.5 (checksum), adopt `do-harness loc` as an advisory feedforward command, refresh the v0.3.4 pins     | done (2026-10-27) | agent | below    |
 | CLS-03 | TPL-01 agent portion: extend `.github/CODEOWNERS` to every sensitive path documented in `docs/github-hardening.md`                  | done (2026-10-27) | agent | below    |
 | CLS-04 | Reconcile stale records: R-17 status, plan 016 audit note, OPS-06 TypeScript 7 re-check, plan 012 gate re-check                     | done (2026-10-27) | agent | below    |
-| CLS-05 | Repair malformed plan-017 task rows (DHC-13 and TPL-03 merged onto one line) and the joined `## Follow-ups` heading                 | done (2026-10-27) | agent | below    |
-| CLS-06 | Split the 10 files over do-harness's 500-line budget (largest `apps/server/test/main.test.ts` at 1232 lines)                        | proposed          | agent | below    |
+| CLS-05 | Repair malformed plan-017 task rows (DHC-13 and TPL-03 merged onto one line) and the joined `## Follow-ups` heading                 | done (2026-10-27) | agent | below    |     | CLS-06 | Split the 10 files over do-harness's 500-line budget (largest `apps/server/test/main.test.ts` at 1232 lines) | proposed | agent | below |
+| CLS-07 | Enforce guide ↔ CODEOWNERS coverage in the check pipeline: a `governance` sensor, its unit tests, and the dev-harness mirrors       | done (2026-10-27) | agent | below    |
 
 ## CLS-02 evidence — do-harness v0.3.5 + `loc`
 
@@ -129,6 +129,45 @@ Both are split into valid rows/prose. Content is unchanged; only the broken
 structure is repaired. TPL-01 and DHC-13 rows also carry their 2026-10-27
 status. Stable IDs are untouched.
 
+## CLS-07 evidence — `governance` sensor
+
+Files: `scripts/governance/codeowners.ts` (new: parse the guide's
+`## Sensitive paths` table and `.github/CODEOWNERS`, match coverage),
+`scripts/codeowners-check.ts` (new CLI),
+`scripts/governance/test/codeowners.test.ts` (new, 12 tests), `scripts/check.ts`
+(new step), `scripts/dev-harness/sensors.ts` + `scripts/dev-harness/stale.ts`
+(registry mirror + fingerprint inputs), `do-harness.toml` (sensor + the three
+sets), `scripts/dev-harness/test/sensors.test.ts` and
+`scripts/dev-harness/test/cli.test.ts` (mirror expectations: 9 sensors, 8 in
+`verification`), `.agents/skills/dev-signals/SKILL.md` (8 check sensors).
+
+Contract: every path in the guide's table needs an **explicit**
+`.github/CODEOWNERS` rule with a well-formed owner (`@handle` or email); a
+directory rule covers descendants; the `*` wildcard does **not** count; a guide
+with no documented paths fails closed; unreadable inputs fail. Owner existence
+stays an online check (`GET .../codeowners/errors`), documented in the guide —
+the sensor never touches the network.
+
+Red → green:
+
+- `npx vitest run scripts/governance/test/codeowners.test.ts` → **1 file
+  failed, no tests** (module absent); after implementing the matcher →
+  **12/12 pass**.
+- `npx tsx scripts/codeowners-check.ts` → `governance: PASS (8 documented
+sensitive paths covered)`, exit 0.
+- Negative probe (fail-closed, end to end): copied the guide and a CODEOWNERS
+  file with the `/do-harness.toml` rule removed to `/tmp/gov-probe`, ran the
+  CLI with that directory as cwd → exit **1**: `governance: FAIL (1
+finding(s)) — sensitive path "do-harness.toml" has no explicit
+.github/CODEOWNERS rule (wildcard does not count)`.
+- Mirror suites: `npx vitest run scripts/governance/test/codeowners.test.ts
+scripts/dev-harness/test/sensors.test.ts scripts/dev-harness/test/cli.test.ts
+scripts/dev-harness/test/stale.test.ts` → **54/54 pass**.
+
+Staleness wiring: `governance` receipts fingerprint the guide, the CODEOWNERS
+file, the check, its module and `package.json` — not the whole tree — so
+unrelated edits do not invalidate the receipt.
+
 ## CLS-06 detail — files over the 500-line budget
 
 `do-harness loc --format json` (2026-10-27), 10 `fail`:
@@ -157,18 +196,22 @@ drive-by refactor bundled with record keeping.
 
 ## Verification (2026-10-27, agent)
 
-Commands run from the repo root after the final edit pass:
+Commands run from the repo root on the final code (prose-only edits to this
+plan and the docs followed the full run and were re-checked by `check:fast`;
+the `verification` receipt is taken on the committed tree):
 
 - `npm ci` → exit 0 (lockfile unchanged; this PR edits no dependency).
-- `npm run check` → exit 0, **7/7 PASS**: prettier 4980ms, eslint 2904ms,
-  typecheck 1502ms, policy 283ms, skills 166ms, tests 6589ms, evals 6219ms
-  (mode full).
-- `npm run test:coverage` → exit 0; lines **91.23% (2456/2692)**, floor 85%.
+- `npm run check` → exit 0, **8/8 PASS**: prettier 5286ms, eslint 2720ms,
+  typecheck 1362ms, policy 286ms, skills 199ms, governance 168ms, tests
+  6971ms, evals 6981ms (mode full).
+- `npm run test:coverage` → exit 0; **57 test files / 676 tests pass**, lines
+  **91.23% (2456/2692)**, floor 85%.
 - `npm run signals -- verify --set verification` → exit 0, verdict **green**
-  (format, lint, typecheck, policy, skills, tests, evals); receipt
+  (format, lint, typecheck, policy, skills, governance, tests, evals); receipt
   `.do-harness/evidence.verification.json`. `npm run signals -- status` →
   `status: green`, `halted: none`.
-- `do-harness verify --set feedback` (v0.3.5) → **All sensors passed**.
+- `do-harness verify --set feedback` (v0.3.5) → **All sensors passed**, and
+  `do-harness list` resolves `governance` from the committed `do-harness.toml`.
 - `npm audit --json` → `{"total":0}`.
 - `GET /repos/d-oit/do-sift/codeowners/errors?ref=<branch>` →
   `{"errors":[]}` after the owner-handle fix (before it: 10 ×

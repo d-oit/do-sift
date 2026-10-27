@@ -13,7 +13,7 @@ status, not unverified memory.
 
 1. After edits, run `npm run signals -- verify --set feedback` for the fast
    edit/fix loop (format, lint, typecheck, policy, skills). Before claiming a
-   task done or handing off, run the `verification` set (all 7 check pipeline
+   task done or handing off, run the `verification` set (all 8 check pipeline
    sensors through evals). The `release` set adds the release sensor for
    release gating only. If the `format` sensor fails, run
    `npx prettier --write` on the files you changed and re-verify — fix
