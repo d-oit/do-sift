@@ -3,9 +3,20 @@
 # Security- and policy-critical paths require owner review. In a
 # single-maintainer repo this documents responsibility, not independent
 # review (see plans/risks.md R-08).
+
 *                       @doswa
+
+# Agent contract, immutable decisions, and the enforced gates themselves
+/AGENTS.md              @doswa
+/plans/invariants.json  @doswa
+/plans/adr/             @doswa
+/scripts/policy.ts      @doswa
+
+# Workflow tooling: sensor argv and hook entrypoints
+/do-harness.toml        @doswa
+/.githooks/             @doswa
+/.agents/skills/        @doswa
 
 # Release and CI infrastructure
 /.github/workflows/     @doswa
-/scripts/policy.ts      @doswa
-/plans/invariants.json  @doswa
+/.github/CODEOWNERS     @doswa

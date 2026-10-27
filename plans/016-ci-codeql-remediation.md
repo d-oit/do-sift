@@ -106,7 +106,9 @@ Risks/open questions:
   reports 2 advisories (1 critical, 1 high) from `tar@6.2.1`, pulled in by
   `fastembed@2.1.0` in `packages/storage`. The fix is `fastembed@3.0.0`, a
   breaking change to the retrieval stack governed by ADR 0009 — not something to
-  smuggle into a CI fix PR.
+  smuggle into a CI fix PR. **Resolved 2026-10-27** — `packages/storage` now
+  declares `fastembed@^3.0.0` (lock: 3.0.0) and `npm audit` reports 0
+  vulnerabilities; see plans/018.
 
 ### CI-02 evidence — 2026-09-29
 
@@ -473,4 +475,6 @@ depends on; turning it off is a change with consequences, not a diagnostic.
 - Pre-existing and untouched: `npm audit` reports 2 advisories (1 critical, 1
   high) from `tar@6.2.1` via `fastembed@2.1.0` in `packages/storage`. The fix is
   a breaking retrieval-stack change governed by ADR 0009 and needs its own
-  decision.
+  decision. **Resolved 2026-10-27** — `packages/storage` declares
+  `fastembed@^3.0.0` (lock: 3.0.0), `npm audit --json` reports
+  `{"total":0}`, and the full `npm run check` stays green; see plans/018.

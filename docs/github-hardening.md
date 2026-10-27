@@ -30,9 +30,10 @@ production code protects its deploy keys.
 
 ## Recommended protections (owner actions)
 
-1. **CODEOWNERS** — require review from a maintainer for the paths above,
-   e.g. `AGENTS.md @d-oit`, `plans/invariants.json @d-oit`,
-   `.github/workflows/ @d-oit`. Unreviewed agent PRs must not merge these.
+1. **CODEOWNERS** — in place: `.github/CODEOWNERS` covers every path in the
+   table above (plus itself, so the protection cannot be silently widened).
+   The remaining owner action is ruleset-side: "require review from Code
+   Owners" for these paths, so an unreviewed agent PR cannot merge them.
 2. **Branch ruleset on `main`** — the repo already requires `check (linux)`
    with strict required-status policy; keep it. Add "require review from
    Code Owners" for the sensitive paths and disallow force-pushes.

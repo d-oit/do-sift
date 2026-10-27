@@ -52,3 +52,14 @@ Commands: `npm run policy` → PASS (6 checks, 0 findings); `npm run check:fast`
 Risks/open questions: cost/latency per query×candidate unknown until TS-00; thresholds are corpus-specific constants under review, not prompt tweaks; pure HTTPS+JS (no native dep) but adds external availability dependency + 429/529 retry path; data ownership/retention ambiguous until TS-01.
 
 Next suggested task: TS-00 spike only after owner provides key + billing clarity + retention note. Otherwise leave core as-is.
+
+## Re-check (2026-10-27, agent) — still owner-gated, no change
+
+Re-verified the plan's own preconditions: `grep -i typesafe plans/sources.md`
+→ no entry (the model-provider section still reads "None activated");
+`grep -c TYPESAFE .env.example` → 0; no
+`packages/plugins/plugin-*-typesafe/` directory exists. There is no dated
+pricing/retention record, no key, and no recorded billing decision, so
+TS-00..TS-04 stay `proposed`/owner-gated. Starting TS-02 before TS-01 would
+violate this plan's gate and the AGENTS.md paid-API approval boundary; no
+code was written.
