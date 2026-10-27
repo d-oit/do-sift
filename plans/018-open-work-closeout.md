@@ -227,15 +227,28 @@ policy rule, or invariant was weakened.
 
 ## Delivery
 
-Commit `0ead080` is pushed to `freebuff/071ea37620b8ea1b3d825184` (managed
-push credential, no force). The pull request was **not** opened from this
-cloud session: `gh` is unauthenticated and `gh pr create` exits 4
-("To get started with GitHub CLI, please run: gh auth login"), while the
-managed GitHub credential covers fetch/pull/push only. Open the PR from the
-pushed branch so CI runs. Locally, the linux CI job's commands (`npm run
-check`, `npm run test:coverage`) and the windows job's `npm run check:fast`
-all pass; the windows job itself was not executed here, and this change is
-docs/governance-only, adding no platform-specific behavior.
+Commits `0ead080` … `aa9ddf1` are pushed to
+`freebuff/071ea37620b8ea1b3d825184` (managed push credential, no force) and
+opened as **[PR #101](https://github.com/d-oit/do-sift/pull/101)**.
+
+Opening it needed one extra step: this session's `gh` was unauthenticated and
+`gh pr create` initially exited 4 (`gh auth login` required), while the managed
+credential covers fetch/pull/push only. A `gh auth login --web` device-flow
+authorization (account `d-oit`, scopes `repo`, `workflow`, `gist`, `read:org`)
+made `gh pr create` available; the login left no token in the repository.
+
+CI on #101 (GitHub Actions, PR head):
+
+| Check                             | Result |
+| --------------------------------- | ------ |
+| `check (linux)`                   | pass   |
+| `check (windows, fast)`           | pass   |
+| `Analyze (actions)`               | pass   |
+| `Analyze (javascript-typescript)` | pass   |
+| `CodeQL`                          | pass   |
+
+PR state after the run: `MERGEABLE`, merge state `CLEAN`. The PR was left
+unmerged — merging is the owner's decision, not part of this task.
 
 ## Follow-ups
 
