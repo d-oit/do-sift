@@ -42,7 +42,8 @@ note in plan 016 was stale: `packages/storage` already declares
 | CLS-02 | Install/verify do-harness v0.3.5 (checksum), adopt `do-harness loc` as an advisory feedforward command, refresh the v0.3.4 pins     | done (2026-10-27) | agent | below    |
 | CLS-03 | TPL-01 agent portion: extend `.github/CODEOWNERS` to every sensitive path documented in `docs/github-hardening.md`                  | done (2026-10-27) | agent | below    |
 | CLS-04 | Reconcile stale records: R-17 status, plan 016 audit note, OPS-06 TypeScript 7 re-check, plan 012 gate re-check                     | done (2026-10-27) | agent | below    |
-| CLS-05 | Repair malformed plan-017 task rows (DHC-13 and TPL-03 merged onto one line) and the joined `## Follow-ups` heading                 | done (2026-10-27) | agent | below    |     | CLS-06 | Split the 10 files over do-harness's 500-line budget (largest `apps/server/test/main.test.ts` at 1232 lines) | proposed | agent | below |
+| CLS-05 | Repair malformed plan-017 task rows (DHC-13 and TPL-03 merged onto one line) and the joined `## Follow-ups` heading                 | done (2026-10-27) | agent | below    |
+| CLS-06 | Split every file at or above do-harness's decomposition threshold (10 over 500, 3 in the 450-497 warn band) into focused modules    | done (2026-10-27) | agent | below    |
 | CLS-07 | Enforce guide ↔ CODEOWNERS coverage in the check pipeline: a `governance` sensor, its unit tests, and the dev-harness mirrors       | done (2026-10-27) | agent | below    |
 
 ## CLS-02 evidence — do-harness v0.3.5 + `loc`
@@ -76,7 +77,8 @@ feedforward line could be adopted rather than deferred.
 Declined: a `loc` sensor row in `do-harness.toml`. No invariant in
 `plans/invariants.json` states a line limit, and 10 files are already over the
 budget — a sensor would fail on pre-existing size debt and could only be made
-green by refactoring or by weakening the threshold. Recorded as CLS-06 instead.
+green by refactoring or by weakening the threshold. Recorded as CLS-06 instead
+and discharged there on 2026-10-27.
 
 ## CLS-03 evidence — TPL-01 in-repo portion
 
@@ -168,31 +170,60 @@ Staleness wiring: `governance` receipts fingerprint the guide, the CODEOWNERS
 file, the check, its module and `package.json` — not the whole tree — so
 unrelated edits do not invalidate the receipt.
 
-## CLS-06 detail — files over the 500-line budget
+## CLS-06 evidence — LOC decomposition
 
-`do-harness loc --format json` (2026-10-27), 10 `fail`:
+`do-harness loc` (v0.3.5, 2026-10-27) reported 10 files `fail` (over 500 lines)
+and 3 `warn` (450–497). All 13 were split along existing seams; `do-harness loc`
+now reports **`OK: no file at or above 450 lines (133 scanned)`**, and
+`do-harness loc --warn --format json` → `[]`. The largest measured file is
+`apps/server/test/main.env.test.ts` at 401 lines.
 
-| Lines | File                                                                           |
-| ----- | ------------------------------------------------------------------------------ |
-| 1232  | `apps/server/test/main.test.ts`                                                |
-| 1054  | `packages/server/test/answer.test.ts`                                          |
-| 986   | `packages/server/src/server.ts`                                                |
-| 796   | `packages/server/test/server.test.ts`                                          |
-| 622   | `packages/storage/src/repositories.ts`                                         |
-| 594   | `packages/plugins/plugin-harness-research/test/research-harness.test.ts`       |
-| 558   | `packages/safe-fetch/test/safe-fetch.test.ts`                                  |
-| 540   | `packages/plugins/plugin-model-openai-compat/test/openai-compat-model.test.ts` |
-| 529   | `packages/server/src/answer.ts`                                                |
-| 506   | `packages/plugins/plugin-harness-research/src/index.ts`                        |
+The splits are pure moves: no behavior, assertion, fixture value, or public
+export changed. Declarations that were public keep their names and are
+re-exported from the original module, so `packages/*/src/index.ts` and its
+consumers are untouched.
 
-Three more warn (465–497): `apps/server/src/main.ts`,
-`packages/safe-fetch/src/safe-fetch.ts`,
-`packages/plugins/plugin-model-openai-compat/src/index.ts`.
+| Was                                                                            | Lines | Now                                                                                                                                 |
+| ------------------------------------------------------------------------------ | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/server/test/main.test.ts`                                                | 1232  | `main.env.test.ts` 401, `main.compose.test.ts` 317, `main.wikipedia.test.ts` 277, `main.search.test.ts` 239 (+ `main-support.ts` 5) |
+| `packages/server/test/answer.test.ts`                                          | 1054  | `answer.core.test.ts` 393, `answer.retrieval.test.ts` 325, `answer.relevance.test.ts` 275 (+ `answer-support.ts` 71)                |
+| `packages/server/src/server.ts`                                                | 986   | `server.ts` 366, `server-http.ts` 252, `default-page.ts` 169, `server-contracts.ts` 118, `owner-limiter.ts` 70                      |
+| `packages/server/test/server.test.ts`                                          | 796   | `server.answer.test.ts` 333, `server.research.test.ts` 294 (+ `server-support.ts` 186)                                              |
+| `packages/storage/src/repositories.ts`                                         | 622   | `repositories.ts` 395, `rows.ts` 237                                                                                                |
+| `packages/plugins/plugin-harness-research/test/research-harness.test.ts`       | 594   | `research-harness.evidence.test.ts` 268, `research-harness.pipeline.test.ts` 237 (+ `research-harness-support.ts` 100)              |
+| `packages/safe-fetch/test/safe-fetch.test.ts`                                  | 558   | `safe-fetch.guards.test.ts` 345, `safe-fetch.modes.test.ts` 169 (+ `safe-fetch-support.ts` 55)                                      |
+| `packages/plugins/plugin-model-openai-compat/test/openai-compat-model.test.ts` | 540   | `openai-compat.response.test.ts` 323, `openai-compat.activation.test.ts` 129 (+ `openai-compat-support.ts` 101)                     |
+| `packages/server/src/answer.ts`                                                | 529   | `answer.ts` 347, `answer-contracts.ts` 102, `answer-evidence.ts` 52                                                                 |
+| `packages/plugins/plugin-harness-research/src/index.ts`                        | 506   | `index.ts` 394, `passages.ts` 84                                                                                                    |
+| `apps/server/src/main.ts`                                                      | 497   | `main.ts` 394, `fixtures.ts` 56, `compose-contracts.ts` 37                                                                          |
+| `packages/safe-fetch/src/safe-fetch.ts`                                        | 482   | `safe-fetch.ts` 355, `pinned-fetch.ts` 68                                                                                           |
+| `packages/plugins/plugin-model-openai-compat/src/index.ts`                     | 465   | `index.ts` 268, `chat-body.ts` 91, `base-url.ts` 41, `model-contracts.ts` 33                                                        |
 
-No line-length invariant exists, so this is code-health debt, not a failing
-check. CLS-06 is deliberately `proposed`: splitting production files and their
-test suites needs its own slice with red-before-green coverage, not a
-drive-by refactor bundled with record keeping.
+Test files share a `<name>-support.ts` module holding the seams (one listening
+server or in-memory DB per importing file, created in that module's
+`beforeAll`/`beforeEach`). Two ESM consequences were handled explicitly:
+
+- imported bindings are read-only for importers, so `server-support.ts`
+  exposes `resetOwnerSeen()` instead of each split file assigning the imported
+  `ownerSeen`;
+- `import … with { type: "json" }` attributes were restored on the split
+  plugin tests (the splitting tool dropped import attributes).
+
+Commands / results (final tree):
+
+- `npm run check` → exit 0, 8/8 PASS: prettier, eslint, typecheck, policy,
+  skills, governance, tests, evals (full mode).
+- `npm run test:coverage` → exit 0; **66 test files / 676 tests**, lines
+  **91.23% (2455/2691)**, floor 85% — the same test count and line coverage as
+  before the split (57 files → 66 files is redistribution, not new tests).
+- `do-harness loc` → exit 0, `OK: no file at or above 450 lines (133 scanned)`.
+- `npx tsc -p tsconfig.json --noEmit` → exit 0 after every slice.
+- Per-slice suites: 99 (server app), 94 (server package), 131 (both server
+  suites), 91 (storage), 243 (safe-fetch + plugins), all green.
+
+No enforcement was added: `plans/invariants.json` still has no line-length
+invariant, so `loc` stays advisory feedforward per the CLS-02 decision. What
+changed is the state it reports, not the gate.
 
 ## Verification (2026-10-27, agent)
 
@@ -266,8 +297,6 @@ Owner-gated (unchanged, re-verified):
 
 Open, agent-doable next:
 
-- **CLS-06**: split the ten over-budget files, largest first, with tests kept
-  green per file.
 - **`release.yml` `validate candidate`** (`plans/016` residual): still never
   executed with the `actions/checkout` v7.0.1 pin; it is tag/manual triggered,
   so it needs a tag or a manual dispatch by the owner.
@@ -277,14 +306,19 @@ docs request; nothing in this pass depended on it.
 
 ## Handoff
 
-- **Task:** CLS-01 … CLS-05 — done; CLS-06 — proposed.
+- **Task:** CLS-01 … CLS-07 — done, including the CLS-06 LOC decomposition.
 - **Files:** `AGENTS.md`, `.agents/skills/dev-signals/SKILL.md`, `llms.txt`,
   `.github/CODEOWNERS`, `docs/github-hardening.md`, `plans/018-open-work-closeout.md`
   (new), `plans/README.md`, `plans/012`, `plans/016`, `plans/017`,
-  `plans/005-007`, `plans/risks.md`.
-- **Risks:** the CODEOWNERS edit and the AGENTS.md wording are governance
-  files — both are additive/accuracy fixes, no check weakened, and the PR
-  needs owner review per the file's own rule. No source code changed, so CI
-  risk is limited to the docs/skills/policy sensors.
-- **Next suggested task:** CLS-06 (largest-file split), or the owner-gated
-  TPL-01 ruleset change.
+  `plans/005-007`, `plans/risks.md`, plus the CLS-06 splits (6 shared test
+  support modules, 24 new sibling modules, 13 originals reduced; listed in the
+  CLS-06 evidence table).
+- **Risks:** the CLS-06 work moves code and test blocks only — no behavior,
+  assertion, fixture value, workflow, policy rule, or invariant changed, and
+  the public exports are preserved via re-export. The larger residual risk is
+  reviewer load: 40+ files touched in one governance PR. The CODEOWNERS edit
+  and the AGENTS.md wording are governance files, so the PR still needs owner
+  review per the file's own rule.
+- **Next suggested task:** none agent-doable is queued; the remaining rows are
+  owner-gated (TS-00…TS-04, TPL-01 ruleset, OPS-10 public domain, plan 013 live
+  activation, `release.yml` tag run).

@@ -1,19 +1,6 @@
-/**
- * safe-fetch orchestrator (CORE-06, ADR 0003 evidence provenance).
- *
- * Host-side module — plugins never call this directly; the kernel/storage
- * layer mediates it. Guards compose in this order for every hop including
- * redirects: URL sanity → DNS resolution → address validation → fetch with
- * manual redirects → status → MIME → streamed size cap → timeout.
- *
- * DNS and fetch are injected so the whole pipeline is testable offline
- * (INV-006). In production the caller injects a resolver that pins lookup
- * results for the connection; verify-then-fetch leaves a small TOCTOU
- * window that pinning closes (recorded as an open risk in plans/002).
- */
+/** safe-fetch orchestrator (CORE-06, ADR 0003 evidence provenance). */
 import { SafeFetchError, assertPublicAddress, assertPublicHttpUrl, parseIpv4 } from "./guards.js";
 import { pinnedRequest } from "./pinned-transport.js";
-
 export interface DnsResolver {
   /** Resolve a hostname to every address the resolver returns. */
   lookup(host: string): Promise<readonly string[]>;
@@ -92,6 +79,7 @@ export interface SafeFetchResult {
 }
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
 const DEFAULTS = {
   maxBytes: 2 * 1024 * 1024,
   timeoutMs: 10_000,
@@ -103,10 +91,6 @@ function isIpLiteralHost(hostname: string): boolean {
   return parseIpv4(hostname) !== null;
 }
 
-/** Resolve the host and refuse any non-public answer. IP literals skip DNS.
- * Returns the VALIDATED addresses (SRC-23): the pinned transport connects
- * directly to one of them instead of re-resolving. */
-/** Headers that carry credentials and must never leave the origin they were sent to (#59). */
 const CREDENTIAL_HEADERS = new Set(["authorization", "cookie", "proxy-authorization"]);
 
 function stripCredentialHeaders(headers: Record<string, string>): Record<string, string> {
@@ -138,7 +122,6 @@ function assertAcceptedMime(contentType: string, allowed: readonly string[]): st
   return base;
 }
 
-/** Fetch with a hard byte cap by consuming the body stream incrementally. */
 async function readBodyCapped(
   body: ReadableStream<Uint8Array> | null,
   maxBytes: number,
@@ -173,11 +156,6 @@ async function readBodyCapped(
   return out;
 }
 
-/**
- * Fetch one URL under all guards. Throws SafeFetchError with a precise
- * `kind` on every refusal; never follows a hop that has not been
- * re-validated. https→http downgrades are refused by default.
- */
 export async function safeFetch(
   rawUrl: string,
   options: SafeFetchOptions,
@@ -323,15 +301,9 @@ export async function safeFetch(
 }
 
 const CHARSET_PARAM = /charset\s*=\s*"?([A-Za-z0-9._-]+)"?/iu;
+
 const META_CHARSET = /<meta[^>]+charset\s*=\s*["']?\s*([A-Za-z0-9._-]+)/iu;
 
-/**
- * The WHATWG windows-1252 index for 0x80–0x9F — the range where the
- * encoding differs from ISO-8859-1 (€‚ƒ„…†‡ˆ‰Š‹ŒŽ''""•–—˜™š›œžŸ).
- * Positions 0x81, 0x8D, 0x8F, 0x90, 0x9D are unmapped → U+FFFD. Needed in
- * code because Node's TextDecoder decodes the windows-1252 LABELS
- * latin1-style (0x95 → U+0095 control) instead of applying this table.
- */
 const WINDOWS_1252_HIGH: readonly number[] = [
   0x20ac, 0xfffd, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039,
   0x0152, 0xfffd, 0x017d, 0xfffd, 0xfffd, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
@@ -340,8 +312,6 @@ const WINDOWS_1252_HIGH: readonly number[] = [
 
 const WINDOWS_1252_LABELS = new Set(["windows-1252", "cp1252", "iso-8859-1", "latin1"]);
 
-/** WHATWG windows-1252 decode: bytes ≤0x7F and ≥0xA0 are identical to
- * latin1; only the 0x80–0x9F range uses the table above. */
 function decodeWindows1252(bytes: Uint8Array): string {
   let out = "";
   for (let i = 0; i < bytes.length; i++) {
@@ -354,18 +324,6 @@ function decodeWindows1252(bytes: Uint8Array): string {
   return out;
 }
 
-/**
- * Charset-aware text decode (SRC-20, QUAL run-010 finding): WHATWG
- * ordering — the Content-Type charset param wins, then (text/html only) a
- * meta-charset sniff over the first 1024 bytes, then the HTML default
- * windows-1252 for undeclared text/html and UTF-8 for everything else.
- * The windows-1252 family (incl. the iso-8859-1/latin1 aliases, per
- * WHATWG) uses the table decoder above because Node's TextDecoder does
- * not implement the high table; an unknown label falls back to UTF-8
- * rather than throwing. Security guards are untouched: this runs AFTER
- * mime validation and the byte cap, and changes only how the
- * already-fetched bytes become text.
- */
 export function decodeBody(bytes: Uint8Array, contentType: string): string {
   const mime = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
   const param = CHARSET_PARAM.exec(contentType)?.[1];
@@ -393,90 +351,5 @@ export {
   isPrivateIpv6,
   parseIpv4,
 } from "./guards.js";
+
 export type { SafeFetchFailureKind } from "./guards.js";
-
-export interface PinnedFetchOptions {
-  maxBytes?: number | undefined;
-  timeoutMs?: number | undefined;
-  maxRedirects?: number | undefined;
-  dns: DnsResolver;
-  /** Per-hop site-policy hook, same semantics as safeFetch's. */
-  checkHost?: ((host: string) => void) | undefined;
-  headers?: Record<string, string> | undefined;
-}
-
-/**
- * A FetchLike on the pinned-IP pipeline (SRC-24): every request runs the
- * full guard pipeline (scheme/IP/DNS/site-policy per hop, pinned connect,
- * redirects, size and deadline caps) in TRANSPORT-ONLY mode — non-2xx
- * statuses and unaccepted MIME are RETURNED as a real Response so callers
- * with their own status envelopes (the search adapters' 429/502/503/504
- * retry logic and JSON validation) keep working unchanged.
- *
- * Error-name mapping preserves the adapters' envelopes exactly: the
- * internal deadline OR an external `AbortSignal.timeout` surface as an
- * Error named "TimeoutError"; a plain caller abort surfaces as "AbortError";
- * guard refusals (private answer, denied host, …) propagate as SafeFetchError.
- */
-/**
- * Merge the factory-level headers with the CALLER's per-request headers
- * (SRC-24 regression fix: RequestInit.headers — Headers, entries array,
- * or record — must reach the transport; the adapters' User-Agent arrives
- * per-request and Wikimedia's API 403s without it).
- */
-export function mergeRequestHeaders(
-  factory: Record<string, string> | undefined,
-  init: RequestInit | undefined,
-): Record<string, string> {
-  const merged: Record<string, string> = { ...(factory ?? {}) };
-  const initHeaders = init?.headers;
-  if (initHeaders === undefined || initHeaders === null) return merged;
-  if (initHeaders instanceof Headers) {
-    initHeaders.forEach((value, key) => {
-      merged[key] = value;
-    });
-    return merged;
-  }
-  if (Array.isArray(initHeaders)) {
-    for (const [key, value] of initHeaders) merged[key] = value;
-    return merged;
-  }
-  return { ...merged, ...(initHeaders as Record<string, string>) };
-}
-
-export function pinnedFetch(options: PinnedFetchOptions): FetchLike {
-  return async (url, init) => {
-    const external = init?.signal ?? undefined;
-    try {
-      const result = await safeFetch(url, {
-        maxBytes: options.maxBytes ?? 1_000_000,
-        timeoutMs: options.timeoutMs ?? 15_000,
-        maxRedirects: options.maxRedirects ?? 3,
-        dns: options.dns,
-        ...(options.checkHost !== undefined ? { checkHost: options.checkHost } : {}),
-        headers: mergeRequestHeaders(options.headers, init),
-        ...(external !== undefined ? { signal: external } : {}),
-        enforceResponsePolicy: false,
-      });
-      return new Response(result.bytes, {
-        status: result.status,
-        headers: result.headers,
-      });
-    } catch (e) {
-      if (external !== undefined && external.aborted) {
-        // distinguish the envelope's timeout signal from a plain cancel:
-        // AbortSignal.timeout sets reason.name to "TimeoutError"
-        const reasonName = (external.reason as { name?: string } | undefined)?.name;
-        const err: Error & { name: string } =
-          reasonName === "TimeoutError"
-            ? Object.assign(new Error(`deadline exceeded`), { name: "TimeoutError" })
-            : Object.assign(new Error(`aborted`), { name: "AbortError" });
-        throw err;
-      }
-      if (e instanceof SafeFetchError && e.kind === "timeout") {
-        throw Object.assign(new Error(e.message), { name: "TimeoutError" });
-      }
-      throw e;
-    }
-  };
-}

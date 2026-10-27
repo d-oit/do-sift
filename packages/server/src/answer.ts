@@ -1,214 +1,32 @@
-/**
- * Answer service (ANS-03/ANS-04, plan 004). The one bounded synthesis call
- * (ADR 0006) with the citation gate that makes "research with receipts"
- * honest:
- *
- *   retrieve (FTS5 baseline, owner-scoped) → exact-answer cache lookup
- *   (owner + normalized question + mode + source versions + revisions;
- *   hit = zero model calls, zero budget) → pack passages under the input
- *   ceiling minus the reserved output budget → budget reserve → one model
- *   call (cancellation-aware) → validate every citation against the
- *   passages ACTUALLY SENT → on any invalid citation degrade to
- *   evidence-only, no repair loop → store with cache key + revisions →
- *   settle the budget and reconcile actual usage against the reservation
- *   (overruns reported, never hidden).
- *
- * Passing validation is existence, not entailment (ADR 0003/R-06). Packing
- * reserves the full output budget from the input ceiling (ANS-02), so a
- * packed prompt plus its completion never overflows a shared window.
- */
+/** Answer service. Contracts live in answer-contracts.ts, pure helpers in answer-evidence.ts. */
 import {
   buildCacheKey,
   CitationError,
   estimateTokens,
   normalizeQuestion,
-  suspectEvidenceMarkers,
   validateCitations,
   type Answer,
-  type EvidenceMarker,
-  type ModelProvider,
   type SynthesisRequest,
 } from "@do-sift/contracts";
-import type { Client } from "@libsql/client";
-import {
-  hybridSearch,
-  searchPassages,
-  type BudgetService,
-  type PassageHit,
-  type Repositories,
-  type TextEmbedder,
-} from "@do-sift/storage";
-
-export interface AnswerRevisions {
-  policyRevision?: string;
-  promptRevision?: string;
-  modelRevision?: string;
-}
-
-export interface AnswerServiceOptions {
-  maxInputTokens?: number;
-  maxOutputTokens?: number;
-  maxPassages?: number;
-  /** Cache-key revision inputs (D5/plan 000: revision change = cache miss). */
-  revisions?: AnswerRevisions;
-  /**
-   * SRC-11 answer-time exclusion floor: documents scored below it are
-   * advisory-excluded from the pool; NO score (NULL = legacy/unmeasured)
-   * is ALWAYS included. Read-time tunable — NOT a cache-key input (source
-   * versions are unchanged content hashes, revisions unchanged), so no
-   * policyRevision bump.
-   */
-  relevanceFloor?: number;
-  /**
-   * SRC-12 answer-time exclusion of noise-classified passages (nav-list /
-   * reference / stub, flagged at store time). Designed behavior is on;
-   * the option exists for read-time tunability like the floor. NOTE: the
-   * DEFAULT CHANGE from off-to-on IS a packing-semantics change and IS
-   * accompanied by the p1 → p2 policyRevision bump below (the packed
-   * passage set can change under an identical sourceVersions set when a
-   * document carries both clean and flagged chunks — D5 conservatism).
-   */
-  noiseFilter?: boolean;
-}
-
-export interface AnswerServiceDeps {
-  client: Client;
-  repositories: Repositories;
-  /** The model path (ANS-01 router satisfies this structurally). */
-  model: ModelProvider;
-  budget?: BudgetService | undefined;
-  /**
-   * When provided, retrieval fuses bm25 ranks with cosine ranks over stored
-   * embeddings (RET-02, ADR 0009); without it, plain bm25 (unchanged).
-   */
-  embedder?: TextEmbedder | undefined;
-}
-
-export interface AnswerTask {
-  ownerId: string;
-  question: string;
-}
-
-export interface UsageReconciliation {
-  overrun: boolean;
-  deltaInput: number;
-  deltaOutput: number;
-}
-
-/** ANS-12 (plan 013, R-12): advisory suspect receipt over the packed raw
- * evidence — passage count plus stable marker codes. A measurability
- * receipt for the QUAL gate and live monitoring, never a filter. */
-export interface SuspectReceipt {
-  passages: number;
-  markers: EvidenceMarker[];
-}
-
-export interface AnswerOutcome {
-  requestId: string | undefined;
-  answerId: string;
-  /** True on an exact-answer cache hit (nothing re-ran). */
-  cached: boolean;
-  /** True when the model's citations failed validation (or no evidence). */
-  degraded: boolean;
-  /** True when no model claims are present (evidence-only output). */
-  evidenceOnly: boolean;
-  /**
-   * Evidence basis (ANS-07, R-15/F9): "run" = at least one packed passage
-   * came from a COMPLETED research run for this owner+question;
-   * "cross-question" = the evidence belongs to other questions' runs —
-   * the honest signal that this question's own run stored nothing;
-   * "legacy" = pre-ANS-07 evidence with no run linkage. Undefined on the
-   * empty-evidence path (nothing was retrieved at all).
-   */
-  evidenceFromRun?: "run" | "legacy" | "cross-question" | undefined;
-  usage?: Answer["usage"] | undefined;
-  /** Settle-time reconciliation of actual usage vs the reservation. */
-  reconciliation?: UsageReconciliation | undefined;
-  /**
-   * ANS-12 advisory suspect receipt over the PACKED evidence (run path
-   * only, like `reconciliation`; absent on cache hits and the empty-
-   * evidence path). Never degrades an answer by itself.
-   */
-  suspectEvidence?: SuspectReceipt | undefined;
-}
-
-/**
- * SRC-11 designed floor (plans/003-004-src-ans.md: drops exactly the 4
- * clearly-off-topic dopps with 0/7 correct pages dropped at n=14).
- * Exported as the single source of truth — the runtime reads it for
- * source-card prominence decoration (SRC-14) when no floor option is set.
- */
-export const DEFAULT_RELEVANCE_FLOOR = 0.7;
-
-const DEFAULTS = {
-  maxInputTokens: 4000,
-  maxOutputTokens: 700,
-  maxPassages: 6,
-  relevanceFloor: DEFAULT_RELEVANCE_FLOOR,
-  // SRC-12 designed behavior: noise-classified passages never pack.
-  noiseFilter: true,
-};
-
-export class AnswerCancelledError extends Error {
-  constructor() {
-    super("aborted before or during the answer path");
-    this.name = "AnswerCancelledError";
-  }
-}
-
-/** Pack passages so prompt + reserved completion fit the input ceiling
- * (~4k in / 700 out, ANS-02). At least one passage always survives: an
- * over-budget single passage degrades honestly instead of vanishing. */
-function packPassages(
-  question: string,
-  passages: Array<{ id: string; text: string }>,
-  maxInputTokens: number,
-  maxOutputTokens: number,
-): Array<{ id: string; text: string }> {
-  const packed = [...passages];
-  while (
-    packed.length > 1 &&
-    estimateTokens([question, ...packed.map((p) => p.text)].join(" ")) + maxOutputTokens >
-      maxInputTokens
-  ) {
-    packed.pop();
-  }
-  return packed;
-}
-
-/** ANS-12: advisory detector over the packed RAW excerpts (exactly what
- * the model is exposed to — the detector runs pre-neutralization, per
- * ANS-10). Pure and deterministic; nothing here ever alters a path. */
-function detectSuspects(packed: Array<{ id: string; text: string }>): SuspectReceipt {
-  const markers = new Set<EvidenceMarker>();
-  let passages = 0;
-  for (const p of packed) {
-    const found = suspectEvidenceMarkers(p.text);
-    if (found.length > 0) {
-      passages += 1;
-      for (const m of found) markers.add(m);
-    }
-  }
-  return { passages, markers: [...markers].sort() };
-}
-
-function evidenceOnlyAnswer(
-  ownerId: string,
-  question: string,
-  passages: Array<{ id: string; text: string }>,
-): Answer {
-  return {
-    ownerId,
-    question,
-    blocks: passages.map((p) => ({
-      kind: "paragraph" as const,
-      text: p.text,
-      citations: [p.id], // self-citation: the passage itself is the receipt
-    })),
-    evidenceOnly: true,
-  };
-}
-
+import { hybridSearch, searchPassages, type PassageHit } from "@do-sift/storage";
+import { AnswerCancelledError, DEFAULTS } from "./answer-contracts.js";
+import type {
+  AnswerOutcome,
+  AnswerServiceDeps,
+  AnswerServiceOptions,
+  AnswerTask,
+  UsageReconciliation,
+} from "./answer-contracts.js";
+import { detectSuspects, evidenceOnlyAnswer, packPassages } from "./answer-evidence.js";
+export type { AnswerRevisions } from "./answer-contracts.js";
+export type { AnswerServiceOptions } from "./answer-contracts.js";
+export type { AnswerServiceDeps } from "./answer-contracts.js";
+export type { AnswerTask } from "./answer-contracts.js";
+export type { UsageReconciliation } from "./answer-contracts.js";
+export type { SuspectReceipt } from "./answer-contracts.js";
+export type { AnswerOutcome } from "./answer-contracts.js";
+export { DEFAULT_RELEVANCE_FLOOR } from "./answer-contracts.js";
+export { AnswerCancelledError } from "./answer-contracts.js";
 export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServiceOptions = {}) {
   const maxInputTokens = options.maxInputTokens ?? DEFAULTS.maxInputTokens;
   const maxOutputTokens = options.maxOutputTokens ?? DEFAULTS.maxOutputTokens;
