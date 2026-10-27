@@ -172,6 +172,18 @@ Not changed: `package.json`, `package-lock.json`, any source or test file,
 any `scripts/` check, `do-harness.toml`, or `.github/workflows/`. No sensor,
 policy rule, or invariant was weakened.
 
+## Delivery
+
+Commit `0ead080` is pushed to `freebuff/071ea37620b8ea1b3d825184` (managed
+push credential, no force). The pull request was **not** opened from this
+cloud session: `gh` is unauthenticated and `gh pr create` exits 4
+("To get started with GitHub CLI, please run: gh auth login"), while the
+managed GitHub credential covers fetch/pull/push only. Open the PR from the
+pushed branch so CI runs. Locally, the linux CI job's commands (`npm run
+check`, `npm run test:coverage`) and the windows job's `npm run check:fast`
+all pass; the windows job itself was not executed here, and this change is
+docs/governance-only, adding no platform-specific behavior.
+
 ## Follow-ups
 
 Owner-gated (unchanged, re-verified):
