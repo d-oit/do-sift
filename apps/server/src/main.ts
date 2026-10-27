@@ -1,17 +1,5 @@
-/**
- * OPS-05/SRC-06 (plans 005-007, 003-004): the packaged service entrypoint's
- * composition. Wires in one place: local libSQL storage + migrations +
- * owner seed, auth (allowlist + optional loopback dev bypass), the RET-04
- * runtime (research + answer over hybrid retrieval), and the SRC-05 HTTP
- * server.
- *
- * Provider selection is fail-closed and honest (parseEnvConfig): fixture
- * mode is fully synthetic (nothing leaves the process); live mode exists
- * only for terms-gated providers — today Wikipedia, whose fetch path goes
- * through safe-fetch with every hop checked against the site-access policy
- * (exhaustive when DO_SIFT_FETCH_ALLOWLIST is set).
- */
-import { createClient, type Client } from "@libsql/client";
+/** Packaged server entrypoint (OPS-05): env -> config, then compose the app. Fixtures and composition types live in sibling modules. */
+import { createClient } from "@libsql/client";
 import {
   AuthService,
   JwksOidcVerifier,
@@ -39,7 +27,6 @@ import {
   createRuntime,
   listen,
   type ResearchRunOutcome,
-  type Runtime,
 } from "@do-sift/server";
 import {
   applyMigrations,
@@ -48,108 +35,18 @@ import {
   Repositories,
   type TextEmbedder,
 } from "@do-sift/storage";
-import { lookup as dnsLookup } from "node:dns/promises";
 import { parseEnvConfig, type AppConfig } from "./config.js";
-
-// The policy treats apps/ like plugin territory: no raw node:http import.
-// The server type comes from the factory's return type instead.
-type HttpServer = ReturnType<typeof createResearchServer>;
-
-/** Production resolver: every address goes through safe-fetch's guards. */
-const realDns: DnsResolver = {
-  lookup: async (host) => (await dnsLookup(host, { all: true })).map((a) => a.address),
-};
-
-/** Synthetic pages for fixture mode: .test hosts are reserved and never resolve. */
-const FIXTURE_PAGES: Record<string, { title: string; text: string }> = {
-  "https://docs.test/fts5": {
-    title: "FTS5 notes",
-    text: [
-      "FTS5 is SQLite's virtual table module for full-text search.",
-      "FTS5 ranks keyword matches with bm25, where lower scores are better.",
-      "The bm25 function weighs rarer terms more heavily in the ranking, so distinctive words dominate the score.",
-      "Prefix queries and the highlight() helper make FTS5 convenient for ad-hoc search interfaces.",
-    ].join("\n\n"),
-  },
-  "https://guide.test/hybrid": {
-    title: "Hybrid retrieval notes",
-    text: [
-      "Hybrid retrieval fuses lexical and dense rankings with reciprocal rank fusion.",
-      "Dense retrieval embeds passages into vectors and compares cosine similarity.",
-      "Fusion helps paraphrase queries that share little lexical overlap with the corpus.",
-    ].join("\n\n"),
-  },
-};
-
-const FIXTURE_SEARCH_HITS = [
-  { url: "https://docs.test/fts5", title: "FTS5 notes", snippet: "fts5 bm25 ranking", rank: 0 },
-  {
-    url: "https://guide.test/hybrid",
-    title: "Hybrid retrieval notes",
-    snippet: "hybrid retrieval fusion",
-    rank: 1,
-  },
-];
-
-/** The dated plans/sources.md entry that clears the live Wikipedia source. */
-const WIKIPEDIA_TERMS = {
-  termsAcceptedAt: "2026-09-14",
-  sourcesEntry: "Wikipedia (MediaWiki action API, en.wikipedia.org) — checked 2026-09-14",
-};
-
-/** The dated plans/sources.md entry that clears the live Marginalia source (SRC-15). */
-const MARGINALIA_TERMS = {
-  termsAcceptedAt: "2026-09-15",
-  sourcesEntry: "Marginalia Search (marginalia.nu) — checked 2026-09-15",
-};
-
-export interface ComposeDeps {
-  /** Test seam: overrides config.dbUrl (e.g. ":memory:" for hermetic tests). */
-  dbUrl?: string;
-  /**
-   * Test seam: overrides config.port. Windows quirk: re-binding the same
-   * fixed port back-to-back after close() can reset connections
-   * (SO_REUSEADDR double-bind), so hermetic tests pass 0 (ephemeral).
-   */
-  port?: number;
-  /** Test seam: fetch used by live mode (search adapter + safe-fetch). */
-  fetchImpl?: FetchLike | undefined;
-  /** Test seam: DNS resolver for safe-fetch (tests stay hermetic). */
-  dns?: DnsResolver | undefined;
-  /**
-   * Test seam: the resolved model API key value (production reads the env
-   * var NAMED by DO_SIFT_MODEL_API_KEY_SECRET instead — the secret itself
-   * never lives in config).
-   */
-  modelApiKey?: string | undefined;
-}
-
-export interface ComposedApp {
-  config: AppConfig;
-  server: HttpServer;
-  runtime: Runtime;
-  repositories: Repositories;
-  client: Client;
-  /** Bound port (the listen() result). */
-  port: number;
-  close(): Promise<void>;
-}
-
-/** Startup-log model label: key posture only — never names, never values. */
-function modelLabel(config: AppConfig): string {
-  if (config.modelProvider === undefined) return "not configured (/api/answer → 501)";
-  if (config.modelProvider === "fixture") return "fixture (synthetic, dev only)";
-  const oc = config.modelOpenAI;
-  if (oc === undefined) return "openai-compat (missing options — refusing would have fired first)";
-  if (oc.apiKeySecret === undefined) {
-    return `openai-compat (${oc.modelId} @ ${oc.baseURL}; keyless)`;
-  }
-  if (oc.useApiKey) {
-    return `openai-compat (${oc.modelId} @ ${oc.baseURL}; key: configured)`;
-  }
-  return `openai-compat (${oc.modelId} @ ${oc.baseURL}; key disabled by config)`;
-}
-
+import type { ComposeDeps, ComposedApp } from "./compose-contracts.js";
+import {
+  FIXTURE_PAGES,
+  FIXTURE_SEARCH_HITS,
+  MARGINALIA_TERMS,
+  WIKIPEDIA_TERMS,
+  modelLabel,
+  realDns,
+} from "./fixtures.js";
+export type { ComposeDeps } from "./compose-contracts.js";
+export type { ComposedApp } from "./compose-contracts.js";
 export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Promise<ComposedApp> {
   if (config.devBypass && !isLoopbackAddress(config.host)) {
     throw new Error("dev bypass requires a loopback host; refusing a remotely reachable bypass");

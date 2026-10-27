@@ -72,20 +72,21 @@ npm run policy        # repo policy checks alone
 npx vitest run <file> # single test file
 npm run signals -- verify --set feedback  # dev-signal feedback loop before handoff
 npm run signals -- status                 # dev-signal receipt state
-do-harness verify --set feedback  # upstream Rust CLI, same sensors (v0.3.4, ADR 0008)
+do-harness verify --set feedback  # upstream Rust CLI, same sensors (v0.3.5, ADR 0008)
 do-harness verify --record --set verification --task <ID>  # task-scoped receipt
 do-harness status --set verification  # upstream freshness (needs green --record)
 do-harness task add <title> --method <method>  # after the plan row exists
 do-harness task advance <ID>  # advance only after the configured sensor gate passes
 do-harness trace add --session <session> --task <ID> --command <command> --error-diff <diff> --resolution-steps <steps>
 do-harness compliance  # read-only posture mapping (OWASP/NIST/EU AI Act)
+do-harness loc         # advisory 500-line budget report (v0.3.5; no enforced invariant)
 ```
 
 Dev signals are computational receipts for the development loop (plan 008,
 ADR 0007; CLI home `scripts/dev-harness/` since plan 009 — workflow tooling,
 not a package): run the feedback set before claiming a task done. The
 upstream Rust `do-harness` CLI (ADR 0008, configured in `do-harness.toml`)
-drives the same sensors natively on Windows and in WSL (v0.3.4 prebuilt in
+drives the same sensors natively on Windows and in WSL (v0.3.5 prebuilt in
 `~/.local/bin`; since v0.1.2 the Windows PATH lookup finds `do-harness.exe`,
 so the `DO_HARNESS_BIN` workaround is obsolete and can be removed);
 `npm run signals` stays the enforced
@@ -94,6 +95,9 @@ hook/CI path. This repository's `plans/methods.json` maps task gates to its
 failures, fix the cause first, then clear it with
 `npm run signals -- errors clear --sensor <name>` — never clear a strike
 before the fix, and never weaken a sensor or edit its argv to make it pass.
+`do-harness loc` is feedforward only: it reports files over its 500-line
+budget, but no invariant in `plans/invariants.json` enforces a line limit
+(see plans/018 for the recorded over-budget files).
 
 Anything touching network credentials, deployments, publishing, or paid APIs
 is **not** in this list — see Approval boundaries.

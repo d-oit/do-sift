@@ -6,7 +6,9 @@ rulesets, enabling features, or adding `CODEOWNERS` are repository-settings
 actions owned by the maintainer (see "Approval boundaries" in `AGENTS.md` —
 changing `.github/workflows` also needs explicit approval). Nothing in this
 file is enforced by `scripts/policy.ts`; the enforced checks are the sensor
-pipeline and CI.
+pipeline and CI. One part **is** machine-checked: the `governance` sensor
+(`scripts/codeowners-check.ts`) fails when a path in the table below has no
+explicit, owned `.github/CODEOWNERS` rule, so the two cannot drift apart.
 
 ## Why
 
@@ -30,9 +32,13 @@ production code protects its deploy keys.
 
 ## Recommended protections (owner actions)
 
-1. **CODEOWNERS** — require review from a maintainer for the paths above,
-   e.g. `AGENTS.md @d-oit`, `plans/invariants.json @d-oit`,
-   `.github/workflows/ @d-oit`. Unreviewed agent PRs must not merge these.
+1. **CODEOWNERS** — in place: `.github/CODEOWNERS` covers every path in the
+   table above (plus itself, so the protection cannot be silently widened).
+   The remaining owner action is ruleset-side: "require review from Code
+   Owners" for these paths, so an unreviewed agent PR cannot merge them.
+   Validate with `GET /repos/{owner}/{repo}/codeowners/errors`: an owner
+   without write access makes every rule inert — that was this repository's
+   state until 2026-10-27, when the stale `@doswa` handle was replaced.
 2. **Branch ruleset on `main`** — the repo already requires `check (linux)`
    with strict required-status policy; keep it. Add "require review from
    Code Owners" for the sensitive paths and disallow force-pushes.

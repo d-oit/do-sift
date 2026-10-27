@@ -54,6 +54,7 @@ describe("SENSOR_DEFS", () => {
       "typecheck",
       "policy",
       "skills",
+      "governance",
       "tests",
       "evals",
       "release",
@@ -72,6 +73,10 @@ describe("SENSOR_DEFS", () => {
     ]);
     expect(def("policy").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/policy.ts"]);
     expect(def("skills").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/skills-check.ts"]);
+    expect(def("governance").args).toEqual([
+      nm("tsx", "dist/cli.mjs"),
+      "scripts/codeowners-check.ts",
+    ]);
     expect(def("tests").args).toEqual([nm("vitest", "vitest.mjs"), "run"]);
     expect(def("evals").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/eval.ts"]);
     expect(def("release").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/release-check.ts"]);
@@ -79,7 +84,7 @@ describe("SENSOR_DEFS", () => {
 
   it("partitions sensors across the named signal sets", () => {
     const shared: SensorDef["sets"] = ["feedback", "verification", "release"];
-    for (const name of ["format", "lint", "typecheck", "policy", "skills"]) {
+    for (const name of ["format", "lint", "typecheck", "policy", "skills", "governance"]) {
       expect(def(name).sets).toEqual(shared);
     }
     expect(def("tests").sets).toEqual(["verification", "release"]);
@@ -96,13 +101,21 @@ describe("SENSOR_DEFS", () => {
 
 describe("SIGNAL_SETS + sensorNamesForSet", () => {
   it("matches the frozen set composition", () => {
-    expect([...SIGNAL_SETS.feedback]).toEqual(["format", "lint", "typecheck", "policy", "skills"]);
+    expect([...SIGNAL_SETS.feedback]).toEqual([
+      "format",
+      "lint",
+      "typecheck",
+      "policy",
+      "skills",
+      "governance",
+    ]);
     expect([...SIGNAL_SETS.verification]).toEqual([
       "format",
       "lint",
       "typecheck",
       "policy",
       "skills",
+      "governance",
       "tests",
       "evals",
     ]);
@@ -112,6 +125,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "typecheck",
       "policy",
       "skills",
+      "governance",
       "tests",
       "evals",
       "release",

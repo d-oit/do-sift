@@ -56,7 +56,7 @@ do-sift/
 2. Red before green (`implement-slice`).
 3. Verify with exit codes: `npm run signals -- verify --set feedback`, then
    `npm run check` before handoff. Upstream runner: `do-harness verify
-   --record --set verification --task <ID>` (v0.3.4; same sensors).
+   --record --set verification --task <ID>` (v0.3.5; same sensors).
 4. Record evidence (files, commands, results, risks) in the plan file.
 5. Sensor firing twice → update the guide (`skill-distiller`), not the
    symptom.

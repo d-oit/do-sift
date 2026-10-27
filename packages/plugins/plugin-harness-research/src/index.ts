@@ -1,16 +1,4 @@
-/**
- * Research harness (SRC-01, plan 003). The zero-LLM pipeline:
- * search → site-policy check → fetch → extract → evidence storage.
- *
- * Architecture (ADR 0003/0004): this plugin orchestrates; it performs no
- * raw I/O. Search comes from an injected SearchProvider (terms gates live
- * in SRC-02 adapters), page fetching from an injected fetchPage the HOST
- * binds to safe-fetch (SSRF guards + size/time/MIME caps live there), and
- * storage through the owner-scoped Repositories. Every source is stored
- * with provenance BEFORE any merge or synthesis; nothing here calls a
- * model. Site policy: the contracts default-deny list gates every fetch;
- * the CORE-08 policy plugin extends this with robots/ToS registries.
- */
+/** Research harness plugin. Passage helpers live in passages.ts; this module composes the run. */
 import { createHash } from "node:crypto";
 import {
   SearchLimits,
@@ -25,10 +13,18 @@ import {
   backfillPassageNoiseClasses,
   cosineSimilarity,
   type PassageInput,
-  type PassageNoiseClass,
 } from "@do-sift/storage";
 import type { BudgetService, DocumentInput, Repositories, TextEmbedder } from "@do-sift/storage";
-
+import {
+  classifyNoise,
+  extractPassages,
+  hostOf,
+  isAbortError,
+  positiveInt,
+  throwIfAborted,
+} from "./passages.js";
+export { extractPassages } from "./passages.js";
+export { classifyNoise } from "./passages.js";
 export interface ResearchHarnessConfig {
   maxHits?: unknown;
   maxFetches?: unknown;
@@ -112,114 +108,6 @@ export interface ResearchHarnessInstance extends PluginInstance {
     },
     signal?: AbortSignal,
   ): Promise<ResearchRunSummary>;
-}
-
-/** Bound work per document; the readability extractor (SRC-03) replaces this. */
-const MAX_PASSAGES_PER_DOC = 20;
-const MAX_EXCERPT = 8192;
-const MIN_EXCERPT = 20;
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted === true) {
-    throw new DOMException("research aborted", "AbortError");
-  }
-}
-
-function isAbortError(error: unknown, signal?: AbortSignal): boolean {
-  return signal?.aborted === true || (error instanceof Error && error.name === "AbortError");
-}
-
-/** Split raw text into paragraph-ish excerpts (deterministic, no deps). */
-export function extractPassages(text: string): string[] {
-  return text
-    .split(/\r?\n\r?\n+/u)
-    .map((p) => p.replace(/\s+/gu, " ").trim())
-    .filter((p) => p.length >= MIN_EXCERPT)
-    .slice(0, MAX_PASSAGES_PER_DOC)
-    .map((p) => p.slice(0, MAX_EXCERPT));
-}
-
-/**
- * Noise-class classification (SRC-12, store-with-flag). A PURE text
- * heuristic applied per extracted chunk at store time; the class is a
- * receipt, exclusion happens at read time (answer pool only). Shapes are
- * anchored to the verbatim captured evidence in the QUAL run artifacts
- * (see plans/003-004-src-ans.md SRC-12/SRC-18). Precision-over-recall by
- * design: a false flag suppresses real evidence from the answer pool, a
- * miss only leaves one noisy block. Bare table-caption stubs and
- * mid-formula fragments are deliberately NOT classified — by text alone
- * a caption is indistinguishable from a legitimate short fact-bearing
- * sentence (segmentation work, disclosed not fixed). SRC-18 added the
- * `fragment` class for the HTML-conversion chunk shapes that ARE
- * text-distinguishable and reached the answer pool twice (run-008/009
- * case-07): short bullet items, pipe-separated page titles, short
- * unpunctuated truncations ending on a stopword/"part", and standalone
- * pure questions up to 100 chars.
- */
-export function classifyNoise(text: string): PassageNoiseClass | undefined {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return undefined;
-  // nav-list: a run of concatenated list-entry titles (the run-006
-  // case-06 shape — "List of … List of … List of …"), not prose.
-  const listLeads = trimmed.match(/\bList of\b/gu)?.length ?? 0;
-  if (listLeads >= 3) return "nav-list";
-  // reference: bibliography/citation markers (run-005 case-05, run-006
-  // case-06 shapes — "Retrieved <date>", doi:, ISBN).
-  if (
-    /\bRetrieved\s+[A-Z][a-z]+\s+\d{1,2}\b/u.test(trimmed) ||
-    /\bRetrieved\s+\d{1,2}\s+[A-Z][a-z]+\b/u.test(trimmed) ||
-    /\bdoi:\s?\S/u.test(trimmed) ||
-    /\bISBN\b/u.test(trimmed)
-  ) {
-    return "reference";
-  }
-  // stub: a chunk ENDING in a colon is a list lead-in whose list content
-  // was split away (the run-005 case-04 shape) — not self-contained prose.
-  if (trimmed.endsWith(":")) return "stub";
-  // reference (SRC-21): a chunk ENDING in a bracketed citation marker
-  // ("[BCCT11]", "[GMR85]" — the run-010/011 zkp.science bibliography
-  // heading class) is a bibliography/nav entry, not prose. Spike-verified
-  // against the page's full passage set: 4/4 of the residual set matched,
-  // 0/20 clean-block false positives.
-  if (/\[[A-Za-z]?[A-Z0-9]{2,12}[0-9]{0,4}\]\s*$/u.test(trimmed)) return "reference";
-  // fragment (SRC-18 + SRC-21): segmentation fragments from the raw-HTML
-  // conversion path. Each rule is a length-capped or shape-capped pattern
-  // a legitimate chunk essentially never takes: a leading bullet mark
-  // (converted list item), a two-part pipe split (the page <title>), an
-  // unpunctuated truncation ending on a stopword/"part" (a cut-off link
-  // title), or a standalone single question (hero/tagline chrome). SRC-21
-  // added (spike-verified, 0/20 false positives): a leading code-comment
-  // shard ("-- …" / "// …", the darksi.de class) and a leading-lowercase
-  // mid-sentence shard (paragraph starts are capitalized in real prose;
-  // the cost — losing a lowercase-starting content shard — is bounded and
-  // recorded). Terminal punctuation or interior sentences keep real prose
-  // unflagged; verb-initial marketing lines and mid-formula fragments stay
-  // deliberately UNCLASSIFIED (text-indistinguishable from content — the
-  // SRC-12 disclosure, re-affirmed by the SRC-21 spike).
-  if (trimmed.startsWith("- ") && trimmed.length <= 200) return "fragment";
-  if (trimmed.length <= 120 && /^[^|]+\|[^|]+$/u.test(trimmed)) return "fragment";
-  if (
-    trimmed.length <= 120 &&
-    !/[.!?…]["'”’)\]]?$/u.test(trimmed) &&
-    /\b(of|and|the|in|for|with|on|to|by|from|at|part)$/iu.test(trimmed)
-  ) {
-    return "fragment";
-  }
-  if (trimmed.length <= 100 && trimmed.endsWith("?") && !/[.!?]/u.test(trimmed.slice(0, -1))) {
-    return "fragment";
-  }
-  if (/^(--|\/\/)\s*\S/u.test(trimmed)) return "fragment";
-  if (/^[a-z]/u.test(trimmed)) return "fragment";
-  return undefined;
-}
-
-function positiveInt(value: unknown, fallback: number): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) return fallback;
-  return value;
-}
-
-function hostOf(url: string): string {
-  return new URL(url).hostname;
 }
 
 export function createResearchHarness(

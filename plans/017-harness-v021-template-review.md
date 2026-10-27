@@ -1,7 +1,8 @@
 # Plan 017 — do-harness v0.2.1 adoption + rust-2026-template review
 
-Status: done (2026-10-13) — executed rows closed with evidence below;
-follow-up rows are `proposed` and tracked here.
+Status: done (2026-10-13) — executed rows closed with evidence below. The
+only remaining row is TPL-01's ruleset half (owner setting; its in-repo
+CODEOWNERS half landed 2026-10-27, see plans/018 CLS-03).
 
 Trigger: owner request (2026-10-13): "analyze the codebase for missing
 implement, new feature; implement d-o-hub/do-harness into the coding
@@ -39,18 +40,19 @@ R-16 + first-live activation (owner-gated; see plan 013 non-goals).
 
 ## Tasks
 
-| ID     | Task                                                                                                                                                               | Status                  | Owner | Evidence |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ----- | -------- |
-| DHC-07 | Upgrade the Windows do-harness CLI to v0.2.1 (checksum + attestation verified), apply state migrations, and prove the committed `do-harness.toml` drives it        | done (2026-10-13)       | agent | below    |
-| DHC-08 | Refresh workflow docs/skills for v0.2.1: version lines, obsolete `DO_HARNESS_BIN` workaround, vetted `compliance` command                                          | done (2026-10-13)       | agent | below    |
-| DHC-09 | rust-2026-template review: adopt `llms.txt` + `docs/github-hardening.md`; record declined patterns with reasons                                                    | done (2026-10-13)       | agent | below    |
-| DHC-10 | Close DHC-06 with reproduction evidence (v0.2.1 custom-sensor gates work) — do NOT publish a stale upstream issue                                                  | done (2026-10-13)       | agent | below    |
-| DHC-11 | Adopt `do-harness pr ready` / `ci-explain` / `metrics pr` in the PR workflow docs at the next PR cycle (read-only tools)                                           | done (2026-10-15)       | agent | below    |
-| DHC-12 | WSL binary patch upgrade 0.2.0 → 0.2.1 (cosmetic; shared DB already migration-aligned)                                                                             | superseded (2026-10-22) | agent | below    |
-| TPL-01 | Repo-hardening owner actions per `docs/github-hardening.md`: CODEOWNERS for `AGENTS.md`/`plans/invariants.json`/`scripts/policy.ts`/`.github/workflows/` + ruleset | proposed                | owner | below    |
-| TPL-02 | Generated `.agents/SKILLS.md` skills index from frontmatter (rust-2026-template pattern) if the skill count grows                                                  | done (2026-10-22)       | agent | below    |
-| DHC-13 | File the upstream `loc`-discovery gap (generic/node workspaces) as a do-harness issue                                                                              | done (2026-10-13)       | agent | below    |     | TPL-03 | File the rust-2026-template cross-language docs gap as an issue | done (2026-10-13) | agent | below |
-| DHC-14 | File the do-harness task-lifecycle defect found while recording this plan (`task done` dead-end on method-less tasks)                                              | done (2026-10-13)       | agent | below    |
+| ID     | Task                                                                                                                                                        | Status                                            | Owner | Evidence                |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----- | ----------------------- |
+| DHC-07 | Upgrade the Windows do-harness CLI to v0.2.1 (checksum + attestation verified), apply state migrations, and prove the committed `do-harness.toml` drives it | done (2026-10-13)                                 | agent | below                   |
+| DHC-08 | Refresh workflow docs/skills for v0.2.1: version lines, obsolete `DO_HARNESS_BIN` workaround, vetted `compliance` command                                   | done (2026-10-13)                                 | agent | below                   |
+| DHC-09 | rust-2026-template review: adopt `llms.txt` + `docs/github-hardening.md`; record declined patterns with reasons                                             | done (2026-10-13)                                 | agent | below                   |
+| DHC-10 | Close DHC-06 with reproduction evidence (v0.2.1 custom-sensor gates work) — do NOT publish a stale upstream issue                                           | done (2026-10-13)                                 | agent | below                   |
+| DHC-11 | Adopt `do-harness pr ready` / `ci-explain` / `metrics pr` in the PR workflow docs at the next PR cycle (read-only tools)                                    | done (2026-10-15)                                 | agent | below                   |
+| DHC-12 | WSL binary patch upgrade 0.2.0 → 0.2.1 (cosmetic; shared DB already migration-aligned)                                                                      | superseded (2026-10-22)                           | agent | below                   |
+| TPL-01 | Repo-hardening per `docs/github-hardening.md`: CODEOWNERS for every sensitive path (in-repo) + ruleset review requirement (owner)                           | agent part done (2026-10-27); ruleset owner       | agent | plans/018 CLS-03        |
+| TPL-02 | Generated `.agents/SKILLS.md` skills index from frontmatter (rust-2026-template pattern) if the skill count grows                                           | done (2026-10-22)                                 | agent | below                   |
+| DHC-13 | File the upstream `loc`-discovery gap (generic/node workspaces) as a do-harness issue                                                                       | done (2026-10-13); follow-up adopted (2026-10-27) | agent | below; plans/018 CLS-02 |
+| TPL-03 | File the rust-2026-template cross-language docs gap as an issue                                                                                             | done (2026-10-13)                                 | agent | below                   |
+| DHC-14 | File the do-harness task-lifecycle defect found while recording this plan (`task done` dead-end on method-less tasks)                                       | done (2026-10-13)                                 | agent | below                   |
 
 ## DHC-07 evidence (2026-10-13, agent)
 
@@ -227,7 +229,9 @@ status` → **green**, halted: none.- Final tree (including this evidence prose)
 feedback` → **All sensors passed**, `do-harness errors list` → no pending
   error signatures — these runs post-date the last edit to this file.
 
-## Follow-upsExisting rows elsewhere (unchanged): **ANS-12** (done 2026-10-13:
+## Follow-ups
+
+Existing rows elsewhere (unchanged): **ANS-12** (done 2026-10-13:
 
 suspect receipts + `promptRevision` pr1→pr2 bump landed — pre-ANS-11
 cache rows now miss), **ANS-13** (`plans/013` — security review + QUAL),
@@ -235,12 +239,16 @@ cache rows now miss), **ANS-13** (`plans/013` — security review + QUAL),
 **R-16** and first-live activation (owner-gated: dated `sources.md` entry,
 paid grant where billable).
 
-New proposed rows: DHC-11, DHC-12, TPL-01, TPL-02 (table above). Filed
-upstream and to be tracked to resolution: **d-o-hub/do-harness#305**
-(DHC-13) and **d-oit/rust-2026-template#426** (TPL-03); if #305 lands a
-`--root`/`--ext` or language-aware discovery, adopt `do-harness loc` as a
-feedforward line in `AGENTS.md` and consider a `loc` sensor row in
-`do-harness.toml`.
+Rows from this plan: DHC-11 (done), DHC-12 (superseded), TPL-01 (agent
+part done 2026-10-27, ruleset owner), TPL-02 (done). Filed
+upstream: **d-o-hub/do-harness#305** (DHC-13) and
+**d-oit/rust-2026-template#426** (TPL-03). #305 **closed 2026-10-14**; the
+v0.3.5 CLI now discovers generic/Node workspace roots (`--root`, `--dir`,
+`--ext`), so the conditional is discharged: `do-harness loc` is an advisory
+feedforward command in `AGENTS.md` (verified 2026-10-27; evidence in
+plans/018 CLS-02). The `loc` sensor row is **declined** — no line-length
+invariant exists and 10 files already exceed the budget, so a gate would fail
+on pre-existing debt; that debt is queued as CLS-06 in plans/018 instead.
 
 ## Plan-creation evidence (2026-10-13, agent)
 

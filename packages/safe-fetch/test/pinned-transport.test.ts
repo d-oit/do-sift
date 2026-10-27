@@ -14,8 +14,8 @@
  *
  * safeFetch's guards refuse loopback/private addresses BEFORE any socket
  * by design, so end-to-end safeFetch tests against a loopback server are
- * impossible on purpose — the injected fetchImpl suite (safe-fetch.test.ts)
- * covers the guard loop, this file covers the transport itself.
+ * impossible on purpose — the injected fetchImpl suites (safe-fetch.guards.test.ts,
+ * safe-fetch.modes.test.ts) cover the guard loop, this file covers the transport itself.
  */
 import { createServer, type Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

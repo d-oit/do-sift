@@ -932,3 +932,15 @@ no TS 7 support shipped). Official docs root confirms `v8.70.0` latest.
 Decision: keep TS 7 DEFERRED, no code change. Tree verified clean:
 `npm run check:fast` 5/5, `npm run signals -- verify --set feedback`
 green (receipt `.do-harness/evidence.feedback.json`).
+
+### OPS-06 re-check (2026-10-27, agent) — TS 7 still blocked
+
+Re-verified from the registry, no code change: `npm view typescript-eslint
+version` → `8.72.1`, `peerDependencies.typescript` →
+`>=4.8.4 <6.1.0`; `npm view typescript version` → `7.0.2` (installed local
+`tsc` 5.9.3 stays in range); `npm view typescript-eslint dist-tags` →
+latest `8.72.1`, canary `8.72.2-alpha.2` (no TS 7 support);
+`typescript-eslint/typescript-eslint#10940` is still **open** (locked,
+team-assigned, blocking 32 issues). OPS-06 stays 4/5 with TS 7 deferred:
+the lint sensor is a hard gate and is never weakened. Re-check when
+typescript-eslint publishes a version whose peer range admits TS 7.
