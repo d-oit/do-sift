@@ -3,20 +3,24 @@
 # Security- and policy-critical paths require owner review. In a
 # single-maintainer repo this documents responsibility, not independent
 # review (see plans/risks.md R-08).
+#
+# Validated with GET /repos/d-oit/do-sift/codeowners/errors: GitHub reports
+# every pattern as "Unknown owner" if the handle lacks write access, so this
+# file names the repository owner (@d-oit) rather than a stale alias.
 
-*                       @doswa
+*                       @d-oit
 
 # Agent contract, immutable decisions, and the enforced gates themselves
-/AGENTS.md              @doswa
-/plans/invariants.json  @doswa
-/plans/adr/             @doswa
-/scripts/policy.ts      @doswa
+/AGENTS.md              @d-oit
+/plans/invariants.json  @d-oit
+/plans/adr/             @d-oit
+/scripts/policy.ts      @d-oit
 
 # Workflow tooling: sensor argv and hook entrypoints
-/do-harness.toml        @doswa
-/.githooks/             @doswa
-/.agents/skills/        @doswa
+/do-harness.toml        @d-oit
+/.githooks/             @d-oit
+/.agents/skills/        @d-oit
 
 # Release and CI infrastructure
-/.github/workflows/     @doswa
-/.github/CODEOWNERS     @doswa
+/.github/workflows/     @d-oit
+/.github/CODEOWNERS     @d-oit

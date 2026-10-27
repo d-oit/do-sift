@@ -88,8 +88,15 @@ review requirement remains an owner action).
 sensitive-paths table: `/AGENTS.md`, `/plans/invariants.json`, `/plans/adr/`,
 `/scripts/policy.ts`, `/do-harness.toml`, `/.githooks/`, `/.agents/skills/`,
 `/.github/workflows/` — plus `/.github/CODEOWNERS` itself so the protection
-cannot be silently widened. Owner handle is unchanged (`@doswa`), matching the
-existing file; no ownership semantics were invented.
+cannot be silently widened.
+
+**Defect found and fixed during verification.** The pre-existing file named
+`@doswa`, and `GET /repos/d-oit/do-sift/codeowners/errors` reports **every**
+rule as `kind: "Unknown owner"` (4/4 on `main`) — the guard was never
+enforcing anything. The owner handle is now `@d-oit` (the repository's own
+login, `users/d-oit` → 200). On the pre-fix branch the same endpoint returned
+the same error for all 10 patterns; after the fix it must return
+`{"errors":[]}` (see Verification).
 
 Not done (owner): the `main` ruleset change ("require review from Code Owners"
 for these paths). Repository settings are an approval boundary and the Freebuff
@@ -163,6 +170,9 @@ Commands run from the repo root after the final edit pass:
   `status: green`, `halted: none`.
 - `do-harness verify --set feedback` (v0.3.5) → **All sensors passed**.
 - `npm audit --json` → `{"total":0}`.
+- `GET /repos/d-oit/do-sift/codeowners/errors?ref=<branch>` →
+  `{"errors":[]}` after the owner-handle fix (before it: 10 ×
+  `Unknown owner`; on `main`: 4 × `Unknown owner`).
 - `npx prettier --write` over the changed Markdown; the `prettier` sensor
   above re-checks all tracked files. `llms.txt` and `.github/CODEOWNERS` have
   no prettier parser, so the sensor skips them; the CODEOWNERS patterns were

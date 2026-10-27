@@ -34,6 +34,9 @@ production code protects its deploy keys.
    table above (plus itself, so the protection cannot be silently widened).
    The remaining owner action is ruleset-side: "require review from Code
    Owners" for these paths, so an unreviewed agent PR cannot merge them.
+   Validate with `GET /repos/{owner}/{repo}/codeowners/errors`: an owner
+   without write access makes every rule inert — that was this repository's
+   state until 2026-10-27, when the stale `@doswa` handle was replaced.
 2. **Branch ruleset on `main`** — the repo already requires `check (linux)`
    with strict required-status policy; keep it. Add "require review from
    Code Owners" for the sensitive paths and disallow force-pushes.
