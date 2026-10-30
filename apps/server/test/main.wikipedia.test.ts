@@ -85,7 +85,7 @@ describe("composeApp wikipedia mode (live path, hermetic via fetch/dns seams)", 
       // Wikimedia UA policy (2026-09-14 research): the content fetch must
       // carry the descriptive adapter User-Agent, never a generic default.
       expect(extractInit?.headers).toMatchObject({
-        "user-agent": expect.stringContaining("do-sift"),
+        "user-agent": expect.stringContaining("https://github.com/d-oit/do-sift"),
       });
       // SRC-09: officially recommended formatversion=2 on API calls.
       expect(extractUrl).toContain("formatversion=2");

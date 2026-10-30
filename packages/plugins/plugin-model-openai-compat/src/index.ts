@@ -1,5 +1,6 @@
 /** openai-compat model plugin. Contracts, request-body assembly, and baseURL parsing live in sibling modules. */
 import {
+  USER_AGENT as CONTRACT_USER_AGENT,
   DraftAnswer,
   SynthesisRequest,
   estimateTokens,
@@ -31,7 +32,7 @@ export { DRAFT_BLOCKS_JSON_SCHEMA } from "./chat-body.js";
 export { DEFAULT_MAX_OUTPUT_TOKENS } from "./chat-body.js";
 export { MAX_OUTPUT_TOKENS_CEILING } from "./chat-body.js";
 export { buildChatBody } from "./chat-body.js";
-export const USER_AGENT = "do-sift/0.1 (research-with-receipts engine; contact via repo)";
+export const USER_AGENT = CONTRACT_USER_AGENT;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/u;
 
