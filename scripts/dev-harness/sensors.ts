@@ -81,11 +81,7 @@ export const SENSOR_DEFS: readonly SensorDef[] = [
   },
   {
     name: "build",
-    args: [
-      nodeModulesEntry("typescript", "bin/tsc"),
-      "-b",
-      join(ROOT, "tsconfig.build.json"),
-    ],
+    args: [nodeModulesEntry("typescript", "bin/tsc"), "-b", join(ROOT, "tsconfig.build.json")],
     sets: ["verification", "release"],
   },
   {
