@@ -289,7 +289,7 @@ describe("marginalia search provider (SRC-15)", () => {
       expect(sse).toContain('"documentsStored":1');
       // descriptive UA on the search call (same posture as wikipedia)
       expect(searchInit?.headers).toMatchObject({
-        "user-agent": expect.stringContaining("do-sift"),
+        "user-agent": expect.stringContaining("https://github.com/d-oit/do-sift"),
       });
       expect(pageFetches).toBe(1); // the generic page path fetched the hit URL
 

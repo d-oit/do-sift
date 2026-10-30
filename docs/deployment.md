@@ -91,9 +91,18 @@ unread upload is not drained indefinitely. Every HTTP response carries a
 server-generated `X-Request-Id`, and SSE events include the same correlation
 ID. Operational receipts are structured JSON with only the request ID, method,
 fixed route path (never raw path parameters), status, outcome, and duration.
-The entrypoint writes those receipts to stdout; bodies, authorization
-headers, prompts, fetched passages, and provider/model responses are not
-logged.
+
+### Upstream Provider Request Etiquette
+
+All outbound requests to upstream providers (Wikipedia, Marginalia, and OpenAI-compatible model hosts) adhere to an explicit request etiquette contract:
+
+- **Contactable Identity Header**: Outbound HTTP requests send a versioned, policy-compliant `User-Agent` header containing the maintainer contact URL (`do-sift/<version> (research-with-receipts engine; +https://github.com/d-oit/do-sift)`).
+- **Sequential Pacing & Serialization**: Upstream calls are paced and serialized per provider instance to eliminate hot concurrent bursts.
+- **`Retry-After` Handling**: When an HTTP 429 response is received, any instructed delay duration in `Retry-After` (delay-seconds or HTTP-date) is respected up to a bounded cap (5,000 ms).
+- **Bounded Retries & Timeouts**: Requests time out within explicit bounds (10s adapter timeouts, 15s transport backstops) and perform at most one retry for transient errors (e.g. 429 or 504 gateway responses) — never executing hot retry loops.
+  The entrypoint writes those receipts to stdout; bodies, authorization
+  headers, prompts, fetched passages, and provider/model responses are not
+  logged.
 
 ### Metrics (#67)
 

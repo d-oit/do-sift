@@ -80,7 +80,7 @@ describe("request mapping (single bounded OpenAI-shaped call)", () => {
     expect(log[0]?.init?.method).toBe("POST");
     const headers = new Headers(log[0]?.init?.headers);
     expect(headers.get("content-type")).toContain("application/json");
-    expect(headers.get("user-agent")).toContain("do-sift/");
+    expect(headers.get("user-agent")).toContain("https://github.com/d-oit/do-sift");
     expect(headers.get("authorization")).toBeNull(); // keyless unless the host injects one
     const body = JSON.parse(String(log[0]?.init?.body)) as Record<string, unknown>;
     expect(body.model).toBe("probe-model");
