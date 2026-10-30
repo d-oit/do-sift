@@ -57,6 +57,7 @@ describe("SENSOR_DEFS", () => {
       "governance",
       "tests",
       "evals",
+      "build",
       "release",
     ]);
   });
@@ -79,6 +80,11 @@ describe("SENSOR_DEFS", () => {
     ]);
     expect(def("tests").args).toEqual([nm("vitest", "vitest.mjs"), "run"]);
     expect(def("evals").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/eval.ts"]);
+    expect(def("build").args).toEqual([
+      nm("typescript", "bin/tsc"),
+      "-b",
+      join(ROOT, "tsconfig.build.json"),
+    ]);
     expect(def("release").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/release-check.ts"]);
   });
 
@@ -89,6 +95,7 @@ describe("SENSOR_DEFS", () => {
     }
     expect(def("tests").sets).toEqual(["verification", "release"]);
     expect(def("evals").sets).toEqual(["verification", "release"]);
+    expect(def("build").sets).toEqual(["verification", "release"]);
     expect(def("release").sets).toEqual(["release"]);
   });
 
@@ -118,6 +125,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "governance",
       "tests",
       "evals",
+      "build",
     ]);
     expect([...SIGNAL_SETS.release]).toEqual([
       "format",
@@ -128,6 +136,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "governance",
       "tests",
       "evals",
+      "build",
       "release",
     ]);
   });

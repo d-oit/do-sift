@@ -35,6 +35,7 @@ jobs:
       - name: verify version consistency
         run: npm run release:check
       - run: npm run check
+      - run: npm run build
       - name: record candidate
         run: |
           echo "candidate: v${{ inputs.version }} @ ${{ inputs.sha }}" | tee candidate.txt

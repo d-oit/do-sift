@@ -11,8 +11,8 @@ pre-push = []
 
 [signal-sets]
 feedback = ["format", "lint", "typecheck", "policy", "skills", "governance"]
-verification = ["format", "lint", "typecheck", "policy", "skills", "governance", "tests", "evals"]
-release = ["format", "lint", "typecheck", "policy", "skills", "governance", "tests", "evals", "release"]
+verification = ["format", "lint", "typecheck", "policy", "skills", "governance", "tests", "evals", "build"]
+release = ["format", "lint", "typecheck", "policy", "skills", "governance", "tests", "evals", "build", "release"]
 
 [[sensors]]
 name = "format"
@@ -45,6 +45,10 @@ argv = ["node", "node_modules/vitest/vitest.mjs", "run"]
 [[sensors]]
 name = "evals"
 argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/eval.ts"]
+
+[[sensors]]
+name = "build"
+argv = ["node", "node_modules/typescript/bin/tsc", "-b", "tsconfig.build.json"]
 
 [[sensors]]
 name = "release"

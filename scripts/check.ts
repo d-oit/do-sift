@@ -43,6 +43,11 @@ const steps: Step[] = [
   { name: "governance", args: [tsxCli, "scripts/codeowners-check.ts"], fast: true },
   { name: "tests", args: [pkgEntry("vitest", "vitest.mjs"), "run"], fast: false },
   { name: "evals", args: [tsxCli, "scripts/eval.ts"], fast: false },
+  {
+    name: "build",
+    args: [pkgEntry("typescript", "bin/tsc"), "-b", join(ROOT, "tsconfig.build.json")],
+    fast: false,
+  },
 ];
 
 const selected = steps.filter((s) => (FAST ? s.fast : true));

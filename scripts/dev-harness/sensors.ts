@@ -80,6 +80,15 @@ export const SENSOR_DEFS: readonly SensorDef[] = [
     sets: ["verification", "release"],
   },
   {
+    name: "build",
+    args: [
+      nodeModulesEntry("typescript", "bin/tsc"),
+      "-b",
+      join(ROOT, "tsconfig.build.json"),
+    ],
+    sets: ["verification", "release"],
+  },
+  {
     name: "release",
     args: [TSX_CLI, "scripts/release-check.ts"],
     sets: ["release"],

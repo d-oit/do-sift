@@ -111,6 +111,7 @@ export function isSensorInput(sensorName: string, relPath: string): boolean {
       }
       return /\.(?:[tj]sx?|mjs|cjs)$/u.test(norm);
     }
+    case "build":
     case "typecheck": {
       if (
         norm === "tsconfig.json" ||
