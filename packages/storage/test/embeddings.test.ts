@@ -253,7 +253,7 @@ describe("per-model embeddings coexist (#55)", () => {
   });
 });
 
-describe("backfillPassageEmbeddings", () => {
+describe("backfillPassageEmbeddings & validation", () => {
   it("embeds only passages lacking an embedding, then no-ops", async () => {
     const p1 = await seedPassage("owner-a", "first passage text");
     await seedPassage("owner-a", "second passage text");
@@ -261,11 +261,224 @@ describe("backfillPassageEmbeddings", () => {
       "first passage text": [1, 0],
       "second passage text": [0, 1],
     });
-    expect(await backfillPassageEmbeddings(client, "owner-a", embedder)).toBe(2);
-    expect(await backfillPassageEmbeddings(client, "owner-a", embedder)).toBe(0);
+    const res1 = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    expect(res1.passagesCompleted).toBe(2);
+    expect(res1.batchCount).toBe(1);
+
+    const res2 = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    expect(res2.passagesCompleted).toBe(0);
+    expect(res2.batchCount).toBe(0);
+
     const hits = await searchByEmbedding(client, "owner-a", "fake-embed-1", [1, 0], 10);
     expect(hits[0]?.passageId).toBe(p1); // cosine 1.0 outranks p2's 0.0
     expect(hits).toHaveLength(2);
+  });
+
+  it("handles empty store cleanly", async () => {
+    const embedder = makeFakeEmbedder({});
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    expect(res.passagesCompleted).toBe(0);
+    expect(res.batchCount).toBe(0);
+    expect(res.passagesSkipped).toBe(0);
+    expect(res.failureClass).toBeUndefined();
+  });
+
+  it("validates batchSize bounds", async () => {
+    const embedder = makeFakeEmbedder({});
+    await expect(
+      backfillPassageEmbeddings(client, "owner-a", embedder, { batchSize: 0 }),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      backfillPassageEmbeddings(client, "owner-a", embedder, { batchSize: 501 }),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      backfillPassageEmbeddings(client, "owner-a", embedder, { batchSize: 2.5 }),
+    ).rejects.toThrow(RangeError);
+  });
+
+  it("paginates large pending corpus using bounded keyset pagination and records metrics", async () => {
+    const TOTAL = 120;
+    const BATCH_SIZE = 50;
+    const texts: Record<string, number[]> = {};
+
+    for (let i = 0; i < TOTAL; i++) {
+      const excerpt = `corpus item ${i.toString().padStart(3, "0")}`;
+      await seedPassage("owner-a", excerpt);
+      texts[excerpt] = [1, 0.5];
+    }
+
+    const embedder = makeFakeEmbedder(texts);
+
+    const memBefore = process.memoryUsage().heapUsed;
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedder, {
+      batchSize: BATCH_SIZE,
+    });
+    const memAfter = process.memoryUsage().heapUsed;
+
+    expect(res.passagesCompleted).toBe(TOTAL);
+    expect(res.batchCount).toBe(3); // 50 + 50 + 20
+    expect(res.passagesSkipped).toBe(0);
+    expect(res.failureClass).toBeUndefined();
+    expect(res.durationMs).toBeGreaterThanOrEqual(0);
+
+    // Record runtime and memory delta
+    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-1", [1, 0.5], TOTAL);
+    expect(hits).toHaveLength(TOTAL);
+    expect(memAfter - memBefore).toBeDefined();
+  });
+
+  it("rejects partial embedder response (vector count mismatch) without corrupting existing rows", async () => {
+    await seedPassage("owner-a", "p1 text");
+    await seedPassage("owner-a", "p2 text");
+
+    const embedder: TextEmbedder = {
+      modelId: "fake-embed-partial",
+      async embedPassages() {
+        return [[1, 0]]; // returns 1 vector for 2 passages
+      },
+      async embedQuery() {
+        return [1, 0];
+      },
+    };
+
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    expect(res.passagesCompleted).toBe(0);
+    expect(res.passagesSkipped).toBe(2);
+    expect(res.failureClass).toBe("VectorCountMismatchError");
+
+    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-partial", [1, 0], 10);
+    expect(hits).toHaveLength(0);
+  });
+
+  it("rejects wrong dimension vectors", async () => {
+    const pExisting = await seedPassage("owner-a", "existing passage");
+    await seedPassage("owner-a", "dimension test passage");
+
+    const embedder: TextEmbedder = {
+      modelId: "fake-embed-dim",
+      async embedPassages() {
+        return [[1, 0, 0, 0]]; // length 4
+      },
+      async embedQuery() {
+        return [1, 0];
+      },
+    };
+
+    // Store first row with dimension 2 for an existing passage
+    await storePassageEmbeddings(client, "fake-embed-dim", [
+      { passageId: pExisting, ownerId: "owner-a", vector: [1, 0] },
+    ]);
+
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    expect(res.passagesCompleted).toBe(0);
+    expect(res.failureClass).toBe("VectorDimensionMismatchError");
+  });
+
+  it("rejects non-finite vector components (NaN / Infinity)", async () => {
+    await seedPassage("owner-a", "nan passage");
+
+    const embedderNaN: TextEmbedder = {
+      modelId: "fake-embed-nan",
+      async embedPassages() {
+        return [[NaN, 1.0]];
+      },
+      async embedQuery() {
+        return [1, 0];
+      },
+    };
+
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedderNaN);
+    expect(res.passagesCompleted).toBe(0);
+    expect(res.failureClass).toBe("NonFiniteVectorError");
+
+    await expect(
+      storePassageEmbeddings(client, "fake-embed-nan", [
+        { passageId: "p-inf", ownerId: "owner-a", vector: [Infinity, 0] },
+      ]),
+    ).rejects.toThrow();
+  });
+
+  it("rejects empty vectors before write", async () => {
+    await expect(
+      storePassageEmbeddings(client, "fake-embed-empty", [
+        { passageId: "p-empty", ownerId: "owner-a", vector: [] },
+      ]),
+    ).rejects.toThrow();
+  });
+
+  it("stops further batches on cancellation signal and allows idempotent resumption", async () => {
+    for (let i = 0; i < 15; i++) {
+      await seedPassage("owner-a", `cancel item ${i.toString().padStart(2, "0")}`);
+    }
+
+    const controller = new AbortController();
+    let batchCountCalls = 0;
+
+    const embedder: TextEmbedder = {
+      modelId: "fake-embed-cancel",
+      async embedPassages(texts) {
+        batchCountCalls++;
+        if (batchCountCalls === 1) {
+          // Abort after first batch completes
+          controller.abort();
+        }
+        return texts.map(() => [1, 0]);
+      },
+      async embedQuery() {
+        return [1, 0];
+      },
+    };
+
+    const res1 = await backfillPassageEmbeddings(client, "owner-a", embedder, {
+      batchSize: 5,
+      signal: controller.signal,
+    });
+
+    expect(res1.batchCount).toBe(1);
+    expect(res1.passagesCompleted).toBe(5);
+    expect(res1.failureClass).toBe("AbortError");
+
+    // Resume backfill without signal abort
+    const res2 = await backfillPassageEmbeddings(
+      client,
+      "owner-a",
+      {
+        modelId: "fake-embed-cancel",
+        async embedPassages(texts) {
+          return texts.map(() => [1, 0]);
+        },
+        async embedQuery() {
+          return [1, 0];
+        },
+      },
+      { batchSize: 5 },
+    );
+
+    expect(res2.passagesCompleted).toBe(10); // remaining 10 passages
+    expect(res2.failureClass).toBeUndefined();
+
+    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-cancel", [1, 0], 20);
+    expect(hits).toHaveLength(15);
+  });
+
+  it("rejects corrupt vector BLOBs safely during search without crashing", async () => {
+    const p1 = await seedPassage("owner-a", "valid passage");
+    const p2 = await seedPassage("owner-a", "corrupt passage");
+
+    await storePassageEmbeddings(client, "m-corrupt", [
+      { passageId: p1, ownerId: "owner-a", vector: [1, 0] },
+    ]);
+
+    // Insert corrupt raw bytes directly into SQL (3 bytes, not multiple of 4)
+    await client.execute({
+      sql: `INSERT INTO passage_embeddings (passage_id, owner_id, model_id, vector, created_at)
+            VALUES (?, ?, ?, x'010203', ?)`,
+      args: [p2, "owner-a", "m-corrupt", new Date().toISOString()],
+    });
+
+    const hits = await searchByEmbedding(client, "owner-a", "m-corrupt", [1, 0], 10);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.passageId).toBe(p1);
   });
 });
 
