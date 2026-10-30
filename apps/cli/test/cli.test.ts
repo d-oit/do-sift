@@ -10,7 +10,12 @@ let client: Client;
 let stdout: string[];
 let stderr: string[];
 
-function deps(extra: { writeNewFile?: (p: string, c: string) => Promise<void> } = {}) {
+function deps(
+  extra: {
+    writeNewFile?: (p: string, c: string) => Promise<void>;
+    now?: Date;
+  } = {},
+) {
   return {
     client,
     out: (line: string) => stdout.push(line),
@@ -113,10 +118,141 @@ describe("do-sift CLI (#67)", () => {
     expect(await readFile(out, "utf8")).toBe("keep me");
   });
 
-  it("exposes no write, delete, or migrate command", async () => {
+  it("exposes no write, delete, or migrate command directly on owners/migrate", async () => {
     expect(await runCli(["owners", "delete", "--owner", "alice"], deps())).toBe(2);
     expect(await runCli(["migrate"], deps())).toBe(2);
     expect(stderr.join("\n")).toContain("usage: do-sift-cli");
+  });
+
+  describe("retention prune", () => {
+    const fixedNow = new Date("2026-11-01T12:00:00.000Z");
+
+    beforeEach(async () => {
+      // Old jobs
+      await client.execute({
+        sql: "INSERT INTO jobs (id, owner_id, kind, payload_json, status, attempts, created_at, updated_at) VALUES ('j1', 'alice', 'k', '{}', 'done', 0, '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
+      });
+      await client.execute({
+        sql: "INSERT INTO jobs (id, owner_id, kind, payload_json, status, attempts, created_at, updated_at) VALUES ('j2', 'alice', 'k', '{}', 'queued', 0, '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
+      });
+      await client.execute({
+        sql: "INSERT INTO jobs (id, owner_id, kind, payload_json, status, attempts, created_at, updated_at) VALUES ('j3', 'bob', 'k', '{}', 'done', 0, '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
+      });
+    });
+
+    it("requires --owner flag", async () => {
+      expect(await runCli(["retention", "prune", "--retention-days", "7"], deps())).toBe(2);
+      expect(stderr.join("\n")).toContain("--owner is required");
+    });
+
+    it("requires either --retention-days or --cutoff and rejects mutually exclusive flags", async () => {
+      expect(await runCli(["retention", "prune", "--owner", "alice"], deps())).toBe(2);
+      expect(stderr.join("\n")).toContain("either --retention-days or --cutoff is required");
+
+      expect(
+        await runCli(
+          [
+            "retention",
+            "prune",
+            "--owner",
+            "alice",
+            "--retention-days",
+            "7",
+            "--cutoff",
+            "2026-10-01",
+          ],
+          deps(),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("cannot specify both --retention-days and --cutoff");
+    });
+
+    it("defaults to dry-run mode when --confirm is omitted", async () => {
+      expect(
+        await runCli(
+          ["retention", "prune", "--owner", "alice", "--retention-days", "7"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      const text = stdout.join("\n");
+      expect(text).toContain("mode\tdry-run");
+      expect(text).toContain("candidate_terminal_jobs\t1");
+      expect(text).toContain("candidate_closed_usage\t2");
+      expect(text).toContain("deleted_terminal_jobs\t0");
+      expect(text).toContain("deleted_closed_usage\t0");
+      expect(text).toContain("notice: dry-run mode completed. To execute deletion, pass --confirm");
+
+      // Verify no rows actually deleted
+      const jobsCount = await client.execute("SELECT COUNT(*) AS c FROM jobs");
+      expect(Number(jobsCount.rows[0]?.c)).toBe(3);
+    });
+
+    it("deletes rows only when --confirm is explicitly provided", async () => {
+      expect(
+        await runCli(
+          ["retention", "prune", "--owner", "alice", "--retention-days", "7", "--confirm"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      const text = stdout.join("\n");
+      expect(text).toContain("mode\tprune");
+      expect(text).toContain("candidate_terminal_jobs\t1");
+      expect(text).toContain("candidate_closed_usage\t2");
+      expect(text).toContain("deleted_terminal_jobs\t1");
+      expect(text).toContain("deleted_closed_usage\t2");
+      expect(text).not.toContain("notice: dry-run mode completed");
+
+      // Verify alice's done job was deleted, but alice's queued job and bob's job remain
+      const jobsRes = await client.execute("SELECT id FROM jobs ORDER BY id");
+      expect(jobsRes.rows.map((r) => r.id)).toEqual(["j2", "j3"]);
+
+      // Verify alice's usage entries were pruned, but bob's remains
+      const usageRes = await client.execute("SELECT id FROM usage_ledger ORDER BY id");
+      expect(usageRes.rows.map((r) => r.id)).toEqual(["u3"]);
+
+      // Verify documents & passages untouched
+      const docsRes = await client.execute("SELECT id FROM documents ORDER BY id");
+      expect(docsRes.rows.map((r) => r.id)).toEqual(["d1", "d2"]);
+    });
+
+    it("exports retention audit receipt to JSON using --out", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-retention-"));
+      const outPath = join(dir, "retention-receipt.json");
+
+      expect(
+        await runCli(
+          ["retention", "prune", "--owner", "alice", "--retention-days", "7", "--out", outPath],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+
+      const parsed = JSON.parse(await readFile(outPath, "utf8")) as {
+        ownerId: string;
+        cutoff: string;
+        dryRun: boolean;
+        candidates: { terminalJobs: number; closedUsage: number };
+        deleted: { terminalJobs: number; closedUsage: number };
+        success: boolean;
+      };
+
+      expect(parsed.ownerId).toBe("alice");
+      expect(parsed.dryRun).toBe(true);
+      expect(parsed.candidates.terminalJobs).toBe(1);
+      expect(parsed.candidates.closedUsage).toBe(2);
+      expect(parsed.deleted.terminalJobs).toBe(0);
+      expect(parsed.deleted.closedUsage).toBe(0);
+      expect(parsed.success).toBe(true);
+    });
+
+    it("rejects cutoff crossing into current UTC day", async () => {
+      expect(
+        await runCli(
+          ["retention", "prune", "--owner", "alice", "--cutoff", "2026-11-01T01:00:00Z"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(1);
+      expect(stderr.join("\n")).toContain("cannot cross into current UTC day");
+    });
   });
 
   describe("research list & research show", () => {

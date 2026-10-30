@@ -1,11 +1,12 @@
 /**
- * #67 owner/evidence CLI. Read-only by design: it lists owners, summarises
- * one day's usage, lists evidence, exports evidence, and lists/shows research runs.
- * It has no delete, write, or migrate path. Every data command requires
- * an explicit --owner, so ownership scoping is never implicit.
+ * Owner/evidence and maintenance CLI.
+ * It lists owners, summarises one day's usage, lists evidence, exports evidence,
+ * lists/shows research runs, and manages owner-scoped retention lifecycle.
+ * Every data command requires an explicit --owner, so ownership scoping is never implicit.
  */
 import type { Client } from "@libsql/client";
 import { writeFile } from "node:fs/promises";
+import { executeOwnerRetention } from "@do-sift/storage";
 
 export interface CliDeps {
   client: Client;
@@ -13,6 +14,8 @@ export interface CliDeps {
   err: (line: string) => void;
   /** Writes a new file; must fail if the path already exists. */
   writeNewFile?: (path: string, content: string) => Promise<void>;
+  /** Optional now provider for testing time semantics. */
+  now?: Date;
 }
 
 const USAGE = `usage: do-sift-cli <command> [options]
@@ -23,9 +26,10 @@ const USAGE = `usage: do-sift-cli <command> [options]
   evidence export --owner <id> --out <new-file.json>
   research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>]
+  retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
 `;
 
-const BOOLEAN_FLAGS = new Set(["show-question"]);
+const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm"]);
 
 function parseFlags(args: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -407,6 +411,75 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
           "fetched_at",
           "relevance_score",
         ]);
+      }
+
+      return 0;
+    }
+    if (group === "retention" && action === "prune") {
+      const owner = requireOwner(flags);
+      const rawRetentionDays = flags.get("retention-days");
+      const rawCutoff = flags.get("cutoff");
+
+      if (rawRetentionDays === undefined && rawCutoff === undefined) {
+        throw new CliUsageError("either --retention-days or --cutoff is required");
+      }
+      if (rawRetentionDays !== undefined && rawCutoff !== undefined) {
+        throw new CliUsageError("cannot specify both --retention-days and --cutoff");
+      }
+
+      let retentionDays: number | undefined;
+      let beforeIso: string | undefined;
+
+      if (rawRetentionDays !== undefined) {
+        retentionDays = Number(rawRetentionDays);
+        if (!Number.isInteger(retentionDays) || retentionDays < 1) {
+          throw new CliUsageError("--retention-days must be a positive integer");
+        }
+      }
+
+      if (rawCutoff !== undefined) {
+        beforeIso = parseTimestamp("cutoff", rawCutoff);
+      }
+
+      const explicitDryRun = flags.get("dry-run") === "true";
+      const confirmed = flags.get("confirm") === "true";
+
+      // If dry-run is explicitly requested or confirm is not provided, run in dry-run mode
+      const dryRun = explicitDryRun || !confirmed;
+
+      const receipt = await executeOwnerRetention(deps.client, {
+        ownerId: owner,
+        retentionDays,
+        beforeIso,
+        dryRun,
+        now: deps.now,
+      });
+
+      if (!receipt.success) {
+        deps.err(`error: retention failed: ${receipt.error}`);
+        return 1;
+      }
+
+      const out = flags.get("out");
+      if (out !== undefined && out !== "") {
+        const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
+        await write(out, `${JSON.stringify(receipt, null, 2)}\n`);
+        deps.out(`exported retention receipt to ${out}`);
+        return 0;
+      }
+
+      deps.out(`owner_id\t${receipt.ownerId}`);
+      deps.out(`cutoff\t${receipt.cutoff}`);
+      deps.out(`mode\t${receipt.dryRun ? "dry-run" : "prune"}`);
+      deps.out(`candidate_terminal_jobs\t${receipt.candidates.terminalJobs}`);
+      deps.out(`candidate_closed_usage\t${receipt.candidates.closedUsage}`);
+      deps.out(`deleted_terminal_jobs\t${receipt.deleted.terminalJobs}`);
+      deps.out(`deleted_closed_usage\t${receipt.deleted.closedUsage}`);
+      deps.out(`duration_ms\t${receipt.durationMs}`);
+      deps.out(`status\tsuccess`);
+
+      if (receipt.dryRun && !confirmed) {
+        deps.out("notice: dry-run mode completed. To execute deletion, pass --confirm");
       }
 
       return 0;
