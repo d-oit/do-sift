@@ -51,6 +51,24 @@ const tag = `v${version}`;
 const existingTag = git(["tag", "-l", tag]);
 if (existingTag === tag) errors.push(`tag ${tag} already exists`);
 
+// Ensure no failing live evaluation runs exist in evals/quality
+const qualDir = join(ROOT, "evals", "quality");
+if (existsSync(qualDir)) {
+  for (const f of readdirSync(qualDir)) {
+    if (f.startsWith("live-run-") && f.endsWith(".json")) {
+      try {
+        const content = readFileSync(join(qualDir, f), "utf8");
+        const parsed = JSON.parse(content) as { passed?: boolean };
+        if (parsed.passed === false) {
+          errors.push(`live evaluation artifact ${f} indicates a failed gate run`);
+        }
+      } catch {
+        errors.push(`live evaluation artifact ${f} is malformed JSON`);
+      }
+    }
+  }
+}
+
 const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]);
 const commit = git(["rev-parse", "HEAD"]);
 if (!commit) errors.push("not a git repository or no commits");
