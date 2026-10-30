@@ -25,6 +25,7 @@
  * field-filling).
  */
 import {
+  USER_AGENT as CONTRACT_USER_AGENT,
   SearchHit,
   SearchLimits,
   SearchQuery,
@@ -80,7 +81,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/u;
 const HOST = "api.marginalia.nu";
 const SEARCH_URL = `https://${HOST}/public/search/`;
 /** Descriptive UA (same posture as the wikipedia adapter; sources.md). */
-export const USER_AGENT = "do-sift/0.1 (research-with-receipts engine; contact via repo)";
+export const USER_AGENT = CONTRACT_USER_AGENT;
 /** Fixed wait before the single 502/503/504 gateway retry. */
 const GATEWAY_RETRY_MS = 1000;
 

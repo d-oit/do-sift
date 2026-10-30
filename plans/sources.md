@@ -31,8 +31,9 @@ re-verify before relying on an entry older than 90 days.
   title per passage) and is private reuse; any future _publishing_ of
   derived content must carry the same license. Verified date recorded per
   the 90-day re-check rule.
-- **Politeness envelope**: descriptive User-Agent required per API
-  etiquette; serialize requests; spike observed `retry-after=3` and
+- **Politeness envelope**: descriptive, contactable User-Agent required per API
+  etiquette (`do-sift/<version> (research-with-receipts engine; +https://github.com/d-oit/do-sift)`,
+  re-verified live 2026-10-30); serialize requests; spike observed `retry-after=3` and
   `x-envoy-ratelimited=true` on a 200 response — adapters must honor
   `Retry-After` when present and back off on 429, never retry hot.
 - **Companion fetch**: `https://en.wikipedia.org/api/rest_v1/page/html/<Title>`
@@ -87,7 +88,7 @@ re-verify before relying on an entry older than 90 days.
 - **Error envelope**: transient failures arrive as HTML status pages (observed `504 Gateway Time-out` nginx, twice
   under rapid probing) — adapters must treat non-JSON/non-200 as a typed error with bounded retry, never hot.
 - **Rate limits**: not numerically documented for the legacy public path; aggressive under bursts (observed 504s
-  at ~1 req/1.5s). Serialize + pace requests; honor Retry-After when present.
+  at ~1 req/1.5s). Serialize + pace requests; send descriptive contactable User-Agent; honor Retry-After when present.
 - **Recall value (why this entry exists)**: for the R-16 class question `What is the tallest mountain on Earth?` the
   MediaWiki search API never surfaces Mount Everest (top-20, all query shapes — 2026-09-15 spike); Marginalia's
   public API returns Everest-class pages at ranks 1-5 for the SAME raw question (live-verified this date), and

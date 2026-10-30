@@ -166,7 +166,7 @@ describe("search mapping (recorded fixtures)", () => {
     expect(log[0]?.url).toContain("action=query");
     expect(log[0]?.url).toContain("formatversion=2");
     expect(log[0]?.init?.headers).toMatchObject({
-      "user-agent": expect.stringContaining("do-sift"),
+      "user-agent": expect.stringContaining("https://github.com/d-oit/do-sift"),
     });
   });
 
