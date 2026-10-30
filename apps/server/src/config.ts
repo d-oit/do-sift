@@ -43,6 +43,12 @@ export interface OpenAICompatModelEnv {
   sourcesEntry: string;
 }
 
+export interface RetentionServerConfig {
+  enabled: boolean;
+  retentionDays: number;
+  intervalMs: number;
+}
+
 export interface AppConfig {
   dbUrl: string;
   migrationsDir: string;
@@ -65,6 +71,8 @@ export interface AppConfig {
   /** R-17: set iff all three DO_SIFT_OIDC_* variables are set. Unset → the
    * stub verifier refuses every bearer token. */
   oidc?: OidcEnvConfig | undefined;
+  /** Optional operator retention schedule configuration. */
+  retention?: RetentionServerConfig | undefined;
 }
 
 export interface OidcEnvConfig {
@@ -266,6 +274,28 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
     }
   }
 
+  const retentionEnabled = parseBool("DO_SIFT_RETENTION_ENABLED", env.DO_SIFT_RETENTION_ENABLED);
+  let retention: RetentionServerConfig | undefined;
+  if (retentionEnabled) {
+    const daysRaw = env.DO_SIFT_RETENTION_DAYS ?? "30";
+    const days = Number(daysRaw);
+    if (!Number.isInteger(days) || days < 1) {
+      throw new Error(`DO_SIFT_RETENTION_DAYS must be a positive integer >= 1 (got "${daysRaw}")`);
+    }
+    const intervalRaw = env.DO_SIFT_RETENTION_INTERVAL_MS ?? "86400000";
+    const intervalMs = Number(intervalRaw);
+    if (!Number.isInteger(intervalMs) || intervalMs < 60000) {
+      throw new Error(
+        `DO_SIFT_RETENTION_INTERVAL_MS must be an integer >= 60000 (got "${intervalRaw}")`,
+      );
+    }
+    retention = {
+      enabled: true,
+      retentionDays: days,
+      intervalMs,
+    };
+  }
+
   return {
     dbUrl,
     migrationsDir: env.DO_SIFT_DB_MIGRATIONS_DIR ?? "migrations",
@@ -282,5 +312,6 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
     ...(embedderRaw === "fastembed" ? { embedder: "fastembed" as const } : {}),
     fetchAllowlist: splitList(env.DO_SIFT_FETCH_ALLOWLIST),
     ...(oidcSet.length === 3 ? { oidc: oidcRaw } : {}),
+    ...(retention !== undefined ? { retention } : {}),
   };
 }

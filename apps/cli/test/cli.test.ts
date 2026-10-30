@@ -42,6 +42,10 @@ beforeEach(async () => {
             ('u2','alice',NULL,'settlement',50,10,0,1,'2026-10-02','settled','2026-10-02T00:00:00Z'),
             ('u3','bob',NULL,'reservation',999,0,0,0,'2026-10-02','open','2026-10-02T00:00:00Z')`,
   );
+  await client.execute(
+    `INSERT INTO jobs (id, owner_id, kind, payload_json, status, attempts, created_at, updated_at)
+     VALUES ('j1','alice','k','{}','done',0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+  );
 });
 
 afterEach(() => {
@@ -102,7 +106,59 @@ describe("do-sift CLI (#67)", () => {
     expect(await readFile(out, "utf8")).toBe("keep me");
   });
 
-  it("exposes no write, delete, or migrate command", async () => {
+  it("supports retention prune command with dry-run default and --confirm boundary", async () => {
+    // Missing owner
+    expect(await runCli(["retention", "prune", "--retention-days", "30"], deps())).toBe(2);
+    expect(stderr.join("\n")).toContain("--owner is required");
+
+    // Missing retention-days / cutoff
+    expect(await runCli(["retention", "prune", "--owner", "alice"], deps())).toBe(2);
+    expect(stderr.join("\n")).toContain("must specify either --retention-days or --cutoff");
+
+    // Default dry-run
+    stdout = [];
+    stderr = [];
+    expect(
+      await runCli(
+        ["retention", "prune", "--owner", "alice", "--cutoff", "2026-06-01T00:00:00.000Z"],
+        deps(),
+      ),
+    ).toBe(0);
+    const dryRunReceipt = JSON.parse(stdout.join("\n")) as {
+      dryRun: boolean;
+      jobsCandidateCount: number;
+      jobsDeletedCount: number;
+    };
+    expect(dryRunReceipt.dryRun).toBe(true);
+    expect(dryRunReceipt.jobsCandidateCount).toBe(1);
+    expect(dryRunReceipt.jobsDeletedCount).toBe(0);
+
+    // Actual deletion with --confirm
+    stdout = [];
+    stderr = [];
+    expect(
+      await runCli(
+        [
+          "retention",
+          "prune",
+          "--owner",
+          "alice",
+          "--cutoff",
+          "2026-06-01T00:00:00.000Z",
+          "--confirm",
+        ],
+        deps(),
+      ),
+    ).toBe(0);
+    const confirmReceipt = JSON.parse(stdout.join("\n")) as {
+      dryRun: boolean;
+      jobsDeletedCount: number;
+    };
+    expect(confirmReceipt.dryRun).toBe(false);
+    expect(confirmReceipt.jobsDeletedCount).toBe(1);
+  });
+
+  it("exposes no write or migrate command", async () => {
     expect(await runCli(["owners", "delete", "--owner", "alice"], deps())).toBe(2);
     expect(await runCli(["migrate"], deps())).toBe(2);
     expect(stderr.join("\n")).toContain("usage: do-sift-cli");

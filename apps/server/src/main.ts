@@ -29,10 +29,11 @@ import {
   type ResearchRunOutcome,
 } from "@do-sift/server";
 import {
+  Repositories,
+  ScheduledRetentionRunner,
   applyMigrations,
   createFastEmbedEmbedder,
   loadMigrations,
-  Repositories,
   type TextEmbedder,
 } from "@do-sift/storage";
 import { parseEnvConfig, type AppConfig } from "./config.js";
@@ -47,6 +48,7 @@ import {
 } from "./fixtures.js";
 export type { ComposeDeps } from "./compose-contracts.js";
 export type { ComposedApp } from "./compose-contracts.js";
+
 export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Promise<ComposedApp> {
   if (config.devBypass && !isLoopbackAddress(config.host)) {
     throw new Error("dev bypass requires a loopback host; refusing a remotely reachable bypass");
@@ -337,6 +339,32 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         }),
   });
 
+  let retentionRunner: ScheduledRetentionRunner | undefined;
+  if (config.retention?.enabled) {
+    retentionRunner = new ScheduledRetentionRunner({
+      client,
+      owners: config.owners,
+      retentionDays: config.retention.retentionDays,
+      intervalMs: config.retention.intervalMs,
+      onReceipt: (receipt) => {
+        console.log(
+          JSON.stringify({ component: "do-sift", type: "retention.receipt", ...receipt }),
+        );
+      },
+      onError: (ownerId, err) => {
+        console.error(
+          JSON.stringify({
+            component: "do-sift",
+            type: "retention.error",
+            ownerId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      },
+    });
+    retentionRunner.start();
+  }
+
   const port = await listen(server, config.host, deps.port ?? config.port);
 
   return {
@@ -347,6 +375,9 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     client,
     port,
     async close() {
+      if (retentionRunner !== undefined) {
+        retentionRunner.stop();
+      }
       // #62: stop accepting, drain briefly, then force-close idle SSE sockets
       // that would otherwise keep server.close() pending forever.
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));

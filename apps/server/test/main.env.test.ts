@@ -4,6 +4,7 @@ import type { FetchLike } from "@do-sift/safe-fetch";
 import { parseEnvConfig } from "../src/config.js";
 import { composeApp, type ComposedApp } from "../src/main.js";
 import { BASE_ENV } from "./main-support.js";
+
 describe("parseEnvConfig", () => {
   it("applies documented defaults for a minimal dev config", () => {
     const config = parseEnvConfig(BASE_ENV);
@@ -18,6 +19,53 @@ describe("parseEnvConfig", () => {
     expect(config.modelProvider).toBeUndefined();
     expect(config.embedder).toBeUndefined();
     expect(config.fetchAllowlist).toEqual([]);
+    expect(config.retention).toBeUndefined();
+  });
+
+  it("parses retention configuration when enabled", () => {
+    const config = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_RETENTION_ENABLED: "1",
+    });
+    expect(config.retention).toEqual({
+      enabled: true,
+      retentionDays: 30,
+      intervalMs: 86400000,
+    });
+
+    const custom = parseEnvConfig({
+      ...BASE_ENV,
+      DO_SIFT_RETENTION_ENABLED: "true",
+      DO_SIFT_RETENTION_DAYS: "14",
+      DO_SIFT_RETENTION_INTERVAL_MS: "3600000",
+    });
+    expect(custom.retention).toEqual({
+      enabled: true,
+      retentionDays: 14,
+      intervalMs: 3600000,
+    });
+  });
+
+  it("refuses invalid retention settings (fail closed)", () => {
+    expect(() => parseEnvConfig({ ...BASE_ENV, DO_SIFT_RETENTION_ENABLED: "maybe" })).toThrow(
+      /DO_SIFT_RETENTION_ENABLED/,
+    );
+
+    expect(() =>
+      parseEnvConfig({
+        ...BASE_ENV,
+        DO_SIFT_RETENTION_ENABLED: "1",
+        DO_SIFT_RETENTION_DAYS: "0",
+      }),
+    ).toThrow(/DO_SIFT_RETENTION_DAYS/);
+
+    expect(() =>
+      parseEnvConfig({
+        ...BASE_ENV,
+        DO_SIFT_RETENTION_ENABLED: "1",
+        DO_SIFT_RETENTION_INTERVAL_MS: "500",
+      }),
+    ).toThrow(/DO_SIFT_RETENTION_INTERVAL_MS/);
   });
 
   it("parses a comma-separated owner allowlist with trimming", () => {

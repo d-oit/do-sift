@@ -108,10 +108,9 @@ labelled `other`, so unknown paths cannot grow cardinality. Counters reset on
 process restart; scrape them from a single instance or aggregate with
 `sum()` across instances.
 
-### Owner and evidence CLI (#67)
+### Owner, evidence, and retention CLI (#67)
 
-`apps/cli` is a read-only operator tool. It reads the same libSQL database as
-the server and never writes, migrates, or deletes. Pass the database with
+`apps/cli` is an operator tool for owner inspection, usage aggregation, evidence export, and owner-scoped retention maintenance. Pass the database with
 `--db` or `DO_SIFT_DB_URL`; the CLI does not read any auth token from the
 environment.
 
@@ -120,11 +119,31 @@ npx tsx apps/cli/src/index.ts owners list --db file:do-sift.db
 npx tsx apps/cli/src/index.ts usage show --owner <id> --day 2026-10-14 --db file:do-sift.db
 npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
+npx tsx apps/cli/src/index.ts retention prune --owner <id> [--retention-days 30 | --cutoff 2026-01-01T00:00:00.000Z] [--dry-run] [--confirm] --db file:do-sift.db
 ```
 
 Every data command requires an explicit `--owner`. `evidence export` writes a
-new file and fails if the path already exists. Exit codes: `0` success, `2`
+new file and fails if the path already exists. `retention prune` defaults to dry-run reporting unless `--confirm` is explicitly passed. Exit codes: `0` success, `2`
 usage error, `1` runtime error.
+
+### Retention policy & maintenance runbook
+
+Retention is explicit, observable, scheduled or manually triggered, and owner-isolated.
+No destructive maintenance occurs during ordinary reads or unconfigured service startup.
+
+- **Scope:** Retention prunes only terminal jobs (`done`/`dead`) and closed usage ledger rows (`settled`/`expired`) older than the cutoff date.
+- **Exclusions:** Active reservations (`open`), queued or leased jobs, documents, passages, and answers are **never** touched by retention pruning. Evidence retention remains a separate, deliberate decision with legal and reproducibility implications.
+- **UTC Cutoff & Daily Cap Preservation:** The cutoff date is evaluated in UTC and strictly validated to be at or before the start of the current UTC day (`00:00:00.000Z`). Current-day usage records are preserved so daily budget caps remain accurate.
+- **Dry-run protection:** By default, CLI retention operations run in dry-run mode, returning candidate counts without deleting rows. Actual deletion requires explicit confirmation (`--confirm`).
+- **Structured Receipts:** Pruning operations produce structured JSON receipts recording the owner identifier, cutoff timestamp, dry-run posture, candidate and deleted counts, duration, and success status, without logging credentials or prompt/source text.
+
+**Pre-Maintenance Runbook:**
+
+1. **Backup:** Snapshot the database prior to maintenance using `backupToFile` (`VACUUM INTO`).
+2. **Rehearsal:** Open and verify the backup snapshot using `openRestore` and `verifyRestore` in tests or a staging environment.
+3. **Dry Run:** Run `retention prune --owner <id> --retention-days 30 --dry-run` to inspect candidate counts.
+4. **Prune:** Run `retention prune --owner <id> --retention-days 30 --confirm` to execute deletion.
+5. **Failure Recovery:** If interrupted, retention operations execute within SQLite write transactions (`client.transaction('write')`). If an operation fails, the transaction rolls back, leaving rows intact.
 
 ### Rate-limit ownership
 
@@ -180,6 +199,9 @@ npx tsx apps/server/src/index.ts
 | `DO_SIFT_MODEL_RESPONSE_FORMAT`                                           | `strict` (default, constrained-decoding hosts) / `best-effort` / `json`                                                                                                                                                                               | strict               |
 | `DO_SIFT_MODEL_SCHEMA_NAME`                                               | Schema name sent in `response_format`                                                                                                                                                                                                                 | grounded_answer      |
 | `DO_SIFT_MODEL_TERMS_ACCEPTED_AT` / `DO_SIFT_MODEL_SOURCES_ENTRY`         | Dated terms gate (with `openai-compat` only): checked date + `plans/sources.md` entry, mirrored into plugin activation (paid hosts additionally need router gate + INV-003 grant)                                                                     | —                    |
+| `DO_SIFT_RETENTION_ENABLED`                                               | `1`/`true` (default `0`/`false`): enable scheduled retention runner for configured owners                                                                                                                                                             | off                  |
+| `DO_SIFT_RETENTION_DAYS`                                                  | Days of terminal job/usage history to retain (integer >= 1)                                                                                                                                                                                           | `30`                 |
+| `DO_SIFT_RETENTION_INTERVAL_MS`                                           | Scheduled check interval in milliseconds (integer >= 60000)                                                                                                                                                                                           | `86400000`           |
 
 Migrations run automatically at startup; every allowlisted owner is
 seeded into the owners registry. Research mode makes zero LLM calls by
