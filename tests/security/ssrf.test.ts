@@ -14,7 +14,7 @@ import {
 } from "@do-sift/safe-fetch";
 import { createSiteAccessPolicy, type SiteAccessInstance } from "@do-sift/plugin-policy-siteaccess";
 
-const PUBLIC = "203.0.113.10";
+const PUBLIC = "93.184.215.14";
 
 async function policyLayer(): Promise<SiteAccessInstance> {
   const policy = createSiteAccessPolicy();

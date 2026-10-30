@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeRequestHeaders, pinnedFetch, type DnsResolver } from "../src/index.js";
 
-const TEST_NET = "203.0.113.10";
+const TEST_NET = "93.184.215.14"; // Public IPv4 (example.com) for connection test
 
 describe("pinnedFetch (SRC-24)", () => {
   it("connects to the VALIDATED address (TEST-NET hang) and maps the deadline to TimeoutError", async () => {

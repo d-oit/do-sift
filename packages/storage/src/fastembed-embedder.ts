@@ -24,6 +24,8 @@ const HF_BASE_URL = "https://huggingface.co/Qdrant/bge-small-en-v1.5-onnx-Q/reso
 export interface FastEmbedEmbedderOptions {
   /** Model cache directory; defaults to <cwd>/.fastembed_cache (gitignored). */
   cacheDir?: string | undefined;
+  /** Injectable fetch implementation for model download (defaults to global fetch). */
+  fetchImpl?: typeof fetch | undefined;
 }
 
 /**
@@ -31,7 +33,10 @@ export interface FastEmbedEmbedderOptions {
  * Downloads directly from HuggingFace if missing to avoid fastembed's
  * broken GCS tarball URL.
  */
-async function ensureModelFiles(cacheDir: string): Promise<string> {
+async function ensureModelFiles(
+  cacheDir: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
   const modelDir = join(cacheDir, "fast-bge-small-en-v1.5");
   if (!existsSync(modelDir)) {
     mkdirSync(modelDir, { recursive: true });
@@ -39,7 +44,7 @@ async function ensureModelFiles(cacheDir: string): Promise<string> {
   for (const file of HF_MODEL_FILES) {
     const filePath = join(modelDir, file);
     if (!existsSync(filePath)) {
-      const response = await fetch(`${HF_BASE_URL}/${file}`, {
+      const response = await fetchImpl(`${HF_BASE_URL}/${file}`, {
         headers: { "user-agent": "Mozilla/5.0" },
       });
       if (!response.ok) {
@@ -67,7 +72,7 @@ export async function createFastEmbedEmbedder(
   options: FastEmbedEmbedderOptions = {},
 ): Promise<TextEmbedder> {
   const cacheDir = options.cacheDir ?? join(process.cwd(), ".fastembed_cache");
-  await ensureModelFiles(cacheDir);
+  await ensureModelFiles(cacheDir, options.fetchImpl);
   const embedder = await FlagEmbedding.init({
     model: EmbeddingModel.BGESmallENV15,
     cacheDir,
