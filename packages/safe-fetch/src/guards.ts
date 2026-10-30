@@ -86,17 +86,22 @@ export function expandIpv6(host: string): readonly number[] | null {
 }
 
 function isPrivateIpv4Octets(o: readonly number[]): boolean {
-  const [a = 0, b = 0] = o;
-  if (a === 0) return true; // 0.0.0.0/8 "this network"
-  if (a === 10) return true; // 10.0.0.0/8 private
-  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
-  if (a === 127) return true; // loopback
-  if (a === 169 && b === 254) return true; // link-local
-  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
-  if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
-  if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking
-  if (a === 192 && b === 0 && o[2] === 0) return true; // 192.0.0.0/24 IETF protocol
-  if (a >= 224) return true; // multicast + reserved
+  const [a = 0, b = 0, c = 0] = o;
+  if (a === 0) return true; // 0.0.0.0/8 "this host on this network" (RFC 1122)
+  if (a === 10) return true; // 10.0.0.0/8 private (RFC 1918)
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT (RFC 6598)
+  if (a === 127) return true; // 127.0.0.0/8 loopback (RFC 1122)
+  if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local (RFC 3927)
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private (RFC 1918)
+  if (a === 192 && b === 0 && c === 0) return true; // 192.0.0.0/24 IETF Protocol Assignments (RFC 6890)
+  if (a === 192 && b === 0 && c === 2) return true; // 192.0.2.0/24 Documentation (TEST-NET-1) (RFC 5737)
+  if (a === 192 && b === 88 && c === 99) return true; // 192.88.99.0/24 6to4 Relay Anycast (RFC 3068 / RFC 7526)
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16 private (RFC 1918)
+  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmarking (RFC 2544)
+  if (a === 198 && b === 51 && c === 100) return true; // 198.51.100.0/24 Documentation (TEST-NET-2) (RFC 5737)
+  if (a === 203 && b === 0 && c === 113) return true; // 203.0.113.0/24 Documentation (TEST-NET-3) (RFC 5737)
+  if (a >= 224 && a <= 239) return true; // 224.0.0.0/4 Multicast (RFC 5771)
+  if (a >= 240) return true; // 240.0.0.0/4 Reserved / Limited Broadcast (RFC 1112 / RFC 919)
   return false;
 }
 
@@ -113,12 +118,21 @@ export function isPrivateIpv6(host: string): boolean {
 
 function isPrivateIpv6Groups(g: readonly number[]): boolean {
   const allZero = g.every((x) => x === 0);
-  if (allZero) return true; // unspecified ::
+  if (allZero) return true; // unspecified :: (RFC 4291)
+
+  // IPv4-mapped ::ffff:a.b.c.d — inherit the v4 verdict (RFC 4291)
   if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0xffff) {
-    // IPv4-mapped ::ffff:a.b.c.d — inherit the v4 verdict
     const v4 = [(g[6] ?? 0) >> 8, (g[6] ?? 0) & 0xff, (g[7] ?? 0) >> 8, (g[7] ?? 0) & 0xff];
     return isPrivateIpv4Octets(v4);
   }
+
+  // IPv4-translated ::ffff:0:a.b.c.d (RFC 2765 / RFC 6052)
+  if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0xffff && g[5] === 0) {
+    const v4 = [(g[6] ?? 0) >> 8, (g[6] ?? 0) & 0xff, (g[7] ?? 0) >> 8, (g[7] ?? 0) & 0xff];
+    return isPrivateIpv4Octets(v4);
+  }
+
+  // Low forms / unspecified / loopback ::1 / IPv4-compatible ::a.b.c.d (deprecated RFC 4291)
   if (
     g[0] === 0 &&
     g[1] === 0 &&
@@ -128,10 +142,26 @@ function isPrivateIpv6Groups(g: readonly number[]): boolean {
     g[5] === 0 &&
     g[6] === 0
   ) {
-    return true; // ::/96-ish low forms incl. ::1 loopback
+    return true; // ::/128, ::1/128, ::a.b.c.d
   }
-  if ((g[0] ?? 0) === 0xfe80 || (g[0] ?? 0) === 0xfec0) return true; // link-local (fe80::/10, fec0::/10 deprecated site-local)
-  if (((g[0] ?? 0) & 0xfe00) === 0xfc00) return true; // unique local fc00::/7
+
+  const g0 = g[0] ?? 0;
+  const g1 = g[1] ?? 0;
+
+  if (g0 === 0x0100 && g1 === 0) return true; // 100::/64 Discard-Only Prefix (RFC 6666)
+  if (g0 === 0x0064 && (g1 & 0xffc0) === 0x0000) return true; // 64:ff9b::/96 Well-Known Prefix (NAT64 RFC 6052) - may translate to private v4
+  if (g0 === 0x0064 && g1 === 0xff9b) return true; // 64:ff9b:1::/48 Local-IPv4/IPv6 Translation (RFC 8215)
+  if (g0 === 0x2001 && g1 === 0x0000) return true; // 2001::/32 TEREDO (RFC 4380)
+  if (g0 === 0x2001 && g1 === 0x0002 && (g[2] ?? 0) === 0) return true; // 2001:2::/48 Benchmarking (RFC 5180)
+  if (g0 === 0x2001 && (g1 & 0xfff0) === 0x0010) return true; // 2001:10::/28 ORCHIDv2 (RFC 7343)
+  if (g0 === 0x2001 && (g1 & 0xffe0) === 0x0020) return true; // 2001:20::/28 ORCHID (RFC 4843)
+  if (g0 === 0x2001 && g1 === 0x0db8) return true; // 2001:db8::/32 Documentation (RFC 3849)
+  if (g0 === 0x2002) return true; // 2002::/16 6to4 (RFC 3056)
+  if ((g0 & 0xffc0) === 0xfe80) return true; // fe80::/10 Link-Local (RFC 4291)
+  if ((g0 & 0xffc0) === 0xfec0) return true; // fec0::/10 Deprecated Site-Local (RFC 3879)
+  if ((g0 & 0xfe00) === 0xfc00) return true; // fc00::/7 Unique Local ULA (RFC 4193)
+  if ((g0 & 0xff00) === 0xff00) return true; // ff00::/8 Multicast (RFC 4291)
+
   return false;
 }
 

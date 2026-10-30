@@ -44,7 +44,13 @@ describe("URL guards", () => {
       "0.0.0.0",
       "100.64.1.1",
       "198.18.0.5",
+      "192.0.2.1",
+      "198.51.100.25",
+      "203.0.113.99",
+      "192.88.99.1",
       "224.0.0.1",
+      "240.0.0.1",
+      "255.255.255.255",
     ]) {
       expect(kindOf(() => assertPublicHttpUrl(`http://${host}/`))).toBe("private-ip");
     }
@@ -57,7 +63,22 @@ describe("URL guards", () => {
   });
 
   it("rejects private IPv6 literals", () => {
-    for (const host of ["[::1]", "[fe80::1]", "[fc00::1]", "[::ffff:10.0.0.1]", "[::]"]) {
+    for (const host of [
+      "[::1]",
+      "[fe80::1]",
+      "[fc00::1]",
+      "[fd00::1234]",
+      "[::ffff:10.0.0.1]",
+      "[::ffff:0:10.0.0.1]",
+      "[2001:db8::1]",
+      "[100::1]",
+      "[64:ff9b::192.168.1.1]",
+      "[2001:2::1]",
+      "[2001:10::1]",
+      "[2002:a00:1::1]",
+      "[ff02::1]",
+      "[::]",
+    ]) {
       expect(kindOf(() => assertPublicHttpUrl(`http://${host}/`))).toBe("private-ip");
     }
   });
@@ -85,14 +106,16 @@ describe("IP classification", () => {
     expect(isPrivateIpv4(PUBLIC_V4)).toBe(false);
   });
 
-  it("classifies IPv6 including mapped IPv4", () => {
+  it("classifies IPv6 including mapped IPv4 and special-purpose registries", () => {
     expect(isPrivateIpv6("::1")).toBe(true);
     expect(isPrivateIpv6("::")).toBe(true);
     expect(isPrivateIpv6("fe80::1")).toBe(true);
     expect(isPrivateIpv6("fd00::1")).toBe(true);
     expect(isPrivateIpv6("::ffff:192.168.1.1")).toBe(true);
-    expect(isPrivateIpv6("::ffff:203.0.113.5")).toBe(false);
-    expect(isPrivateIpv6("2001:db8::1")).toBe(false);
+    expect(isPrivateIpv6("::ffff:203.0.113.5")).toBe(true); // documentation range is private/non-routable
+    expect(isPrivateIpv6("2001:db8::1")).toBe(true); // documentation range is private/non-routable
+    expect(isPrivateIpv6("2607:f8b0:4005:805::200e")).toBe(false); // Google public IPv6
+    expect(isPrivateIpv6("2606:4700:4700::1111")).toBe(false); // Cloudflare public IPv6
   });
 
   it("expands compressed forms", () => {

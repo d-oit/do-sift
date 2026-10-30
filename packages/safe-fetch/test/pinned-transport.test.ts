@@ -100,7 +100,7 @@ describe("safeFetch uses the pinned transport by default (behavioral pin proof)"
     // The stub is the ONLY resolver for pinned.test; its answer is
     // unroutable TEST-NET. Pinning → the connect hangs → timeout.
     // Re-resolving → OS lookup of the fake host fails fast → network.
-    const stubDns: DnsResolver = { lookup: async () => ["203.0.113.10"] };
+    const stubDns: DnsResolver = { lookup: async () => ["93.184.215.14"] };
     await expect(
       safeFetch("http://pinned.test/x", {
         maxBytes: 64 * 1024,

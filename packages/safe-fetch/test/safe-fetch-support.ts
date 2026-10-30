@@ -5,8 +5,8 @@ import {
   type FetchLike,
   type SafeFetchOptions,
 } from "../src/index.js";
-export const PUBLIC_V4 = "203.0.113.10";
-export const PUBLIC_V6 = "2001:db8::10";
+export const PUBLIC_V4 = "93.184.215.14"; // example.com public IPv4
+export const PUBLIC_V6 = "2606:4700:4700::1111"; // Cloudflare public IPv6
 export function makeDns(addrs: string[]): DnsResolver {
   return { lookup: async () => addrs };
 }
