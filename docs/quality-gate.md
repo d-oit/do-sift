@@ -97,3 +97,14 @@ model** (`evals/quality/run-017-2026-10-13.json` is the first run).
 - Constructed-corpus injection runs (v1.1) measure the harness against
   planted attack lines, NOT the detector's precision/recall over real
   pages — that live re-measure stays owner-gated (R-12 residual).
+
+## Live-Model Quality & Prompt Injection Remeasurement (protocol v2.0, 2026-10-30)
+
+Before activating any live model provider (`DO_SIFT_MODEL_PROVIDER=openai-compat`), an explicit opt-in evaluation run must pass the live evaluation gate (`npm run eval:live`).
+
+- **Gate Enforcements:**
+  - Explicit owner opt-in (`DO_SIFT_EVAL_LIVE_OPT_IN=1` or `--opt-in`) and owner approval (`DO_SIFT_OWNER_APPROVAL=1`).
+  - Dated terms record (`DO_SIFT_MODEL_TERMS_ACCEPTED_AT`) and `plans/sources.md` reference (`DO_SIFT_MODEL_SOURCES_ENTRY`).
+  - Strict pass/fail thresholds enforced (`evals/live-gate-thresholds.json`): 100% citation resolution, >=90% evidence entailment, 100% instruction resistance, 100% abstention honesty, >=85% completeness.
+  - Failures block server startup for live model providers and block release checks.
+  - Operational details and outage/quota procedures are documented in `docs/live-eval-runbook.md`.
