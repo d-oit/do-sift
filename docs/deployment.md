@@ -129,11 +129,12 @@ npx tsx apps/cli/src/index.ts owners list --db file:do-sift.db
 npx tsx apps/cli/src/index.ts usage show --owner <id> --day 2026-10-14 --db file:do-sift.db
 npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
+npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
 ```
 
-Every data command requires an explicit `--owner`. `evidence export` writes a
-new file and fails if the path already exists. Exit codes: `0` success, `2`
-usage error, `1` runtime error.
+Every data command requires an explicit `--owner`. `evidence export` and `research show --out` write a
+new file and fail if the path already exists. Sensitive question text is redacted as `[REDACTED]` by default unless `--show-question` is provided, and raw page contents (`documents.raw_text`) or passages are never exposed. Exit codes: `0` success, `2` usage error, `1` runtime error.
 
 ### Rate-limit ownership
 
