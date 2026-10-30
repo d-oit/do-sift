@@ -24,13 +24,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+          cache: npm
       - run: npm ci
-      - name: verify sha is on main
-        run: git merge-base --is-ancestor "${{ inputs.sha }}" origin/main
+      - name: verify sha is on main and checkout candidate
+        run: |
+          git merge-base --is-ancestor "${{ inputs.sha }}" origin/main
+          git checkout "${{ inputs.sha }}"
       - name: verify version consistency
         run: npm run release:check
       - run: npm run check
