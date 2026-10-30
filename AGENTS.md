@@ -66,7 +66,8 @@ it after. LLM self-assessment never substitutes for a sensor exit code.
 
 ```bash
 npm run check:fast    # during development
-npm run check         # before handing off
+npm run check         # before handing off (includes build)
+npm run build         # explicit tsconfig.build.json production build
 npm run eval:offline  # deterministic evals
 npm run policy        # repo policy checks alone
 npx vitest run <file> # single test file

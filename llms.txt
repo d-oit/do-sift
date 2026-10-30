@@ -65,7 +65,8 @@ do-sift/
 
 ```bash
 npm run check:fast     # fast gate (format, lint, typecheck, policy, skills)
-npm run check          # full gate incl. tests + offline evals
+npm run check          # full gate incl. tests, evals, build
+npm run build          # canonical production build
 npm run signals -- status   # receipt freshness (green|stale|red|missing)
 do-harness doctor      # upstream CLI diagnostics (ADR 0008)
 do-harness compliance  # read-only OWASP/NIST/EU AI Act posture mapping
