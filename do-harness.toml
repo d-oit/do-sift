@@ -3,7 +3,7 @@
 # scripts/check.ts. The enforced hook/CI path remains `npm run signals`
 # (first-party TS CLI); this file serves `do-harness verify` / `status` /
 # `doctor` for agents with the Rust toolchain installed. See plans/009.
-language = "generic"
+language = "node"
 
 [hooks]
 pre-commit = []
