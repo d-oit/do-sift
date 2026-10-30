@@ -14,11 +14,8 @@ import type { PageContent } from "@do-sift/plugin-harness-research";
 import { createOpenAICompatModel } from "@do-sift/plugin-model-openai-compat";
 import { createMarginaliaSearch, pageHtmlToText } from "@do-sift/plugin-search-marginalia";
 import { createSiteAccessPolicy } from "@do-sift/plugin-policy-siteaccess";
-import {
-  createWikipediaSearch,
-  USER_AGENT,
-  wikipediaExtractUrl,
-} from "@do-sift/plugin-search-wikipedia";
+import { USER_AGENT } from "@do-sift/contracts";
+import { createWikipediaSearch, wikipediaExtractUrl } from "@do-sift/plugin-search-wikipedia";
 import { pinnedFetch, safeFetch, type DnsResolver, type FetchLike } from "@do-sift/safe-fetch";
 import {
   MetricsRegistry,

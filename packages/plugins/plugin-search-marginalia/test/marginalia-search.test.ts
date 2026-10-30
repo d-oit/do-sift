@@ -154,6 +154,9 @@ describe("search mapping (recorded fixtures)", () => {
       "https://api.marginalia.nu/public/search/" +
         encodeURIComponent("What is the tallest mountain on Earth?"),
     );
+    expect(fetchLog[0]?.init?.headers).toMatchObject({
+      "user-agent": expect.stringContaining("https://github.com/d-oit/do-sift"),
+    });
   });
 
   it("slices to the contract maxHits and skips contract-invalid items honestly", async () => {
