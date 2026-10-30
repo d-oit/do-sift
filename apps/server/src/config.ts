@@ -13,6 +13,8 @@
  *   plugin's kernel-mediated secret resolution, which the bare entrypoint
  *   does not replace (docs/deployment.md).
  */
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { isLoopbackAddress } from "@do-sift/auth";
 
 export type SearchProviderChoice = "fixture" | "wikipedia" | "marginalia";
@@ -169,6 +171,39 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
       throw new Error(
         "DO_SIFT_MODEL_SOURCES_ENTRY must name the plans/sources.md entry that clears this provider (mirrored into the plugin activation gate)",
       );
+    }
+    // Live model activation gate check (unless DO_SIFT_BYPASS_LIVE_EVAL_GATE=1 in dev/test)
+    if (env.DO_SIFT_BYPASS_LIVE_EVAL_GATE !== "1" && env.DO_SIFT_BYPASS_LIVE_EVAL_GATE !== "true") {
+      const qualDir = join(process.cwd(), "evals", "quality");
+      let foundPassing = false;
+      if (existsSync(qualDir)) {
+        for (const file of readdirSync(qualDir)) {
+          if (file.startsWith("live-run-") && file.endsWith(".json")) {
+            try {
+              const content = readFileSync(join(qualDir, file), "utf8");
+              const parsed = JSON.parse(content) as {
+                passed?: boolean;
+                providerMetadata?: { provider?: string; modelId?: string };
+              };
+              if (
+                parsed.passed === true &&
+                parsed.providerMetadata?.provider === "openai-compat" &&
+                parsed.providerMetadata?.modelId === modelId.trim()
+              ) {
+                foundPassing = true;
+                break;
+              }
+            } catch {
+              // ignore malformed run files
+            }
+          }
+        }
+      }
+      if (!foundPassing) {
+        throw new Error(
+          `activation refused: model provider "openai-compat" with modelId "${modelId.trim()}" has no passing live evaluation run artifact in evals/quality/ (run npm run eval:live first)`,
+        );
+      }
     }
     const responseFormatRaw = env.DO_SIFT_MODEL_RESPONSE_FORMAT ?? "strict";
     if (

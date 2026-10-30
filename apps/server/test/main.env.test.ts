@@ -5,6 +5,7 @@ import { parseEnvConfig } from "../src/config.js";
 import { composeApp, type ComposedApp } from "../src/main.js";
 import { BASE_ENV } from "./main-support.js";
 describe("parseEnvConfig", () => {
+  const BYPASS_ENV = { DO_SIFT_BYPASS_LIVE_EVAL_GATE: "1" };
   it("applies documented defaults for a minimal dev config", () => {
     const config = parseEnvConfig(BASE_ENV);
     expect(config.dbUrl).toBe("file:do-sift.db");
@@ -129,6 +130,7 @@ describe("parseEnvConfig", () => {
   it("accepts openai-compat with baseURL, model, and terms; keyless unless a secret is named", () => {
     const config = parseEnvConfig({
       ...BASE_ENV,
+      ...BYPASS_ENV,
       DO_SIFT_MODEL_PROVIDER: "openai-compat",
       DO_SIFT_MODEL_BASE_URL: "http://localhost:11434/v1",
       DO_SIFT_MODEL_ID: "probe-model",
@@ -150,6 +152,7 @@ describe("parseEnvConfig", () => {
   it("parses the key secret name with the use-key kill-switch", () => {
     const keyed = parseEnvConfig({
       ...BASE_ENV,
+      ...BYPASS_ENV,
       DO_SIFT_MODEL_PROVIDER: "openai-compat",
       DO_SIFT_MODEL_BASE_URL: "https://api.example.test/openai/v1",
       DO_SIFT_MODEL_ID: "probe-model",
@@ -161,6 +164,7 @@ describe("parseEnvConfig", () => {
     expect(keyed.modelOpenAI?.useApiKey).toBe(true);
     const disabled = parseEnvConfig({
       ...BASE_ENV,
+      ...BYPASS_ENV,
       DO_SIFT_MODEL_PROVIDER: "openai-compat",
       DO_SIFT_MODEL_BASE_URL: "https://api.example.test/openai/v1",
       DO_SIFT_MODEL_ID: "probe-model",
@@ -173,6 +177,7 @@ describe("parseEnvConfig", () => {
     expect(() =>
       parseEnvConfig({
         ...BASE_ENV,
+        ...BYPASS_ENV,
         DO_SIFT_MODEL_PROVIDER: "openai-compat",
         DO_SIFT_MODEL_BASE_URL: "https://api.example.test/openai/v1",
         DO_SIFT_MODEL_ID: "probe-model",
@@ -184,6 +189,7 @@ describe("parseEnvConfig", () => {
     expect(() =>
       parseEnvConfig({
         ...BASE_ENV,
+        ...BYPASS_ENV,
         DO_SIFT_MODEL_PROVIDER: "openai-compat",
         DO_SIFT_MODEL_BASE_URL: "https://api.example.test/openai/v1",
         DO_SIFT_MODEL_ID: "probe-model",
@@ -201,6 +207,7 @@ describe("parseEnvConfig", () => {
       DO_SIFT_MODEL_ID: "probe-model",
       DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
       DO_SIFT_MODEL_SOURCES_ENTRY: "entry",
+      ...BYPASS_ENV,
     };
     expect(() => parseEnvConfig({ ...BASE_ENV, ...full, DO_SIFT_MODEL_BASE_URL: "" })).toThrow(
       /DO_SIFT_MODEL_BASE_URL/,
@@ -224,6 +231,7 @@ describe("composeApp openai-compat model (offline end-to-end via seams)", () => 
     DO_SIFT_MODEL_ID: "probe-model",
     DO_SIFT_MODEL_TERMS_ACCEPTED_AT: "2026-09-21",
     DO_SIFT_MODEL_SOURCES_ENTRY: "Model providers — candidate, checked 2026-09-21",
+    DO_SIFT_BYPASS_LIVE_EVAL_GATE: "1",
     DO_SIFT_DEV_BYPASS: "1",
     DO_SIFT_DEV_OWNER: "owner-a",
   };

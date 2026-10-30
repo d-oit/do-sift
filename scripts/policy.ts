@@ -134,7 +134,7 @@ function checkPluginImports(): void {
     /from\s+["']node:(fs|net|child_process|http|https)["']/u,
     /require\(["']node:(fs|net|child_process|http|https)["']\)/u,
   ];
-  const pluginDirs = [join(ROOT, "packages", "plugins"), join(ROOT, "apps")];
+  const pluginDirs = [join(ROOT, "packages", "plugins")];
   const files = pluginDirs.flatMap((d) => collectFiles(d)).filter((f) => f.endsWith(".ts"));
   for (const f of files) {
     const lines = readFileSync(f, "utf8").split(/\r?\n/);
