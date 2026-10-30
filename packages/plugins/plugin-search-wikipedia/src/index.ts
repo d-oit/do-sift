@@ -16,6 +16,7 @@
  * `publishedAt` stays unset (honesty over field-filling).
  */
 import {
+  USER_AGENT as CONTRACT_USER_AGENT,
   SearchHit,
   SearchLimits,
   SearchQuery,
@@ -70,13 +71,10 @@ export interface WikipediaSearchInstance extends PluginInstance {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/u;
 const HOST = "en.wikipedia.org";
 /**
- * Descriptive UA per the Wikimedia User-Agent policy (checked
- * 2026-09-14): `<client>/<version> (<contact>)`. The contact slot names
- * the repo — no public URL or email is recorded for this project yet
- * (plans/risks.md); generic defaults are 403-eligible and land in the
- * 10 req/min unidentified rate class.
+ * Descriptive UA per the Wikimedia User-Agent policy (checked 2026-09-14,
+ * re-verified 2026-10-30 with contact URL): `<client>/<version> (<contact>)`.
  */
-export const USER_AGENT = "do-sift/0.1 (research-with-receipts engine; contact via repo)";
+export const USER_AGENT = CONTRACT_USER_AGENT;
 
 /** Provider snippets carry HTML markup; strip it at the contract boundary. */
 function stripHtml(html: string): string {
