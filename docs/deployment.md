@@ -131,10 +131,22 @@ npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:
 npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
 ```
 
 Every data command requires an explicit `--owner`. `evidence export` and `research show --out` write a
 new file and fail if the path already exists. Sensitive question text is redacted as `[REDACTED]` by default unless `--show-question` is provided, and raw page contents (`documents.raw_text`) or passages are never exposed. Exit codes: `0` success, `2` usage error, `1` runtime error.
+
+### Retention and maintenance policy
+
+Retention in do-sift is owner-scoped, explicit, observable, and transactionally isolated:
+
+- **What is pruned:** Only terminal jobs (`done`/`dead`) and closed usage rows (`settled`/`expired`) older than the cutoff timestamp.
+- **What is NEVER pruned:** Documents, passages, embeddings, answers, requests, queued/leased jobs, and active reservations are untouched. Retention is strictly operational cleanup, **not** evidence deletion. Evidence retention remains a separate deliberate decision with research provenance and reproducibility implications.
+- **Accounting safety:** Cutoffs cannot cross into the current UTC day (`00:00:00.000Z`) so daily cap accounting for today is never lost.
+- **Dry-run and confirmation boundary:** Without `--confirm`, the command defaults to `--dry-run`, reporting eligible candidate counts without deleting data. Deletion requires an explicit `--confirm` flag.
+- **Structured audit receipts:** Emits structured receipts (owner ID, cutoff, candidate counts, deleted counts, duration, and status) without leaking prompts, credentials, or raw text.
+- **Scheduled maintenance runbook:** Maintenance must never run silently during service startup or ordinary reads. Schedule retention via cron or orchestration (e.g. daily or weekly off-peak jobs) invoking the CLI with explicit owner IDs and confirmation flags.
 
 ### Rate-limit ownership
 
@@ -331,16 +343,16 @@ required before any remote exposure. Caddy normalizes some raw paths, so `//`
 and `%5c` variants are refused only by the matcher on the original URI; check
 that matcher again after any Caddy upgrade.
 
-## Backups
+## Backups and Maintenance Runbook
 
 The database is one file (local mode) — snapshot it with
 `backupToFile` (packages/storage), which uses `VACUUM INTO` for a
 consistent, portable snapshot:
 
-- **Cadence:** before every deploy or migration, plus a daily snapshot.
-- **Restore:** open the snapshot (`openRestore`) — restore _is_ opening a
-  file. `verifyRestore` proves the copy matches (row counts + owners
-  registry). The rehearsal lives in packages/storage/test/backup.test.ts.
+- **Cadence:** before every deploy, migration, or retention maintenance run, plus a daily snapshot.
+- **Backup-before-maintenance:** Always take a fresh snapshot before executing destructive maintenance (`retention prune --confirm`).
+- **Restore rehearsal:** open the snapshot (`openRestore`) — restore _is_ opening a file. `verifyRestore` proves the copy matches (row counts + owners registry). The rehearsal lives in packages/storage/test/backup.test.ts.
+- **Failure recovery:** If a maintenance run fails or encounters an unhandled error, the transaction automatically rolls back. In the event of process crash or disk failure during maintenance, restore from the pre-maintenance snapshot by replacing the database file with the verified backup copy.
 - **Turso:** the local procedure does not apply remotely; use
   `turso db dump` or platform snapshots (documented, not yet executed —
   gated on the live database).
