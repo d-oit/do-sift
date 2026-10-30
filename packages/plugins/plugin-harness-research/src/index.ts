@@ -346,11 +346,19 @@ export function createResearchHarness(
         // honestly — the passages remain bm25-retrievable.
         if (deps.embedder !== undefined) {
           try {
-            summary.embedded = await backfillPassageEmbeddings(
+            const backfill = await backfillPassageEmbeddings(
               deps.repositories.db,
               task.ownerId,
               deps.embedder,
+              ...(signal !== undefined ? [{ signal }] : []),
             );
+            if (backfill.failureClass !== undefined) {
+              ctx.events.emit("research.embeddings-failed", {
+                message: `embedding backfill stopped with ${backfill.failureClass}`,
+              });
+            } else {
+              summary.embedded = backfill.passagesCompleted;
+            }
           } catch (error) {
             ctx.events.emit("research.embeddings-failed", {
               message: error instanceof Error ? error.message : String(error),

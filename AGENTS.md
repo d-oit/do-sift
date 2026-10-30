@@ -73,24 +73,27 @@ npm run policy        # repo policy checks alone
 npx vitest run <file> # single test file
 npm run signals -- verify --set feedback  # dev-signal feedback loop before handoff
 npm run signals -- status                 # dev-signal receipt state
-do-harness verify --set feedback  # upstream Rust CLI, same sensors (v0.3.5, ADR 0008)
+do-harness verify --set feedback  # upstream Rust CLI, same sensors (v0.4.0, ADR 0008)
 do-harness verify --record --set verification --task <ID>  # task-scoped receipt
 do-harness status --set verification  # upstream freshness (needs green --record)
 do-harness task add <title> --method <method>  # after the plan row exists
 do-harness task advance <ID>  # advance only after the configured sensor gate passes
 do-harness trace add --session <session> --task <ID> --command <command> --error-diff <diff> --resolution-steps <steps>
 do-harness compliance  # read-only posture mapping (OWASP/NIST/EU AI Act)
-do-harness loc         # advisory 500-line budget report (v0.3.5; no enforced invariant)
+do-harness loc         # advisory 500-line budget report (v0.4.0; no enforced invariant)
 ```
 
 Dev signals are computational receipts for the development loop (plan 008,
 ADR 0007; CLI home `scripts/dev-harness/` since plan 009 — workflow tooling,
 not a package): run the feedback set before claiming a task done. The
 upstream Rust `do-harness` CLI (ADR 0008, configured in `do-harness.toml`)
-drives the same sensors natively on Windows and in WSL (v0.3.5 prebuilt in
-`~/.local/bin`; since v0.1.2 the Windows PATH lookup finds `do-harness.exe`,
-so the `DO_HARNESS_BIN` workaround is obsolete and can be removed);
-`npm run signals` stays the enforced
+drives the same sensors natively on Windows and in WSL (v0.4.0 installed via
+`cargo install do-harness --version 0.4.0` or prebuilt binary verified with exact
+release checksum `sha256sum -c sha256sums.txt` and GitHub attestation
+`gh attestation verify do-harness-... --owner d-o-hub` rather than relying on an
+unverified floating latest install; since v0.1.2 the Windows PATH lookup finds
+`do-harness.exe`, so the `DO_HARNESS_BIN` workaround is obsolete and can be removed);
+`npm run signals` stays the enforced first-party TypeScript signal runner and
 hook/CI path. This repository's `plans/methods.json` maps task gates to its
 `tests`/`evals`/`skills` sensor names. If a sensor is halted after 3 consecutive
 failures, fix the cause first, then clear it with
