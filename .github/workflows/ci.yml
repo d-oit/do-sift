@@ -31,6 +31,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run check
+      - run: npm run evals:dashboard
       - run: npm run test:coverage
 
   check-windows:

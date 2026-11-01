@@ -20,6 +20,7 @@
     "skills:check": "tsx scripts/skills-check.ts",
     "eval:offline": "tsx scripts/eval.ts",
     "eval:live": "tsx scripts/eval-live.ts",
+    "evals:dashboard": "tsx scripts/evals-dashboard.ts",
     "release:check": "tsx scripts/release-check.ts",
     "signals": "tsx scripts/dev-harness/cli.ts",
     "hooks:install": "tsx scripts/dev-harness/cli.ts hook install",
