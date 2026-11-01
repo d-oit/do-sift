@@ -38,7 +38,7 @@ npm run build        # explicit tsconfig.build.json production build
 npm run eval:offline # deterministic retrieval/citation/budget fixtures
 ```
 
-Requires Node >= 22.
+Requires Node >= 22 (see [docs/upgrading.md](docs/upgrading.md) for version justification, manager setup, and upgrade instructions).
 
 ### Dev signal harness
 
