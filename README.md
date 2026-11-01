@@ -80,6 +80,10 @@ health receipts and live validation of the noise classifier, merged-search
 composition, and charset-aware decode. No quality claim cites a run without
 repeating its limits.
 
+A static report tracking quality score trends, per-question score heatmaps, and
+side-by-side run diff comparisons is available in the [Evals Dashboard](evals/dashboard/index.html)
+(generated via `npm run evals:dashboard`).
+
 ## Status
 
 Pre-alpha. FND, CORE, SRC, ANS, BRW, CMP, OPS, and the QUAL gate protocol
