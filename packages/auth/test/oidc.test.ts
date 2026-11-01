@@ -225,6 +225,6 @@ describe("JwksOidcVerifier through AuthService", () => {
       auth.authenticateOwner({ token: sign(validPayload({ sub: "owner-bob" })) }),
     ).rejects.toMatchObject({ kind: "not-allowlisted" });
     const ok = await auth.authenticateOwner({ token: sign(validPayload()) });
-    expect(ok).toEqual({ ownerId: "owner-alice", via: "oidc" });
+    expect(ok).toEqual({ ownerId: "owner-alice", tenantId: "default", via: "oidc" });
   });
 });

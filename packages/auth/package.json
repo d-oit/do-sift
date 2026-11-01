@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@do-sift/contracts": "*",
     "@do-sift/safe-fetch": "*"
   }
 }

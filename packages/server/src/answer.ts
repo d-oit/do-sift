@@ -98,6 +98,9 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         if (scoped.length > 0) scopedDocIds = scoped;
       }
 
+      // #120: retrieval is tenant-scoped, so the answer path can never read
+      // another tenant's evidence even with a colliding owner id.
+      const tenantId = deps.repositories.tenantId;
       let retrieved: PassageHit[] =
         scopedDocIds !== undefined
           ? deps.embedder === undefined
@@ -109,6 +112,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 scopedDocIds,
                 relevanceFloor,
                 noiseFilter,
+                tenantId,
               )
             : await hybridSearch(
                 deps.client,
@@ -119,6 +123,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 scopedDocIds,
                 relevanceFloor,
                 noiseFilter,
+                tenantId,
               )
           : deps.embedder === undefined
             ? await searchPassages(
@@ -129,6 +134,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 undefined,
                 relevanceFloor,
                 noiseFilter,
+                tenantId,
               )
             : await hybridSearch(
                 deps.client,
@@ -139,6 +145,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 undefined,
                 relevanceFloor,
                 noiseFilter,
+                tenantId,
               );
 
       if (scopedDocIds !== undefined && retrieved.length === 0) {
@@ -155,6 +162,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 scopedDocIds,
                 undefined,
                 noiseFilter,
+                tenantId,
               )
             : await hybridSearch(
                 deps.client,
@@ -165,6 +173,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 scopedDocIds,
                 undefined,
                 noiseFilter,
+                tenantId,
               );
       }
 

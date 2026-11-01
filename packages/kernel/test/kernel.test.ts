@@ -246,4 +246,84 @@ describe("kernel round-trip (FND-07)", () => {
     expect(() => capturedHost?.("api.allowed.test")).not.toThrow();
     expect(() => capturedHost?.("evil.test")).toThrow(CapabilityError);
   });
+
+  describe("per-user / per-tenant capability grants (#120)", () => {
+    const paid = (name: string) => ({
+      ...greeterJson,
+      name,
+      kind: "model",
+      capabilities: ["paid"],
+      permissions: { networkHosts: [], secrets: [] },
+    });
+    const factory: PluginFactory = () => ({ activate() {}, deactivate() {} });
+    const acmeMember = { tenantId: "tenant-acme", ownerId: "owner-alice" };
+    const acmeOther = { tenantId: "tenant-acme", ownerId: "owner-bob" };
+    const globexMember = { tenantId: "tenant-globex", ownerId: "owner-carol" };
+
+    it("a tenant-wide grant authorizes that tenant only", async () => {
+      const kernel = new Kernel("local");
+      kernel.register(paid("tenant-tool"), factory);
+      kernel.grantScoped({ tenantId: "tenant-acme" }, "tenant-tool", "paid");
+
+      await expect(kernel.activate("tenant-tool", { principal: globexMember })).rejects.toThrow(
+        /explicit grants for \[paid\]/,
+      );
+      await expect(
+        kernel.activate("tenant-tool", { principal: acmeMember }),
+      ).resolves.toBeUndefined();
+      expect(kernel.effectiveGrants("tenant-tool", acmeMember).has("paid")).toBe(true);
+      expect(kernel.effectiveGrants("tenant-tool", globexMember).has("paid")).toBe(false);
+    });
+
+    it("a per-user grant does not authorize another user in the same tenant", async () => {
+      const kernel = new Kernel("local");
+      kernel.register(paid("user-tool"), factory);
+      kernel.grantScoped({ tenantId: "tenant-acme", ownerId: "owner-alice" }, "user-tool", "paid");
+
+      expect(kernel.effectiveGrants("user-tool", acmeOther).has("paid")).toBe(false);
+      await expect(kernel.activate("user-tool", { principal: acmeOther })).rejects.toBeInstanceOf(
+        CapabilityError,
+      );
+      expect(kernel.effectiveGrants("user-tool", acmeMember).has("paid")).toBe(true);
+      await expect(
+        kernel.activate("user-tool", { principal: acmeMember }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("legacy instance-wide grants still apply to every caller", async () => {
+      const kernel = new Kernel("local");
+      kernel.register(paid("legacy-tool"), factory);
+      kernel.grant("legacy-tool", "paid");
+      expect(kernel.effectiveGrants("legacy-tool", globexMember).has("paid")).toBe(true);
+      await expect(
+        kernel.activate("legacy-tool", { principal: globexMember }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("scoped grants are refused in ci and validation fails closed", async () => {
+      const kernel = new Kernel("ci");
+      kernel.register(paid("ci-tenant-tool"), factory);
+      kernel.grantScoped({ tenantId: "tenant-acme" }, "ci-tenant-tool", "paid");
+      await expect(kernel.activate("ci-tenant-tool", { principal: acmeMember })).rejects.toThrow(
+        /cannot activate in ci/,
+      );
+
+      const local = new Kernel("local");
+      expect(() => local.grantScoped({ tenantId: " " }, "x", "paid")).toThrow(CapabilityError);
+      expect(() =>
+        local.grantScoped({ tenantId: "tenant-acme", ownerId: "" }, "x", "paid"),
+      ).toThrow(CapabilityError);
+    });
+
+    it("activation-scoped grants stay scoped to that activation", async () => {
+      const kernel = new Kernel("local");
+      kernel.register(paid("ephemeral-tool"), factory);
+      await kernel.activate("ephemeral-tool", { grants: ["paid"], principal: acmeMember });
+      await kernel.deactivate("ephemeral-tool");
+      expect(kernel.effectiveGrants("ephemeral-tool", acmeMember).has("paid")).toBe(false);
+      await expect(
+        kernel.activate("ephemeral-tool", { principal: acmeMember }),
+      ).rejects.toBeInstanceOf(CapabilityError);
+    });
+  });
 });

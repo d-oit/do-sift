@@ -17,7 +17,11 @@
  * by construction).
  */
 import { createHash, timingSafeEqual } from "node:crypto";
+import { TenantId } from "@do-sift/contracts";
 import { isLoopbackAddress } from "./loopback.js";
+
+/** Tenant a single-tenant / owner-allowlist deployment maps to (#120). */
+export const DEFAULT_TENANT_ID = "default";
 
 export interface VerifiedIdentity {
   subject: string;
@@ -50,7 +54,11 @@ export class StaticOidcVerifier implements OidcVerifier {
 }
 
 export type AuthFailureKind =
-  "invalid-token" | "not-allowlisted" | "authentication-required" | "dev-bypass-refused";
+  | "invalid-token"
+  | "not-allowlisted"
+  | "authentication-required"
+  | "dev-bypass-refused"
+  | "tenant-unresolved";
 
 export class AuthError extends Error {
   constructor(
@@ -69,6 +77,17 @@ export interface AuthConfig {
   devBypass: boolean;
   /** Owner the dev bypass acts as; must be allowlisted. */
   devOwner?: string | undefined;
+  /**
+   * Tenant assigned when no `tenantClaim` is configured (#120). Defaults to
+   * `default`, which is the single-owner deployment's scope.
+   */
+  defaultTenant?: string | undefined;
+  /**
+   * Verified claim naming the caller's tenant (#120). When set, every id
+   * token MUST carry a valid tenant id or authentication fails closed with
+   * `tenant-unresolved` — a missing claim never falls back to `default`.
+   */
+  tenantClaim?: string | undefined;
 }
 
 export interface AuthRequest {
@@ -80,6 +99,8 @@ export interface AuthRequest {
 
 export interface AuthenticatedOwner {
   ownerId: string;
+  /** Tenant the owner belongs to (#120). Defaults to the `default` tenant. */
+  tenantId: string;
   via: "oidc" | "dev-bypass";
 }
 
@@ -112,7 +133,11 @@ export class AuthService {
       if (!isAllowlisted(identity.subject, this.config.allowlist)) {
         throw new AuthError("not-allowlisted", "verified subject is not an allowlisted owner");
       }
-      return { ownerId: identity.subject, via: "oidc" };
+      return {
+        ownerId: identity.subject,
+        tenantId: this.resolveTenant(identity.claims),
+        via: "oidc",
+      };
     }
 
     if (!this.config.devBypass) {
@@ -130,6 +155,39 @@ export class AuthService {
     if (!isAllowlisted(this.config.devOwner, this.config.allowlist)) {
       throw new AuthError("not-allowlisted", "dev owner is not allowlisted");
     }
-    return { ownerId: this.config.devOwner, via: "dev-bypass" };
+    return {
+      ownerId: this.config.devOwner,
+      tenantId: this.resolveTenant(undefined),
+      via: "dev-bypass",
+    };
+  }
+
+  /**
+   * Tenant for a verified identity (#120). Without a configured
+   * `tenantClaim` the configured default applies (single-tenant mode). With
+   * a claim configured, a missing or malformed value fails closed.
+   */
+  private resolveTenant(claims: Readonly<Record<string, unknown>> | undefined): string {
+    const claim = this.config.tenantClaim;
+    if (claim === undefined || claim === "") {
+      const fallback = this.config.defaultTenant ?? DEFAULT_TENANT_ID;
+      const parsed = TenantId.safeParse(fallback);
+      if (!parsed.success) {
+        throw new AuthError("tenant-unresolved", "configured default tenant is invalid");
+      }
+      return parsed.data;
+    }
+    const raw = claims?.[claim];
+    if (typeof raw !== "string" || raw === "") {
+      throw new AuthError("tenant-unresolved", `id token has no "${claim}" claim`);
+    }
+    const parsed = TenantId.safeParse(raw);
+    if (!parsed.success) {
+      throw new AuthError(
+        "tenant-unresolved",
+        `id token "${claim}" claim is not a valid tenant id`,
+      );
+    }
+    return parsed.data;
   }
 }

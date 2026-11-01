@@ -8,6 +8,16 @@ with an explicit 0.x compatibility policy (minor = breaking, patch = safe).
 
 ### Added
 
+- Multi-tenant / multi-user authentication (#120, ADR 0010): a pluggable
+  `AuthProvider` interface (`TenantId`, `Principal`, `AuthProviderError`) in
+  `packages/contracts`, the reference `auth`-kind plugin
+  `@do-sift/plugin-auth-oidc` (JWKS-verified OIDC id tokens → tenant-scoped
+  principals), tenant-scoped storage (migration 0011 adds `tenants` and
+  `tenant_id` to evidence/run/config tables, and every repository/FTS query
+  filters on it), per-user/per-tenant capability grants in the kernel, and a
+  cross-tenant leakage quality-gate test. The owner-allowlist `AuthService`
+  remains the documented fallback (`docs/auth.md`).
+
 - FND milestone: plugin kernel (`packages/kernel`) with manifest validation,
   capability grants, and lifecycle; shared contracts (`packages/contracts`);
   sample plugin; verification harness (`scripts/`); agent foundation

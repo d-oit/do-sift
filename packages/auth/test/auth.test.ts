@@ -63,6 +63,7 @@ describe("AuthService — OIDC door", () => {
     const svc = new AuthService(makeVerifier(), { allowlist: ["owner-alice"], devBypass: false });
     await expect(svc.authenticateOwner({ token: "token-alice" })).resolves.toEqual({
       ownerId: "owner-alice",
+      tenantId: "default",
       via: "oidc",
     });
   });
@@ -100,6 +101,7 @@ describe("AuthService — dev bypass door", () => {
     const svc = new AuthService(makeVerifier(), bypassConfig);
     await expect(svc.authenticateOwner({ clientAddress: "127.0.0.1" })).resolves.toEqual({
       ownerId: "owner-alice",
+      tenantId: "default",
       via: "dev-bypass",
     });
     await expect(svc.authenticateOwner({ clientAddress: "[::1]:4000" })).resolves.toMatchObject({

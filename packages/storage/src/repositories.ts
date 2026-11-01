@@ -9,6 +9,7 @@ import {
   str,
   strOrUndefined,
 } from "./rows.js";
+import { DEFAULT_TENANT, assertTenantId, tenantFilter } from "./tenant.js";
 import type {
   AnswerInput,
   AnswerRow,
@@ -38,25 +39,73 @@ export type { EpisodeRow } from "./rows.js";
 export type { JobRow } from "./rows.js";
 export type { UsageEntryInput } from "./rows.js";
 export type { UsageEntryRow } from "./rows.js";
+
+/** Constructor options for the repository aggregate (#120). */
+export interface RepositoriesOptions {
+  /**
+   * Tenant every query is scoped to. Defaults to the `default` tenant, so a
+   * single-owner deployment (and all existing callers) keep the exact
+   * pre-#120 behaviour.
+   */
+  tenantId?: string | undefined;
+}
+
 export class Repositories {
-  constructor(private readonly client: Client) {}
+  /** The tenant this aggregate is bound to; every query filters on it. */
+  readonly tenantId: string;
+
+  constructor(
+    private readonly client: Client,
+    options: RepositoriesOptions = {},
+  ) {
+    this.tenantId = assertTenantId(options.tenantId ?? DEFAULT_TENANT);
+  }
+
+  /** A repository aggregate for another tenant over the same connection (#120). */
+  forTenant(tenantId: string): Repositories {
+    return new Repositories(this.client, { tenantId });
+  }
 
   /** Raw client for storage-adjacent tooling (e.g. embedding backfill, RET-02). */
   get db(): Client {
     return this.client;
   }
 
+  readonly tenants = {
+    ensure: async (id: string, displayName: string): Promise<void> => {
+      await this.client.execute({
+        sql: "INSERT INTO tenants (id, display_name, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
+        args: [assertTenantId(id), displayName, now()],
+      });
+    },
+    get: async (
+      id: string,
+    ): Promise<{ id: string; displayName: string; createdAt: string } | undefined> => {
+      const res = await this.client.execute({
+        sql: "SELECT * FROM tenants WHERE id = ?",
+        args: [assertTenantId(id)],
+      });
+      const row = res.rows[0];
+      if (!row) return undefined;
+      return {
+        id: str(row, "id"),
+        displayName: str(row, "display_name"),
+        createdAt: str(row, "created_at"),
+      };
+    },
+  };
+
   readonly owners = {
     ensure: async (id: string, displayName: string): Promise<void> => {
       await this.client.execute({
-        sql: "INSERT INTO owners (id, display_name, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
-        args: [id, displayName, now()],
+        sql: "INSERT INTO owners (id, tenant_id, display_name, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+        args: [id, this.tenantId, displayName, now()],
       });
     },
     get: async (id: string): Promise<OwnerRow | undefined> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM owners WHERE id = ?",
-        args: [id],
+        sql: `SELECT * FROM owners WHERE id = ?${tenantFilter(this.tenantId).sql}`,
+        args: [id, this.tenantId],
       });
       const row = res.rows[0];
       if (!row) return undefined;
@@ -80,11 +129,12 @@ export class Repositories {
         }
       }
       await this.client.execute({
-        sql: `INSERT INTO documents (id, owner_id, canonical_url, original_url, content_hash, fetched_at,
+        sql: `INSERT INTO documents (id, tenant_id, owner_id, canonical_url, original_url, content_hash, fetched_at,
                published_at, published_origin, title, raw_mime, raw_text, request_id, relevance_score, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id,
+          this.tenantId,
           d.ownerId,
           d.canonicalUrl,
           d.originalUrl,
@@ -104,8 +154,8 @@ export class Repositories {
     },
     get: async (ownerId: string, id: string): Promise<DocumentRow | undefined> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
-        args: [id, ownerId],
+        sql: `SELECT * FROM documents WHERE id = ? AND owner_id = ?${tenantFilter(this.tenantId).sql}`,
+        args: [id, ownerId, this.tenantId],
       });
       const row = res.rows[0];
       return row ? documentFromRow(row) : undefined;
@@ -114,16 +164,16 @@ export class Repositories {
      * URL (canonical or original), undefined when none is stored. */
     findByUrl: async (ownerId: string, url: string): Promise<DocumentRow | undefined> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM documents WHERE owner_id = ? AND (canonical_url = ? OR original_url = ?) ORDER BY created_at DESC LIMIT 1",
-        args: [ownerId, url, url],
+        sql: `SELECT * FROM documents WHERE owner_id = ? AND (canonical_url = ? OR original_url = ?)${tenantFilter(this.tenantId).sql} ORDER BY created_at DESC LIMIT 1`,
+        args: [ownerId, url, url, this.tenantId],
       });
       const row = res.rows[0];
       return row ? documentFromRow(row) : undefined;
     },
     list: async (ownerId: string, limit = 50): Promise<DocumentRow[]> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM documents WHERE owner_id = ? ORDER BY created_at DESC LIMIT ?",
-        args: [ownerId, limit],
+        sql: `SELECT * FROM documents WHERE owner_id = ?${tenantFilter(this.tenantId).sql} ORDER BY created_at DESC LIMIT ?`,
+        args: [ownerId, this.tenantId, limit],
       });
       return res.rows.map(documentFromRow);
     },
@@ -132,8 +182,8 @@ export class Repositories {
       if (requestIds.length === 0) return [];
       const placeholders = requestIds.map(() => "?").join(", ");
       const res = await this.client.execute({
-        sql: `SELECT id FROM documents WHERE owner_id = ? AND request_id IN (${placeholders})`,
-        args: [ownerId, ...requestIds],
+        sql: `SELECT id FROM documents WHERE owner_id = ? AND request_id IN (${placeholders})${tenantFilter(this.tenantId).sql}`,
+        args: [ownerId, ...requestIds, this.tenantId],
       });
       return res.rows.map((row) => String(row.id));
     },
@@ -145,8 +195,8 @@ export class Repositories {
       if (documentIds.length === 0) return {};
       const placeholders = documentIds.map(() => "?").join(", ");
       const res = await this.client.execute({
-        sql: `SELECT id, request_id FROM documents WHERE owner_id = ? AND id IN (${placeholders})`,
-        args: [ownerId, ...documentIds],
+        sql: `SELECT id, request_id FROM documents WHERE owner_id = ? AND id IN (${placeholders})${tenantFilter(this.tenantId).sql}`,
+        args: [ownerId, ...documentIds, this.tenantId],
       });
       const links: Record<string, string | null> = {};
       for (const row of res.rows) links[String(row.id)] = strOrUndefined(row, "request_id") ?? null;
@@ -166,9 +216,10 @@ export class Repositories {
       await this.client.batch(
         [
           {
-            sql: "INSERT INTO passages (id, owner_id, document_id, heading, excerpt, extraction_status, noise_class, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            sql: "INSERT INTO passages (id, tenant_id, owner_id, document_id, heading, excerpt, extraction_status, noise_class, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             args: [
               id,
+              this.tenantId,
               p.ownerId,
               p.documentId,
               p.heading ?? null,
@@ -179,6 +230,9 @@ export class Repositories {
             ],
           },
           {
+            // FTS mirror has no tenant column by design (migration 0004); the
+            // retrieval join re-checks `passages.tenant_id`, so the mirror can
+            // never widen a tenant's result set (#120).
             sql: "INSERT INTO passages_fts (passage_id, owner_id, excerpt) VALUES (?, ?, ?)",
             args: [id, p.ownerId, p.excerpt],
           },
@@ -189,24 +243,24 @@ export class Repositories {
     },
     get: async (ownerId: string, id: string): Promise<PassageRow | undefined> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM passages WHERE id = ? AND owner_id = ?",
-        args: [id, ownerId],
+        sql: `SELECT * FROM passages WHERE id = ? AND owner_id = ?${tenantFilter(this.tenantId).sql}`,
+        args: [id, ownerId, this.tenantId],
       });
       const row = res.rows[0];
       return row ? passageFromRow(row) : undefined;
     },
     listByDocument: async (ownerId: string, documentId: string): Promise<PassageRow[]> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM passages WHERE owner_id = ? AND document_id = ? ORDER BY created_at",
-        args: [ownerId, documentId],
+        sql: `SELECT * FROM passages WHERE owner_id = ? AND document_id = ?${tenantFilter(this.tenantId).sql} ORDER BY created_at`,
+        args: [ownerId, documentId, this.tenantId],
       });
       return res.rows.map(passageFromRow);
     },
     /** SRC-25 cross-run dedup: how many passages the owner has for a document. */
     countByDocument: async (ownerId: string, documentId: string): Promise<number> => {
       const res = await this.client.execute({
-        sql: "SELECT COUNT(*) AS n FROM passages WHERE owner_id = ? AND document_id = ?",
-        args: [ownerId, documentId],
+        sql: `SELECT COUNT(*) AS n FROM passages WHERE owner_id = ? AND document_id = ?${tenantFilter(this.tenantId).sql}`,
+        args: [ownerId, documentId, this.tenantId],
       });
       const row = res.rows[0];
       return row ? Number(row.n) : 0;
@@ -221,15 +275,15 @@ export class Repositories {
     ): Promise<string> => {
       const id = randomUUID();
       await this.client.execute({
-        sql: "INSERT INTO requests (id, owner_id, mode, question, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
-        args: [id, ownerId, mode, question, now()],
+        sql: "INSERT INTO requests (id, tenant_id, owner_id, mode, question, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+        args: [id, this.tenantId, ownerId, mode, question, now()],
       });
       return id;
     },
     get: async (ownerId: string, id: string): Promise<RequestRow | undefined> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM requests WHERE id = ? AND owner_id = ?",
-        args: [id, ownerId],
+        sql: `SELECT * FROM requests WHERE id = ? AND owner_id = ?${tenantFilter(this.tenantId).sql}`,
+        args: [id, ownerId, this.tenantId],
       });
       const row = res.rows[0];
       if (!row) return undefined;
@@ -249,8 +303,8 @@ export class Repositories {
      * evidence-basis flag. */
     completedSearches: async (ownerId: string): Promise<RequestRow[]> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM requests WHERE owner_id = ? AND mode = 'search' AND status = 'completed'",
-        args: [ownerId],
+        sql: `SELECT * FROM requests WHERE owner_id = ? AND mode = 'search' AND status = 'completed'${tenantFilter(this.tenantId).sql}`,
+        args: [ownerId, this.tenantId],
       });
       return res.rows.map((row) => {
         const completedAt = strOrUndefined(row, "completed_at");
@@ -267,14 +321,14 @@ export class Repositories {
     },
     complete: async (ownerId: string, id: string): Promise<void> => {
       await this.client.execute({
-        sql: "UPDATE requests SET status = 'completed', completed_at = ? WHERE id = ? AND owner_id = ?",
-        args: [now(), id, ownerId],
+        sql: `UPDATE requests SET status = 'completed', completed_at = ? WHERE id = ? AND owner_id = ?${tenantFilter(this.tenantId).sql}`,
+        args: [now(), id, ownerId, this.tenantId],
       });
     },
     fail: async (ownerId: string, id: string): Promise<void> => {
       await this.client.execute({
-        sql: "UPDATE requests SET status = 'failed', completed_at = ? WHERE id = ? AND owner_id = ?",
-        args: [now(), id, ownerId],
+        sql: `UPDATE requests SET status = 'failed', completed_at = ? WHERE id = ? AND owner_id = ?${tenantFilter(this.tenantId).sql}`,
+        args: [now(), id, ownerId, this.tenantId],
       });
     },
   };
@@ -288,12 +342,13 @@ export class Repositories {
       }
       const id = randomUUID();
       await this.client.execute({
-        sql: `INSERT INTO answers (id, owner_id, request_id, blocks_json, evidence_only, cache_key,
+        sql: `INSERT INTO answers (id, tenant_id, owner_id, request_id, blocks_json, evidence_only, cache_key,
                usage_input_tokens, usage_output_tokens, usage_model, usage_estimated,
                prompt_revision, policy_revision, model_revision, evidence_from_run, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id,
+          this.tenantId,
           a.ownerId,
           a.requestId,
           JSON.stringify(a.blocks),
@@ -314,17 +369,17 @@ export class Repositories {
     },
     get: async (ownerId: string, id: string): Promise<AnswerRow | undefined> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM answers WHERE id = ? AND owner_id = ?",
-        args: [id, ownerId],
+        sql: `SELECT * FROM answers WHERE id = ? AND owner_id = ?${tenantFilter(this.tenantId).sql}`,
+        args: [id, ownerId, this.tenantId],
       });
       const row = res.rows[0];
       return row ? answerFromRow(row) : undefined;
     },
-    /** Exact-answer cache lookup; cache keys are owner-scoped by construction. */
+    /** Exact-answer cache lookup; cache keys are owner- and tenant-scoped by construction. */
     findByCacheKey: async (ownerId: string, cacheKey: string): Promise<AnswerRow | undefined> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM answers WHERE owner_id = ? AND cache_key = ? ORDER BY created_at DESC LIMIT 1",
-        args: [ownerId, cacheKey],
+        sql: `SELECT * FROM answers WHERE owner_id = ? AND cache_key = ?${tenantFilter(this.tenantId).sql} ORDER BY created_at DESC LIMIT 1`,
+        args: [ownerId, cacheKey, this.tenantId],
       });
       const row = res.rows[0];
       return row ? answerFromRow(row) : undefined;
@@ -345,15 +400,15 @@ export class Repositories {
       }
       const id = randomUUID();
       await this.client.execute({
-        sql: "INSERT INTO feedback (id, owner_id, answer_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        args: [id, ownerId, answerId, rating, comment ?? null, now()],
+        sql: "INSERT INTO feedback (id, tenant_id, owner_id, answer_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        args: [id, this.tenantId, ownerId, answerId, rating, comment ?? null, now()],
       });
       return id;
     },
     listByAnswer: async (ownerId: string, answerId: string): Promise<FeedbackRow[]> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM feedback WHERE owner_id = ? AND answer_id = ? ORDER BY created_at",
-        args: [ownerId, answerId],
+        sql: `SELECT * FROM feedback WHERE owner_id = ? AND answer_id = ?${tenantFilter(this.tenantId).sql} ORDER BY created_at`,
+        args: [ownerId, answerId, this.tenantId],
       });
       return res.rows.map((row) => ({
         id: str(row, "id"),
@@ -373,15 +428,15 @@ export class Repositories {
     ): Promise<string> => {
       const id = randomUUID();
       await this.client.execute({
-        sql: "INSERT INTO episodes (id, owner_id, question, summary, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        args: [id, ownerId, question, summary, outcome, now()],
+        sql: "INSERT INTO episodes (id, tenant_id, owner_id, question, summary, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        args: [id, this.tenantId, ownerId, question, summary, outcome, now()],
       });
       return id;
     },
     list: async (ownerId: string, limit = 50): Promise<EpisodeRow[]> => {
       const res = await this.client.execute({
-        sql: "SELECT * FROM episodes WHERE owner_id = ? ORDER BY created_at DESC LIMIT ?",
-        args: [ownerId, limit],
+        sql: `SELECT * FROM episodes WHERE owner_id = ?${tenantFilter(this.tenantId).sql} ORDER BY created_at DESC LIMIT ?`,
+        args: [ownerId, this.tenantId, limit],
       });
       return res.rows.map((row) => ({
         id: str(row, "id"),

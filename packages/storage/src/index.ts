@@ -1,6 +1,9 @@
 export { MigrationError, applyMigrations, hashMigrationSql, loadMigrations } from "./migrate.js";
 export type { AppliedMigration, Migration } from "./migrate.js";
 export { Repositories } from "./repositories.js";
+export type { RepositoriesOptions } from "./repositories.js";
+export { DEFAULT_TENANT, TenantScopeError, assertTenantId, tenantFilter } from "./tenant.js";
+export type { TenantFilter } from "./tenant.js";
 export type {
   AnswerBlocks,
   AnswerInput,

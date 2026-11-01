@@ -13,6 +13,7 @@
  */
 import type { Client, Row } from "@libsql/client";
 import { searchPassages, type PassageHit } from "./retrieval.js";
+import { DEFAULT_TENANT, assertTenantId } from "./tenant.js";
 
 export class VectorValidationError extends Error {
   constructor(message: string) {
@@ -69,6 +70,8 @@ export interface BackfillOptions {
   batchSize?: number | undefined;
   /** Signal for cancellation / deadline. */
   signal?: AbortSignal | undefined;
+  /** Tenant to backfill (#120). Default: the `default` tenant. */
+  tenantId?: string | undefined;
 }
 
 export interface BackfillResult {
@@ -174,10 +177,12 @@ export async function storePassageEmbeddings(
   client: Client,
   modelId: string,
   rows: EmbeddingRowInput[],
+  tenantId: string = DEFAULT_TENANT,
 ): Promise<void> {
   if (!modelId || typeof modelId !== "string" || modelId.trim() === "") {
     throw new VectorValidationError("modelId must be a non-empty string");
   }
+  const tenant = assertTenantId(tenantId);
   if (rows.length === 0) return;
 
   let expectedDimension = await getExistingModelDimension(client, modelId);
@@ -194,9 +199,9 @@ export async function storePassageEmbeddings(
   try {
     for (const row of rows) {
       await tx.execute({
-        sql: `INSERT OR REPLACE INTO passage_embeddings (passage_id, owner_id, model_id, vector, created_at)
-              VALUES (?, ?, ?, ?, ?)`,
-        args: [row.passageId, row.ownerId, modelId, vectorToBlob(row.vector), now],
+        sql: `INSERT OR REPLACE INTO passage_embeddings (passage_id, tenant_id, owner_id, model_id, vector, created_at)
+              VALUES (?, ?, ?, ?, ?, ?)`,
+        args: [row.passageId, tenant, row.ownerId, modelId, vectorToBlob(row.vector), now],
       });
     }
     await tx.commit();
@@ -222,6 +227,7 @@ export async function backfillPassageEmbeddings(
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) {
     throw new RangeError("batchSize must be an integer between 1 and 500");
   }
+  const tenant = assertTenantId(options.tenantId ?? DEFAULT_TENANT);
 
   const signal = options.signal;
   const startTime = Date.now();
@@ -243,10 +249,10 @@ export async function backfillPassageEmbeddings(
     const pending = await client.execute({
       sql: `SELECT p.id, p.excerpt FROM passages p
             LEFT JOIN passage_embeddings pe ON pe.passage_id = p.id AND pe.model_id = ?
-            WHERE p.owner_id = ? AND pe.passage_id IS NULL AND p.id > ?
+            WHERE p.owner_id = ? AND p.tenant_id = ? AND pe.passage_id IS NULL AND p.id > ?
             ORDER BY p.id ASC
             LIMIT ?`,
-      args: [embedder.modelId, ownerId, lastPassageId, batchSize],
+      args: [embedder.modelId, ownerId, tenant, lastPassageId, batchSize],
     });
 
     if (pending.rows.length === 0) {
@@ -291,7 +297,7 @@ export async function backfillPassageEmbeddings(
         };
       });
 
-      await storePassageEmbeddings(client, embedder.modelId, rows);
+      await storePassageEmbeddings(client, embedder.modelId, rows, tenant);
       passagesCompleted += rows.length;
     } catch (err: unknown) {
       const className = err instanceof Error ? err.name || err.constructor.name : "UnknownError";
@@ -369,8 +375,10 @@ export async function searchByEmbedding(
   documentIds?: string[],
   relevanceFloor?: number,
   noiseFilter?: boolean,
+  tenantId: string = DEFAULT_TENANT,
 ): Promise<VectorHit[]> {
   if (queryVector.length === 0) return [];
+  const tenant = assertTenantId(tenantId);
   const docFilter =
     documentIds && documentIds.length > 0
       ? ` AND p.document_id IN (${documentIds.map(() => "?").join(", ")})`
@@ -383,14 +391,17 @@ export async function searchByEmbedding(
   const res = await client.execute({
     sql: `SELECT pe.passage_id, p.document_id, d.content_hash, p.excerpt, pe.vector
           FROM passage_embeddings pe
-          JOIN passages p ON p.id = pe.passage_id AND p.owner_id = ?
-          JOIN documents d ON d.id = p.document_id
-          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}${floorFilter}${noiseClause}
+          JOIN passages p ON p.id = pe.passage_id AND p.owner_id = ? AND p.tenant_id = ?
+          JOIN documents d ON d.id = p.document_id AND d.tenant_id = ?
+          WHERE pe.owner_id = ? AND pe.tenant_id = ? AND pe.model_id = ?${docFilter}${floorFilter}${noiseClause}
           ORDER BY pe.created_at DESC
           LIMIT ?`,
     args: [
       ownerId,
+      tenant,
+      tenant,
       ownerId,
+      tenant,
       modelId,
       ...(documentIds && documentIds.length > 0 ? documentIds : []),
       ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
@@ -459,7 +470,9 @@ export async function hybridSearch(
   documentIds?: string[],
   relevanceFloor?: number,
   noiseFilter?: boolean,
+  tenantId: string = DEFAULT_TENANT,
 ): Promise<PassageHit[]> {
+  const tenant = assertTenantId(tenantId);
   const bm25 = await searchPassages(
     client,
     ownerId,
@@ -468,6 +481,7 @@ export async function hybridSearch(
     documentIds,
     relevanceFloor,
     noiseFilter,
+    tenant,
   );
   const queryVector = await embedder.embedQuery(question);
   const vector = await searchByEmbedding(
@@ -479,6 +493,7 @@ export async function hybridSearch(
     documentIds,
     relevanceFloor,
     noiseFilter,
+    tenant,
   );
   return rrfFuse(bm25, vector, limit);
 }

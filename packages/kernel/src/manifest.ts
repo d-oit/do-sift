@@ -12,6 +12,8 @@ export const PluginKind = z.enum([
   "storage",
   "policy",
   "ui",
+  /** Pluggable authentication door (#120): resolves a Principal. */
+  "auth",
 ]);
 export type PluginKind = z.infer<typeof PluginKind>;
 

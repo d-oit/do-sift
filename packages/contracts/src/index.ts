@@ -1,4 +1,5 @@
 export * from "./common.js";
+export * from "./auth.js";
 export * from "./search.js";
 export * from "./evidence.js";
 export * from "./model.js";

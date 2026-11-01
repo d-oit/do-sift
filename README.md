@@ -68,6 +68,16 @@ loopback or a TLS-terminating reverse proxy. See
 [docs/deployment.md](docs/deployment.md) for configuration, auth, backup
 cadence, and known limits.
 
+Multi-tenant deployments are supported at the library level
+([docs/auth.md](docs/auth.md), [ADR 0010](plans/adr/0010-multi-tenant-auth.md)):
+a pluggable `AuthProvider` (owner-allowlist fallback or the reference
+`auth-oidc` plugin), tenant-scoped storage (`tenant_id` on every
+evidence/run/config table with tenant-filtered queries), and per-user /
+per-tenant capability grants. The packaged server still runs the
+single-tenant owner-allowlist path — see
+[plans/019-multi-tenant-auth.md](plans/019-multi-tenant-auth.md) (MTA-06) for
+the remaining request-scoping work.
+
 ## Quality gate
 
 The research/evidence pipeline is measured by a repeatable manual protocol

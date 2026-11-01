@@ -289,6 +289,6 @@ describe("auth typing sanity", () => {
   it("authenticateOwner returns the allowlisted owner shape", async () => {
     const auth = makeAuth(false);
     const owner: AuthenticatedOwner = await auth.authenticateOwner({ token: "token-alice" });
-    expect(owner).toEqual({ ownerId: "owner-alice", via: "oidc" });
+    expect(owner).toEqual({ ownerId: "owner-alice", tenantId: "default", via: "oidc" });
   });
 });

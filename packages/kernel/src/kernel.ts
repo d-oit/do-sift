@@ -70,9 +70,34 @@ export interface KernelOptions {
   secretResolver?: (name: string) => Promise<string | undefined>;
 }
 
-interface ActivateOptions {
+/**
+ * Scope a recorded grant applies to (#120). `ownerId` omitted means the
+ * grant covers every owner in the tenant; a per-user grant names the owner
+ * explicitly. Tenant ids are validated by the caller (contracts `TenantId`)
+ * and compared byte-for-byte here.
+ */
+export interface GrantScope {
+  readonly tenantId: string;
+  /** Undefined = tenant-wide grant. */
+  readonly ownerId?: string | undefined;
+}
+
+/** The caller a capability check is evaluated for (#120). */
+export interface PrincipalScope {
+  readonly tenantId: string;
+  readonly ownerId: string;
+}
+
+export interface ActivateOptions {
   /** Explicit, recorded grants (e.g. from the owner's console decision). */
   grants?: Iterable<Capability>;
+  /**
+   * Authenticated caller (#120). When present, grants recorded for this
+   * tenant (tenant-wide or for this owner) are added to the instance-wide
+   * set before the capability check. When absent the legacy single-owner
+   * behaviour applies: only instance-wide grants count.
+   */
+  principal?: PrincipalScope;
 }
 
 /**
@@ -86,6 +111,16 @@ export class Kernel {
   private readonly active = new Map<string, PluginInstance>();
   /** Owner grants keyed by plugin name (#60): a grant for plugin A never authorizes plugin B. */
   private readonly grants = new Map<string, Set<Capability>>();
+  /**
+   * Tenant/user-scoped grants (#120). Kept apart from `grants` so a grant
+   * recorded for one tenant or user can never authorize another: the
+   * instance-wide map stays the legacy owner-allowlist door.
+   */
+  private readonly scopedGrants: Array<{
+    readonly pluginName: string;
+    readonly scope: GrantScope;
+    readonly capabilities: Set<Capability>;
+  }> = [];
 
   constructor(
     private readonly environment: KernelEnvironment = "local",
@@ -120,9 +155,48 @@ export class Kernel {
     for (const c of capabilities) set.add(c);
   }
 
+  /**
+   * Record a tenant- or user-scoped grant (#120). A grant recorded here
+   * only counts when the activating caller belongs to that tenant (and, for
+   * a per-user grant, is that exact owner).
+   */
+  grantScoped(scope: GrantScope, pluginName: string, ...capabilities: readonly Capability[]): void {
+    if (scope.tenantId.trim() === "") {
+      throw new CapabilityError("grant scope requires a non-empty tenantId");
+    }
+    if (scope.ownerId !== undefined && scope.ownerId.trim() === "") {
+      throw new CapabilityError("grant scope ownerId must be non-empty when present");
+    }
+    this.scopedGrants.push({
+      pluginName,
+      scope: {
+        tenantId: scope.tenantId,
+        ...(scope.ownerId === undefined ? {} : { ownerId: scope.ownerId }),
+      },
+      capabilities: new Set(capabilities),
+    });
+  }
+
+  /**
+   * Capabilities in force for one plugin and (optionally) one caller:
+   * instance-wide grants plus every scoped grant that matches the tenant and,
+   * when the grant is per-user, the owner. Read-only view for the console/UI.
+   */
+  effectiveGrants(pluginName: string, principal?: PrincipalScope): Set<Capability> {
+    const granted = new Set<Capability>(this.grants.get(pluginName) ?? []);
+    if (principal === undefined) return granted;
+    for (const entry of this.scopedGrants) {
+      if (entry.pluginName !== pluginName) continue;
+      if (entry.scope.tenantId !== principal.tenantId) continue;
+      if (entry.scope.ownerId !== undefined && entry.scope.ownerId !== principal.ownerId) continue;
+      for (const c of entry.capabilities) granted.add(c);
+    }
+    return granted;
+  }
+
   async activate(name: string, options: ActivateOptions = {}): Promise<void> {
     // Activation-scoped: options.grants never persist into the kernel (#60).
-    const granted = new Set<Capability>(this.grants.get(name) ?? []);
+    const granted = this.effectiveGrants(name, options.principal);
     if (options.grants) for (const c of options.grants) granted.add(c);
     const plugin = this.plugins.get(name);
     if (!plugin) throw new Error(`unknown plugin: ${name}`);

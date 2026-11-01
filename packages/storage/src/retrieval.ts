@@ -10,6 +10,7 @@
  * never widen the search or crash the query.
  */
 import type { Client, Row } from "@libsql/client";
+import { DEFAULT_TENANT, assertTenantId } from "./tenant.js";
 
 export interface PassageHit {
   passageId: string;
@@ -100,9 +101,11 @@ export async function searchPassages(
   documentIds?: string[],
   relevanceFloor?: number,
   noiseFilter?: boolean,
+  tenantId: string = DEFAULT_TENANT,
 ): Promise<PassageHit[]> {
   const match = buildMatchQuery(queryText);
   if (match === null) return [];
+  const tenant = assertTenantId(tenantId);
   const docFilter =
     documentIds && documentIds.length > 0
       ? ` AND p.document_id IN (${documentIds.map(() => "?").join(", ")})`
@@ -115,14 +118,16 @@ export async function searchPassages(
   const res = await client.execute({
     sql: `SELECT f.passage_id, p.document_id, d.content_hash, f.excerpt, bm25(passages_fts) AS score
           FROM passages_fts f
-          JOIN passages p ON p.id = f.passage_id AND p.owner_id = ?
-          JOIN documents d ON d.id = p.document_id
+          JOIN passages p ON p.id = f.passage_id AND p.owner_id = ? AND p.tenant_id = ?
+          JOIN documents d ON d.id = p.document_id AND d.tenant_id = ?
           WHERE passages_fts MATCH ?
             AND f.owner_id = ?${docFilter}${floorFilter}${noiseClause}
           ORDER BY score
           LIMIT ?`,
     args: [
       ownerId,
+      tenant,
+      tenant,
       match,
       ownerId,
       ...(documentIds && documentIds.length > 0 ? documentIds : []),
