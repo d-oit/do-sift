@@ -1,9 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DegradationHistoryEntry } from "../../scripts/degradation/history.ts";
 import {
   buildDashboardHtml,
   describeReasonChanges,
+  describeShrinkingCoverage,
   DIMENSION_LABELS,
   DIMENSIONS,
   generateDashboard,
@@ -303,6 +305,56 @@ describe("Evals Dashboard Generator", () => {
     // A bucket that appeared only in the failed run keeps its count and coverage.
     expect(html).toContain('1<span class="bucket-total-runs"> &middot; 1/2 runs</span>');
     expect(html).toContain('4<span class="bucket-total-runs"> &middot; 2/2 runs</span>');
+  });
+
+  it("flags reason buckets whose coverage shrank in the newer half of the history", () => {
+    const artifact = {
+      suiteVersion: "deg-1",
+      executedAtUtc: "2026-11-02T10:00:00.000Z",
+      qualityGate: { score: 1, scenariosPassed: 7, scenariosTotal: 7 },
+      scenarios: [],
+    };
+    const entry = (day: string, modelFailed: number): DegradationHistoryEntry => ({
+      executedAtUtc: `${day}T09:00:00.000Z`,
+      suiteVersion: "deg-1",
+      score: modelFailed > 0 ? 1 : 0.857,
+      scenariosPassed: modelFailed > 0 ? 7 : 6,
+      scenariosTotal: 7,
+      reasons: {
+        "no-evidence": 2,
+        "citation-invalid": 1,
+        "model-failed": modelFailed,
+        none: modelFailed > 0 ? 3 : 4,
+      },
+    });
+
+    const history = [
+      entry("2026-11-01", 1),
+      entry("2026-11-01", 1),
+      entry("2026-11-02", 0),
+      entry("2026-11-02", 0),
+    ];
+
+    expect(describeShrinkingCoverage(history)).toEqual([
+      {
+        bucket: "model-failed",
+        earlierRuns: 2,
+        earlierWithBucket: 2,
+        recentRuns: 2,
+        recentWithBucket: 0,
+      },
+    ]);
+    // A single run has no halves to compare, and flat or growing coverage is not a warning.
+    expect(describeShrinkingCoverage([entry("2026-11-01", 1)])).toEqual([]);
+    expect(describeShrinkingCoverage([entry("2026-11-01", 1), entry("2026-11-02", 1)])).toEqual([]);
+    expect(describeShrinkingCoverage([entry("2026-11-01", 0), entry("2026-11-02", 1)])).toEqual([]);
+
+    const html = buildDashboardHtml([], artifact, history);
+    expect(html).toContain('<span class="reason-pill score-partial">Coverage shrinking</span>');
+    expect(html).toContain("2/2 &rarr; 0/2 runs");
+    expect(
+      buildDashboardHtml([], artifact, [entry("2026-11-01", 1), entry("2026-11-02", 1)]),
+    ).not.toContain("Coverage shrinking");
   });
 
   it("highlights trend rows whose reason buckets moved since the previous run", () => {

@@ -136,7 +136,9 @@ human re-score:
   are highlighted and list their signed deltas (`model-failed -1, none +1`),
   so a change is visible without subtracting columns, and a lifetime total
   row sums each bucket across the retained history with the number of runs
-  that emitted it. History is evidence only: `scripts/eval.ts` still scores
+  that emitted it, and a "Coverage shrinking" note above the table compares
+  each bucket's share of runs in the earlier half of the history against the
+  newer half. History is evidence only: `scripts/eval.ts` still scores
   the current in-memory run and enforces 1.0, so a missing or stale history
   file cannot change the gate.
 

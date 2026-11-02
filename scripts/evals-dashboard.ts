@@ -209,6 +209,48 @@ export function summarizeReasonTotals(
   return { runCount: history.length, totals, runsWithBucket };
 }
 
+export interface BucketCoverageShift {
+  bucket: DegradationReasonBucket;
+  /** Runs in the earlier half of the history. */
+  earlierRuns: number;
+  /** Earlier runs that emitted the bucket at least once. */
+  earlierWithBucket: number;
+  /** Runs in the newer half of the history. */
+  recentRuns: number;
+  /** Newer runs that emitted the bucket at least once. */
+  recentWithBucket: number;
+}
+
+/**
+ * Buckets whose run coverage shrank between the earlier and the newer half of
+ * the recorded history. Coverage is compared as a fraction rather than a raw
+ * count because the halves can differ in size, and a bucket that only gained
+ * coverage is never flagged.
+ */
+export function describeShrinkingCoverage(
+  history: readonly DegradationHistoryEntry[],
+): BucketCoverageShift[] {
+  if (history.length < 2) return [];
+  const split = Math.floor(history.length / 2);
+  const earlier = history.slice(0, split);
+  const recent = history.slice(split);
+  const shifts: BucketCoverageShift[] = [];
+  for (const bucket of DEGRADATION_REASON_BUCKETS) {
+    const earlierWithBucket = earlier.filter((entry) => (entry.reasons[bucket] ?? 0) > 0).length;
+    const recentWithBucket = recent.filter((entry) => (entry.reasons[bucket] ?? 0) > 0).length;
+    if (recentWithBucket * earlier.length < earlierWithBucket * recent.length) {
+      shifts.push({
+        bucket,
+        earlierRuns: earlier.length,
+        earlierWithBucket,
+        recentRuns: recent.length,
+        recentWithBucket,
+      });
+    }
+  }
+  return shifts;
+}
+
 /**
  * Renders the degradation-honesty panel: score, reason counts, and per-scenario
  * outcomes from the failure-mode suite.
@@ -310,6 +352,22 @@ export function buildDegradationPanel(
             </tr>
           </tfoot>`;
 
+  const shrinking = describeShrinkingCoverage(history);
+  const coverageWarning =
+    shrinking.length === 0
+      ? ""
+      : `<div class="coverage-warning">
+          <span class="reason-pill score-partial">Coverage shrinking</span>
+          ${shrinking
+            .map(
+              (shift) =>
+                `<span>${escapeHtml(
+                  DEGRADATION_REASON_LABELS[shift.bucket] ?? shift.bucket,
+                )} ${shift.earlierWithBucket}/${shift.earlierRuns} &rarr; ${shift.recentWithBucket}/${shift.recentRuns} runs</span>`,
+            )
+            .join("")}
+        </div>`;
+
   const historyHtml =
     history.length === 0
       ? `<p style="font-size: 12px; color: var(--text-muted); margin-top: 14px;">
@@ -321,6 +379,7 @@ export function buildDegradationPanel(
           <span>Reason Counts Across Suite Runs</span>
           <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">${history.length} recorded run(s), oldest first; counts are emitted receipts</span>
         </div>
+        ${coverageWarning}
         <table class="heatmap">
           <thead>
             <tr>
@@ -338,7 +397,7 @@ export function buildDegradationPanel(
           ${
             history.length === 1
               ? "This is the first recorded run; each additional <code>npm run evals:degradation</code> adds a row and turns the counts into a trend."
-              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket."
+              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket. A bucket whose share of runs fell between the earlier and newer halves of the history is called out above the table with its before/after coverage."
           }
         </p>
       </div>`;
@@ -700,6 +759,15 @@ export function buildDashboardHtml(
       font-size: 11px;
       font-weight: normal;
       font-variant-numeric: tabular-nums;
+    }
+    .coverage-warning {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
     }
 
     /* Diff View styles */
