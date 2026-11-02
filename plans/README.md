@@ -18,6 +18,7 @@ This folder is the project's memory. Agents and humans update it together.
 
 ## Current queue
 
+- `027-coverage-recency-weights.md` — done (2026-11-02); the shrinking-coverage warning picks its window from a 0.9-per-run recency decay instead of splitting the history in half, so the newest runs decide.
 - `026-degradation-coverage-shrink.md` — done (2026-11-02); the panel warns when a reason bucket's share of runs falls between the earlier and newer halves of the history.
 - `025-degradation-lifetime-totals.md` — done (2026-11-02); the trend table sums each reason bucket across recorded runs and shows per-bucket run coverage.
 - `024-degradation-trend-deltas.md` — done (2026-11-02); the trend table highlights rows whose reason buckets moved and lists the per-bucket delta.

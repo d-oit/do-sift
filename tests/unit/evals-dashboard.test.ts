@@ -7,6 +7,7 @@ import {
   describeReasonChanges,
   describeShrinkingCoverage,
   DIMENSION_LABELS,
+  recentCoverageSplit,
   DIMENSIONS,
   generateDashboard,
   generateTrendChartSvg,
@@ -307,7 +308,7 @@ describe("Evals Dashboard Generator", () => {
     expect(html).toContain('4<span class="bucket-total-runs"> &middot; 2/2 runs</span>');
   });
 
-  it("flags reason buckets whose coverage shrank in the newer half of the history", () => {
+  it("flags reason buckets whose coverage shrank across the recency-weighted split", () => {
     const artifact = {
       suiteVersion: "deg-1",
       executedAtUtc: "2026-11-02T10:00:00.000Z",
@@ -355,6 +356,51 @@ describe("Evals Dashboard Generator", () => {
     expect(
       buildDashboardHtml([], artifact, [entry("2026-11-01", 1), entry("2026-11-02", 1)]),
     ).not.toContain("Coverage shrinking");
+  });
+
+  it("weights the coverage split toward the newest runs", () => {
+    // A short history still splits near its midpoint; a full 30-run history
+    // weighs its newest seven runs against the twenty-three before them.
+    expect(recentCoverageSplit(1)).toBe(1);
+    expect(recentCoverageSplit(2)).toBe(1);
+    expect(recentCoverageSplit(4)).toBe(2);
+    expect(recentCoverageSplit(10)).toBe(6);
+    expect(recentCoverageSplit(30)).toBe(23);
+
+    const entry = (minute: number, modelFailed: number): DegradationHistoryEntry => ({
+      executedAtUtc: new Date(Date.UTC(2026, 9, 1, 0, minute)).toISOString(),
+      suiteVersion: "deg-1",
+      score: modelFailed > 0 ? 1 : 0.857,
+      scenariosPassed: modelFailed > 0 ? 7 : 6,
+      scenariosTotal: 7,
+      reasons: {
+        "no-evidence": 2,
+        "citation-invalid": 1,
+        "model-failed": modelFailed,
+        none: modelFailed > 0 ? 3 : 4,
+      },
+    });
+
+    // Ten early runs emitted the bucket, thirteen in the middle did not, and the
+    // seven newest runs emit it again. A fixed midpoint split (10 of 15 against
+    // 7 of 15) would still call this shrinking; recency weighting does not.
+    const history = [
+      ...Array.from({ length: 10 }, (_, i) => entry(i, 1)),
+      ...Array.from({ length: 13 }, (_, i) => entry(10 + i, 0)),
+      ...Array.from({ length: 7 }, (_, i) => entry(23 + i, 1)),
+    ];
+
+    expect(history).toHaveLength(30);
+    const artifact = {
+      suiteVersion: "deg-1",
+      executedAtUtc: "2026-11-02T10:00:00.000Z",
+      qualityGate: { score: 1, scenariosPassed: 7, scenariosTotal: 7 },
+      scenarios: [],
+    };
+
+    expect(describeShrinkingCoverage(history)).toEqual([]);
+    expect(describeShrinkingCoverage(history.slice(0, 10))).toEqual([]);
+    expect(buildDashboardHtml([], artifact, history)).not.toContain("Coverage shrinking");
   });
 
   it("highlights trend rows whose reason buckets moved since the previous run", () => {

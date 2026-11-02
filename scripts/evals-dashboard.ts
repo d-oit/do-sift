@@ -211,27 +211,58 @@ export function summarizeReasonTotals(
 
 export interface BucketCoverageShift {
   bucket: DegradationReasonBucket;
-  /** Runs in the earlier half of the history. */
+  /** Runs before the recency-weighted split. */
   earlierRuns: number;
   /** Earlier runs that emitted the bucket at least once. */
   earlierWithBucket: number;
-  /** Runs in the newer half of the history. */
+  /** Runs at and after the recency-weighted split. */
   recentRuns: number;
   /** Newer runs that emitted the bucket at least once. */
   recentWithBucket: number;
 }
 
+/** Share of the run after it that each older run keeps when weighting recency. */
+export const COVERAGE_RECENCY_DECAY = 0.9;
+
 /**
- * Buckets whose run coverage shrank between the earlier and the newer half of
- * the recorded history. Coverage is compared as a fraction rather than a raw
- * count because the halves can differ in size, and a bucket that only gained
- * coverage is never flagged.
+ * Index where the recent window of a coverage comparison starts: the shortest
+ * suffix of newest runs that holds at least half of the history's recency
+ * weight, leaving one run on each side.
+ *
+ * A fixed midpoint split lets the older bulk outvote a recent recovery; here
+ * each older run keeps 90% of the weight of the run recorded after it, so a
+ * short history still splits near its middle (2 runs → 1, 4 → 2) while a full
+ * 30-run history weighs its newest ~7 runs against the ~23 before them.
+ */
+export function recentCoverageSplit(runCount: number): number {
+  if (runCount < 2) return runCount;
+  let total = 0;
+  let weight = 1;
+  for (let k = 0; k < runCount; k += 1) {
+    total += weight;
+    weight *= COVERAGE_RECENCY_DECAY;
+  }
+  let recent = 0;
+  weight = 1;
+  for (let k = 0; k < runCount - 1; k += 1) {
+    recent += weight;
+    if (recent >= total / 2) return runCount - 1 - k;
+    weight *= COVERAGE_RECENCY_DECAY;
+  }
+  return 1;
+}
+
+/**
+ * Buckets whose run coverage shrank across the recency-weighted split of the
+ * recorded history (see `recentCoverageSplit`). Coverage is compared as a
+ * fraction rather than a raw count because the two windows differ in size, and
+ * a bucket that only gained coverage is never flagged.
  */
 export function describeShrinkingCoverage(
   history: readonly DegradationHistoryEntry[],
 ): BucketCoverageShift[] {
   if (history.length < 2) return [];
-  const split = Math.floor(history.length / 2);
+  const split = recentCoverageSplit(history.length);
   const earlier = history.slice(0, split);
   const recent = history.slice(split);
   const shifts: BucketCoverageShift[] = [];
