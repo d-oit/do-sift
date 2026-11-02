@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": "deg-1",
+  "source": "evals/degradation/scenarios.json",
+  "qualityGate": {
+    "dimension": "degradationHonesty",
+    "score": 1,
+    "scenariosPassed": 7,
+    "scenariosTotal": 7
+  },
+  "scenarios": [
+    {
+      "id": "search-no-results",
+      "name": "Search returns no results — insufficient evidence, not invention",
+      "passed": true,
+      "checks": "17/17"
+    },
+    {
+      "id": "search-provider-timeout",
+      "name": "Search provider times out — the run fails loudly, the answer stays evidence-only",
+      "passed": true,
+      "checks": "17/17"
+    },
+    {
+      "id": "model-synthesis-failure",
+      "name": "Model synthesis fails — the answer falls back to stored evidence, never invented claims",
+      "passed": true,
+      "checks": "20/20"
+    },
+    {
+      "id": "evidence-storage-full",
+      "name": "Evidence storage is full — the failure is surfaced, not papered over with uncited text",
+      "passed": true,
+      "checks": "12/12"
+    },
+    {
+      "id": "citation-resolution-failure",
+      "name": "No citations resolve — every block degrades to a self-citing stored passage",
+      "passed": true,
+      "checks": "20/20"
+    },
+    {
+      "id": "partial-citation-failure",
+      "name": "One claim's citations do not resolve — that claim is flagged, the others stay grounded",
+      "passed": true,
+      "checks": "20/20"
+    },
+    {
+      "id": "cross-question-evidence",
+      "name": "Evidence came from another question's run — the answer says so",
+      "passed": true,
+      "checks": "18/18"
+    }
+  ]
+}

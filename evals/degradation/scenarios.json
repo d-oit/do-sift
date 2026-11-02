@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": "deg-1",
+  "description": "Failure-mode scenarios for degradation honesty (issue #127): each scenario injects one search, storage, model, or citation failure into the real answer path and asserts the exact user-facing message plus the operational event receipt the engine emits.",
+  "scenarios": [
+    {
+      "id": "search-no-results",
+      "name": "Search returns no results — insufficient evidence, not invention",
+      "question": "what did the 2026 orbiter find?",
+      "injection": "search-empty",
+      "expect": {
+        "research": "empty",
+        "answerStatus": 200,
+        "userMessage": "Evidence-only output: no model claims (citations failed validation or no evidence).",
+        "degraded": true,
+        "evidenceOnly": true,
+        "blockCount": 0,
+        "evidenceFromRun": null,
+        "modelCalls": 0,
+        "requestStatus": "completed",
+        "answersStored": 1,
+        "cacheKeyStored": true,
+        "openReservations": 0,
+        "event": { "type": "answer.degraded", "reason": "no-evidence" },
+        "http": { "path": "/api/answer", "status": 200, "outcome": "success" },
+        "retry": null
+      }
+    },
+    {
+      "id": "search-provider-timeout",
+      "name": "Search provider times out — the run fails loudly, the answer stays evidence-only",
+      "question": "what did the 2026 orbiter find?",
+      "injection": "search-timeout",
+      "expect": {
+        "research": "fails",
+        "answerStatus": 200,
+        "userMessage": "Evidence-only output: no model claims (citations failed validation or no evidence).",
+        "degraded": true,
+        "evidenceOnly": true,
+        "blockCount": 0,
+        "evidenceFromRun": null,
+        "modelCalls": 0,
+        "requestStatus": "completed",
+        "answersStored": 1,
+        "cacheKeyStored": true,
+        "openReservations": 0,
+        "event": { "type": "answer.degraded", "reason": "no-evidence" },
+        "http": { "path": "/api/answer", "status": 200, "outcome": "success" },
+        "retry": null
+      }
+    },
+    {
+      "id": "model-synthesis-failure",
+      "name": "Model synthesis fails — the answer falls back to stored evidence, never invented claims",
+      "question": "what did the 2026 orbiter find?",
+      "injection": "model-failure",
+      "expect": {
+        "research": "seed",
+        "answerStatus": 200,
+        "userMessage": "Evidence-only output: no model claims (citations failed validation or no evidence). Evidence fetched by this question's research run.",
+        "degraded": true,
+        "evidenceOnly": true,
+        "blockCount": 2,
+        "unresolvedClaims": 0,
+        "evidenceFromRun": "run",
+        "modelCalls": 1,
+        "requestStatus": "completed",
+        "answersStored": 1,
+        "cacheKeyStored": false,
+        "openReservations": 0,
+        "event": { "type": "answer.degraded", "reason": "model-failed" },
+        "http": { "path": "/api/answer", "status": 200, "outcome": "success" },
+        "retry": { "cached": false, "modelCalls": 2 }
+      }
+    },
+    {
+      "id": "evidence-storage-full",
+      "name": "Evidence storage is full — the failure is surfaced, not papered over with uncited text",
+      "question": "what did the 2026 orbiter find?",
+      "injection": "storage-full",
+      "expect": {
+        "research": "seed",
+        "answerStatus": 500,
+        "userMessage": "Answer failed: the request was recorded and no answer was produced.",
+        "degraded": null,
+        "evidenceOnly": null,
+        "blockCount": null,
+        "evidenceFromRun": null,
+        "modelCalls": 1,
+        "requestStatus": "failed",
+        "answersStored": 0,
+        "cacheKeyStored": null,
+        "openReservations": 0,
+        "event": null,
+        "http": { "path": "/api/answer", "status": 500, "outcome": "server_error" },
+        "retry": null
+      }
+    },
+    {
+      "id": "citation-resolution-failure",
+      "name": "No citations resolve — every block degrades to a self-citing stored passage",
+      "question": "what did the 2026 orbiter find?",
+      "injection": "citation-invalid",
+      "expect": {
+        "research": "seed",
+        "answerStatus": 200,
+        "userMessage": "Evidence-only output: no model claims (citations failed validation or no evidence). Evidence fetched by this question's research run.",
+        "degraded": true,
+        "evidenceOnly": true,
+        "blockCount": 2,
+        "unresolvedClaims": 0,
+        "evidenceFromRun": "run",
+        "modelCalls": 1,
+        "requestStatus": "completed",
+        "answersStored": 1,
+        "cacheKeyStored": false,
+        "openReservations": 0,
+        "event": { "type": "answer.degraded", "reason": "citation-invalid" },
+        "http": { "path": "/api/answer", "status": 200, "outcome": "success" },
+        "retry": { "cached": false, "modelCalls": 2 }
+      }
+    },
+    {
+      "id": "partial-citation-failure",
+      "name": "One claim's citations do not resolve — that claim is flagged, the others stay grounded",
+      "question": "what did the 2026 orbiter find?",
+      "injection": "partial-citation",
+      "expect": {
+        "research": "seed",
+        "answerStatus": 200,
+        "userMessage": "Partially grounded answer — some claims are unresolved because their citations did not resolve against stored evidence. Evidence fetched by this question's research run.",
+        "degraded": true,
+        "evidenceOnly": false,
+        "blockCount": 2,
+        "unresolvedClaims": 1,
+        "evidenceFromRun": "run",
+        "modelCalls": 1,
+        "requestStatus": "completed",
+        "answersStored": 1,
+        "cacheKeyStored": false,
+        "openReservations": 0,
+        "event": { "type": "answer.degraded", "reason": "citation-invalid" },
+        "http": { "path": "/api/answer", "status": 200, "outcome": "success" },
+        "retry": { "cached": false, "modelCalls": 2 }
+      }
+    },
+    {
+      "id": "cross-question-evidence",
+      "name": "Evidence came from another question's run — the answer says so",
+      "question": "what did the orbiter find about water ice?",
+      "seedQuestion": "what did the 2026 orbiter survey report?",
+      "injection": "cross-question",
+      "expect": {
+        "research": "cross-question",
+        "answerStatus": 200,
+        "userMessage": "Grounded answer — every citation resolved against stored evidence. No stored evidence came from this question's research run — the passages below are from other questions' runs.",
+        "degraded": false,
+        "evidenceOnly": false,
+        "blockCount": 2,
+        "unresolvedClaims": 0,
+        "evidenceFromRun": "cross-question",
+        "modelCalls": 1,
+        "requestStatus": "completed",
+        "answersStored": 1,
+        "cacheKeyStored": true,
+        "openReservations": 0,
+        "event": null,
+        "http": { "path": "/api/answer", "status": 200, "outcome": "success" },
+        "retry": null
+      }
+    }
+  ]
+}

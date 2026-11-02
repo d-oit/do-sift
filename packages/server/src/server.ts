@@ -28,6 +28,7 @@ export type { SourceCard } from "./server-contracts.js";
 export type { ResearchRunOutcome } from "./server-contracts.js";
 export type { HttpRequestEvent } from "./server-contracts.js";
 export type { AnswerSuspectEvent } from "./server-contracts.js";
+export type { AnswerDegradedEvent } from "./server-contracts.js";
 export type { OperationalEvent } from "./server-contracts.js";
 export type { ResearchServerOptions } from "./server-contracts.js";
 export type { AnswerHttpResponse } from "./server-contracts.js";
@@ -171,6 +172,18 @@ async function handleAnswer(
 
     try {
       const payload = await options.answer(ownerId, question, cancellation.signal);
+      if (payload.degraded) {
+        // Degradation honesty as a receipt. The service names the cause
+        // (no evidence / unresolved citations / provider failure); the
+        // block-count fallback keeps older payload producers labeled.
+        options.onEvent?.({
+          type: "answer.degraded",
+          requestId: httpRequestId,
+          reason:
+            payload.degradationReason ??
+            (payload.blocks.length === 0 ? "no-evidence" : "citation-invalid"),
+        });
+      }
       if (payload.suspectEvidence !== undefined) {
         // ANS-12: advisory receipt for the QUAL gate and live monitoring.
         options.onEvent?.({

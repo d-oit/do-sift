@@ -82,6 +82,40 @@ describe("answer surface (ANS-05)", () => {
     }
   });
 
+  it("emits the service's degradation reason (model-failed) on answer.degraded", async () => {
+    const events: OperationalEvent[] = [];
+    const degradedServer = createResearchServer({
+      auth: makeAuth(true),
+      runResearch,
+      onEvent: (event) => events.push(event),
+      answer: async () => ({
+        requestId: "req-ans-3",
+        answerId: "ans-3",
+        cached: false,
+        degraded: true,
+        evidenceOnly: true,
+        degradationReason: "model-failed",
+        blocks: [{ kind: "paragraph", text: "Stored evidence.", citations: ["ev-1"] }],
+      }),
+    } as ResearchServerOptions);
+    const degradedPort = await listen(degradedServer);
+    try {
+      const res = await fetch(`http://127.0.0.1:${degradedPort}/api/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "model down?" }),
+      });
+      expect(res.status).toBe(200);
+      const receipt = events.find((event) => event.type === "answer.degraded");
+      // blocks are non-empty, so the old block-count fallback would have said
+      // citation-invalid; the payload's reason must win.
+      expect(receipt).toMatchObject({ type: "answer.degraded", reason: "model-failed" });
+      expect(JSON.stringify(receipt)).not.toContain("model down?");
+    } finally {
+      degradedServer.close();
+    }
+  });
+
   it("refuses forged tokens (401) and malformed bodies (400)", async () => {
     expect(
       (await post("/api/answer", { question: "q" }, { authorization: "Bearer forged" })).status,

@@ -25,6 +25,7 @@ import {
   Repositories,
   searchPassages,
 } from "@do-sift/storage";
+import { runDegradationSuite } from "./degradation/run.js";
 
 const ROOT = process.cwd();
 let ran = 0;
@@ -318,12 +319,45 @@ async function measurePathHybrid(
   );
 }
 
+/**
+ * Degradation honesty (issue #127): the failure-mode suite is the quality
+ * gate's score source, so the gate fails unless every scenario holds. The
+ * score is passed scenarios / registered scenarios.
+ */
+async function evalDegradation(): Promise<void> {
+  try {
+    const result = await runDegradationSuite();
+    assert(
+      "degradation suite registers at least five scenarios",
+      result.total >= 5,
+      `${result.total}`,
+    );
+    for (const scenario of result.scenarios) {
+      const failed = scenario.checks
+        .filter((check) => !check.ok)
+        .map((check) => `${check.name}: expected ${check.expected}, got ${check.actual}`);
+      assert(`degradation: ${scenario.id}`, scenario.passed, failed.join("; "));
+    }
+    assert(
+      "degradation honesty score computed from the suite is 1.0",
+      result.degradationHonesty === 1,
+      `${result.degradationHonesty}`,
+    );
+    console.log(
+      `  degradationHonesty=${result.degradationHonesty.toFixed(3)} (${result.passed}/${result.total} scenarios)`,
+    );
+  } catch (error) {
+    assert("degradation suite runs", false, error instanceof Error ? error.message : String(error));
+  }
+}
+
 async function run(): Promise<number> {
   evalCitations();
   evalCacheSafety();
   evalBudget();
   evalSitePolicy();
   await evalRetrieval();
+  await evalDegradation();
 
   if (ran === 0) {
     console.error("eval: FAIL — zero eval cases registered (INV-006)");
@@ -333,7 +367,9 @@ async function run(): Promise<number> {
     console.error(`eval: FAIL — ${failed}/${ran} case(s) failed`);
     return 1;
   }
-  console.log(`eval: PASS (${ran} deterministic cases, 0 network calls, 0 model calls)`);
+  console.log(
+    `eval: PASS (${ran} deterministic cases, 0 external network calls, 0 paid model calls)`,
+  );
   return 0;
 }
 

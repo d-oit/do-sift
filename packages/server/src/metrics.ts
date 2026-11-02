@@ -22,9 +22,14 @@ export class MetricsRegistry {
   private readonly durationCount = new Map<string, number>();
   private suspectEvents = 0;
   private suspectPassages = 0;
+  private degradedEvents = 0;
 
   /** Record one operational event. Never throws into the request path. */
   observe(event: OperationalEvent): void {
+    if (event.type === "answer.degraded") {
+      this.degradedEvents += 1;
+      return;
+    }
     if (event.type === "answer.suspect") {
       this.suspectEvents += 1;
       this.suspectPassages += event.passages;
@@ -81,6 +86,11 @@ export class MetricsRegistry {
     );
     lines.push("# TYPE do_sift_answer_suspect_passages_total counter");
     lines.push(`do_sift_answer_suspect_passages_total ${this.suspectPassages}`);
+    lines.push(
+      "# HELP do_sift_answer_degraded_total Answers honestly degraded (no evidence, unresolved citations, or model failure).",
+    );
+    lines.push("# TYPE do_sift_answer_degraded_total counter");
+    lines.push(`do_sift_answer_degraded_total ${this.degradedEvents}`);
     return `${lines.join("\n")}\n`;
   }
 }
