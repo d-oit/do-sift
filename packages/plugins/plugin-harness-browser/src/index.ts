@@ -18,7 +18,15 @@
  * The driver interface is the seam for Playwright (BRW-04's real-browser
  * e2e); tests inject a recording fake, so this slice is fully offline.
  */
-import { HarnessRunLog, type HarnessAction, type HarnessTask } from "@do-sift/contracts";
+import {
+  HarnessRunLog,
+  SHIPPED_GUARDRAILS,
+  createGuardrailEngine,
+  type GuardrailEngine,
+  type GuardrailRequest,
+  type HarnessAction,
+  type HarnessTask,
+} from "@do-sift/contracts";
 import type { PluginInstance } from "@do-sift/kernel";
 
 export interface BrowserHarnessConfig {
@@ -133,6 +141,12 @@ function hostOf(url: string): string {
 export function createBrowserHarness(deps: BrowserHarnessDeps): BrowserHarnessInstance {
   let pacing: BrowserPacing = { ...DEFAULTS };
   let activated = false;
+  // Kernel-injected guardrails engine (issue #124). Direct construction (the
+  // local/test path) starts from the shipped policy — the strict default —
+  // with the grant implied by the caller having obtained the instance.
+  let guardrails: GuardrailEngine = createGuardrailEngine(SHIPPED_GUARDRAILS, {
+    granted: true,
+  });
   const now = deps.now ?? (() => Date.now());
   const sleep =
     deps.sleep ??
@@ -149,6 +163,7 @@ export function createBrowserHarness(deps: BrowserHarnessDeps): BrowserHarnessIn
         scrollStepPx: positiveInt(cfg.scrollStepPx, DEFAULTS.scrollStepPx),
         scrollPauseMs: positiveInt(cfg.scrollPauseMs, DEFAULTS.scrollPauseMs),
       };
+      guardrails = context.guardrails ?? guardrails;
       activated = true;
       context.events.emit("harness-browser.activated", { ...pacing });
     },
@@ -176,6 +191,17 @@ export function createBrowserHarness(deps: BrowserHarnessDeps): BrowserHarnessIn
       const deny = (action: Omit<HarnessAction, "allowed" | "seq">, deniedBy: string): "denied" => {
         record({ seq: seq++, allowed: false, deniedBy, ...action });
         return "denied";
+      };
+      /** Guardrails decision for one action; the message doubles as `deniedBy`. */
+      const blockedByPolicy = (action: string, host?: string): string | null => {
+        const request: GuardrailRequest = { capability: "browser", action };
+        if (host !== undefined) request.host = host;
+        try {
+          guardrails.assertAllowed(request);
+          return null;
+        } catch (e) {
+          return e instanceof Error ? e.message : "guardrails: denied";
+        }
       };
 
       for (const step of plan.actions) {
@@ -205,6 +231,11 @@ export function createBrowserHarness(deps: BrowserHarnessDeps): BrowserHarnessIn
             );
             break;
           }
+          const blocked = blockedByPolicy("navigate", hostOf(step.url));
+          if (blocked !== null) {
+            log.outcome = deny({ type: "navigate", detail: step.url }, blocked);
+            break;
+          }
           await deps.driver.navigate(step.url);
           record({ seq: seq++, type: "navigate", detail: step.url, allowed: true });
           continue;
@@ -212,6 +243,11 @@ export function createBrowserHarness(deps: BrowserHarnessDeps): BrowserHarnessIn
 
         if (step.kind === "scroll") {
           const px = step.px ?? pacing.scrollStepPx;
+          const blocked = blockedByPolicy("scroll");
+          if (blocked !== null) {
+            log.outcome = deny({ type: "scroll", detail: `${px}px` }, blocked);
+            break;
+          }
           await deps.driver.scrollBy(px);
           record({ seq: seq++, type: "scroll", detail: `${px}px`, allowed: true });
           await sleep(pacing.scrollPauseMs);
@@ -228,6 +264,14 @@ export function createBrowserHarness(deps: BrowserHarnessDeps): BrowserHarnessIn
             );
             break;
           }
+          const blocked = blockedByPolicy("type");
+          if (blocked !== null) {
+            log.outcome = deny(
+              { type: "type", detail: `${step.selector} ← ${step.text.length} chars` },
+              blocked,
+            );
+            break;
+          }
           await deps.driver.type(step.selector, step.text, pacing.typeDelayMs);
           record({
             seq: seq++,
@@ -240,6 +284,11 @@ export function createBrowserHarness(deps: BrowserHarnessDeps): BrowserHarnessIn
         }
 
         if (step.kind === "click") {
+          const blocked = blockedByPolicy("click");
+          if (blocked !== null) {
+            log.outcome = deny({ type: "click", detail: step.selector }, blocked);
+            break;
+          }
           await deps.driver.click(step.selector);
           record({ seq: seq++, type: "click", detail: step.selector, allowed: true });
           continue;

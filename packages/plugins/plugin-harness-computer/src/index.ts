@@ -23,7 +23,15 @@
  *   replayable HarnessRunLog. There is no remote control surface of any
  *   kind — the only input is the local caller.
  */
-import { HarnessRunLog, type HarnessAction, type HarnessTask } from "@do-sift/contracts";
+import {
+  HarnessRunLog,
+  SHIPPED_GUARDRAILS,
+  createGuardrailEngine,
+  type GuardrailEngine,
+  type GuardrailRequest,
+  type HarnessAction,
+  type HarnessTask,
+} from "@do-sift/contracts";
 import type { PluginInstance } from "@do-sift/kernel";
 
 export type ComputerActionClass = "open" | "type" | "click" | "scroll" | "key";
@@ -139,6 +147,11 @@ export function createComputerHarness(deps: ComputerHarnessDeps): ComputerHarnes
   let actionDelayMs = 500;
   let typeDelayMs = 60;
   let activated = false;
+  // Kernel-injected guardrails engine (issue #124); direct construction (the
+  // local/test path) starts from the shipped policy — the strict default.
+  let guardrails: GuardrailEngine = createGuardrailEngine(SHIPPED_GUARDRAILS, {
+    granted: true,
+  });
   const now = deps.now ?? (() => Date.now());
   const sleep =
     deps.sleep ??
@@ -165,6 +178,7 @@ export function createComputerHarness(deps: ComputerHarnessDeps): ComputerHarnes
       }
       actionDelayMs = positiveInt(cfg.actionDelayMs, 500);
       typeDelayMs = positiveInt(cfg.typeDelayMs, 60);
+      guardrails = context.guardrails ?? guardrails;
       activated = true;
       context.events.emit("harness-computer.activated", { actionDelayMs, typeDelayMs });
     },
@@ -193,6 +207,20 @@ export function createComputerHarness(deps: ComputerHarnessDeps): ComputerHarnes
       };
       const approve = (action: Omit<HarnessAction, "allowed" | "seq">): void => {
         log.actions.push({ seq: seq++, allowed: true, ...action });
+      };
+      /**
+       * Guardrails decision for one action. `consent: true` because the
+       * per-class ledger decision was just obtained for this action; the
+       * engine still enforces the action class and prohibitions (ADR 0005).
+       */
+      const blockedByPolicy = (action: string): string | null => {
+        const request: GuardrailRequest = { capability: "computer", action, consent: true };
+        try {
+          guardrails.assertAllowed(request);
+          return null;
+        } catch (e) {
+          return e instanceof Error ? e.message : "guardrails: denied";
+        }
       };
 
       /** Consent for one action: remembered verdict → prompt → fail-closed.
@@ -249,6 +277,11 @@ export function createComputerHarness(deps: ComputerHarnessDeps): ComputerHarnes
             log.outcome = deny({ type: "open", detail: step.target }, "consent:open");
             break;
           }
+          const blocked = blockedByPolicy("open");
+          if (blocked !== null) {
+            log.outcome = deny({ type: "open", detail: step.target }, blocked);
+            break;
+          }
           await deps.driver.open(step.target);
           approve({ type: "open", detail: step.target });
           continue;
@@ -259,6 +292,11 @@ export function createComputerHarness(deps: ComputerHarnessDeps): ComputerHarnes
               { type: "type", detail: `${step.text.length} chars` },
               "consent:type",
             );
+            break;
+          }
+          const blocked = blockedByPolicy("type");
+          if (blocked !== null) {
+            log.outcome = deny({ type: "type", detail: `${step.text.length} chars` }, blocked);
             break;
           }
           await deps.driver.type(step.text, typeDelayMs);
@@ -273,6 +311,11 @@ export function createComputerHarness(deps: ComputerHarnessDeps): ComputerHarnes
             log.outcome = deny({ type: "click", detail: step.target }, "consent:click");
             break;
           }
+          const blocked = blockedByPolicy("click");
+          if (blocked !== null) {
+            log.outcome = deny({ type: "click", detail: step.target }, blocked);
+            break;
+          }
           await deps.driver.click(step.target);
           approve({ type: "click", detail: step.target });
           continue;
@@ -282,6 +325,11 @@ export function createComputerHarness(deps: ComputerHarnessDeps): ComputerHarnes
             log.outcome = deny({ type: "scroll", detail: `${step.px}px` }, "consent:scroll");
             break;
           }
+          const blocked = blockedByPolicy("scroll");
+          if (blocked !== null) {
+            log.outcome = deny({ type: "scroll", detail: `${step.px}px` }, blocked);
+            break;
+          }
           await deps.driver.scroll(step.px);
           approve({ type: "scroll", detail: `${step.px}px` });
           continue;
@@ -289,6 +337,11 @@ export function createComputerHarness(deps: ComputerHarnessDeps): ComputerHarnes
         if (step.kind === "key") {
           if (!(await consentTo("key", step.combo))) {
             log.outcome = deny({ type: "key", detail: step.combo }, "consent:key");
+            break;
+          }
+          const blocked = blockedByPolicy("key");
+          if (blocked !== null) {
+            log.outcome = deny({ type: "key", detail: step.combo }, blocked);
             break;
           }
           await deps.driver.key(step.combo);

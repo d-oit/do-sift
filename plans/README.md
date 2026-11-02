@@ -18,6 +18,7 @@ This folder is the project's memory. Agents and humans update it together.
 
 ## Current queue
 
+- `019-guardrails-policy-as-code.md` — done (2026-11-02, issue #124); the ethical guardrails are now a standalone declarative policy document (`packages/contracts/src/guardrails.json`) evaluated by a typed engine the kernel injects and both harnesses consult per action, with an integrity floor that refuses weakening and tests in `npm run check`. OPA parity is documented, not adopted (Node-only, hermetic pipeline).
 - `013-ans-evidence-hardening.md` — done (2026-10-13, ANS-10 → ANS-13); live-model steering re-measure stays owner-gated.
 - `014-production-usage.md` — done (OPS-07 through OPS-10); public-domain TLS and public-IP 403 smoke remain owner-side evidence.
 - `015-workflow-compaction.md` — done; DHC-06 closed as resolved upstream (v0.2.1, see plan 017 DHC-10).

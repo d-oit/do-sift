@@ -6,4 +6,5 @@ export * from "./cache.js";
 export * from "./budget.js";
 export * from "./harness.js";
 export * from "./sitepolicy.js";
+export * from "./guardrails.js";
 export * from "./evidence-framing.js";
