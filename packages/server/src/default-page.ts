@@ -1,4 +1,21 @@
 /** The dependency-free landing page served at /. */
+export const ANSWER_GROUNDED_MESSAGE =
+  "Grounded answer — every citation resolved against stored evidence.";
+export const ANSWER_EVIDENCE_ONLY_MESSAGE =
+  "Evidence-only output: no model claims (citations failed validation or no evidence).";
+export const ANSWER_FAILED_MESSAGE =
+  "Answer failed: the request was recorded and no answer was produced.";
+export const ANSWER_PARTIAL_MESSAGE =
+  "Partially grounded answer — some claims are unresolved because their citations did not resolve against stored evidence.";
+export const ANSWER_UNRESOLVED_LABEL =
+  "UNRESOLVED — citations did not resolve against stored evidence.";
+export const ANSWER_CACHED_PREFIX = "Served from the exact-answer cache. ";
+export const ANSWER_BASIS_MESSAGES = {
+  run: " Evidence fetched by this question's research run.",
+  "cross-question":
+    " No stored evidence came from this question's research run — the passages below are from other questions' runs.",
+  legacy: " Evidence predates run linkage (legacy).",
+} as const;
 export const DEFAULT_PAGE = `<!doctype html>
 <html lang="en">
 <head>
@@ -125,7 +142,7 @@ export const DEFAULT_PAGE = `<!doctype html>
 
   async function renderAnswer(res, status, answerBox) {
     if (!res.ok) {
-      status.textContent = "Failed: " + (await res.text());
+      status.textContent = ${JSON.stringify(ANSWER_FAILED_MESSAGE)};
       return;
     }
     const data = await res.json();
@@ -135,17 +152,19 @@ export const DEFAULT_PAGE = `<!doctype html>
       data.evidenceFromRun === undefined
         ? ""
         : data.evidenceFromRun === "run"
-          ? " Evidence fetched by this question's research run."
+          ? ${JSON.stringify(ANSWER_BASIS_MESSAGES.run)}
           : data.evidenceFromRun === "cross-question"
-            ? " No stored evidence came from this question's research run — the passages below are from other questions' runs."
-            : " Evidence predates run linkage (legacy).";
+            ? ${JSON.stringify(ANSWER_BASIS_MESSAGES["cross-question"])}
+            : ${JSON.stringify(ANSWER_BASIS_MESSAGES.legacy)};
     const meta = document.createElement("p");
     meta.className = "status";
     meta.textContent =
-      (data.cached ? "Served from the exact-answer cache. " : "") +
+      (data.cached ? ${JSON.stringify(ANSWER_CACHED_PREFIX)} : "") +
       (data.evidenceOnly
-        ? "Evidence-only output: no model claims (citations failed validation or no evidence)."
-        : "Grounded answer — every citation resolved against stored evidence.") +
+        ? ${JSON.stringify(ANSWER_EVIDENCE_ONLY_MESSAGE)}
+        : data.degraded
+          ? ${JSON.stringify(ANSWER_PARTIAL_MESSAGE)}
+          : ${JSON.stringify(ANSWER_GROUNDED_MESSAGE)}) +
       basis;
     answerBox.append(meta);
     for (const block of data.blocks) {
@@ -158,8 +177,18 @@ export const DEFAULT_PAGE = `<!doctype html>
       text.textContent = block.text;
       const cites = document.createElement("div");
       cites.className = "passages";
-      cites.textContent = "cites: " + block.citations.join(", ");
-      card.append(kind, text, cites);
+      cites.textContent =
+        "cites: " + (block.citations.length > 0 ? block.citations.join(", ") : "none");
+      if (block.unresolved === true) {
+        // Per-claim honesty (issue #127): an unresolved claim stays visible
+        // only with this flag; it is never presented as grounded.
+        const unresolved = document.createElement("div");
+        unresolved.className = "passages";
+        unresolved.textContent = ${JSON.stringify(ANSWER_UNRESOLVED_LABEL)};
+        card.append(kind, text, unresolved, cites);
+      } else {
+        card.append(kind, text, cites);
+      }
       answerBox.append(card);
     }
     status.textContent = data.blocks.length + " answer block(s).";

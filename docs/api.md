@@ -76,10 +76,19 @@ Returns `200 application/json` with the answer outcome:
 
 - `requestId`, `answerId`
 - `cached`: `true` on an exact-answer cache hit (nothing re-ran)
-- `degraded`: `true` when the model's citations failed validation or there was
-  no evidence. Citations are validated against stored evidence; invalid
-  citations degrade to evidence-only output, with no repair loop.
-- `evidenceOnly`: `true` when the answer has no model claims
+- `degraded`: `true` when the answer is not fully grounded — no evidence,
+  some claim's citations failed validation, or the model provider failed.
+  Citations are validated against stored evidence and there is no repair loop:
+  claims whose citations resolve are kept, the rest are flagged unresolved.
+- `evidenceOnly`: `true` when the answer has no model claims. A provider
+  failure falls back to evidence-only output (HTTP 200), and an answer where
+  no claim survives citation validation also degrades to evidence-only.
+- `degradationReason`: `"no-evidence"`, `"citation-invalid"`, or
+  `"model-failed"` when degraded; absent on grounded answers.
+- Answer blocks may carry `unresolved: true` when that claim's citations did
+  not resolve; its `citations` array then contains only the ids that did
+  (possibly empty). The bundled page labels such blocks UNRESOLVED and never
+  presents them as grounded.
 - `evidenceFromRun`: `"run"`, `"legacy"`, or `"cross-question"`. Undefined when
   nothing was retrieved.
 - `usage`, `reconciliation` (settle-time usage versus the reservation), and
@@ -90,7 +99,7 @@ Status codes:
 
 | Status | Meaning                                                              |
 | ------ | -------------------------------------------------------------------- |
-| 200    | Answer returned (possibly degraded or evidence-only)                 |
+| 200    | Answer returned (possibly degraded, partial, or evidence-only)       |
 | 400    | Bad JSON or question                                                 |
 | 401    | Authentication failed                                                |
 | 405    | Wrong method                                                         |
@@ -98,7 +107,7 @@ Status codes:
 | 413    | Body too large                                                       |
 | 415    | Content type is not JSON                                             |
 | 429    | Owner over its concurrency or per-minute limit; `Retry-After` is set |
-| 500    | Answer path failed (generic message)                                 |
+| 500    | Answer path failed after the model call (storage or internal error)  |
 | 501    | Answer surface not configured (`DO_SIFT_MODEL_PROVIDER` unset)       |
 
 Budget exhaustion is reported as degraded or evidence-only output, not as an

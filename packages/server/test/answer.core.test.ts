@@ -49,6 +49,7 @@ describe("answer service (ANS-03)", () => {
 
     expect(outcome.degraded).toBe(true);
     expect(outcome.evidenceOnly).toBe(true);
+    expect(outcome.degradationReason).toBe("citation-invalid");
     expect(outcome.usage).toBeUndefined(); // no model usage presented as the answer's
 
     const answer = await repos.answers.get("owner-a", outcome.answerId);
@@ -70,7 +71,11 @@ describe("answer service (ANS-03)", () => {
       ownerId: "owner-a",
       question: "xyzzy entirely unrelated query words",
     });
-    expect(outcome).toMatchObject({ degraded: true, evidenceOnly: true });
+    expect(outcome).toMatchObject({
+      degraded: true,
+      evidenceOnly: true,
+      degradationReason: "no-evidence",
+    });
     expect(model.calls).toHaveLength(0); // search mode discipline holds
     const answer = await repos.answers.get("owner-a", outcome.answerId);
     expect(answer?.blocks).toHaveLength(0);
@@ -143,23 +148,66 @@ describe("answer service (ANS-03)", () => {
     expect((await repos.answers.get("owner-a", outcome.answerId)) ?? undefined).toBeUndefined();
   });
 
-  it("propagates provider failure after failing the request and settling zeros", async () => {
+  it("falls back to evidence-only when the model provider fails (no fabricated claims)", async () => {
     await seedEvidence();
     const model = new FakeModelProvider({ failWith: new Error("provider down") });
-    await expect(
-      createAnswerService(makeDeps(model)).answer({ ownerId: "owner-a", question: QUESTION }),
-    ).rejects.toThrow("provider down");
-    // the request lifecycle closed as failed; no answer row exists
-    const requests = await client.execute("SELECT status FROM requests WHERE owner_id = 'owner-a'");
-    expect(requests.rows.map((r) => String(r.status))).toEqual(["failed"]);
-    const answers = await client.execute("SELECT COUNT(*) AS n FROM answers");
-    expect(Number(answers.rows[0]?.n)).toBe(0);
-    // the reservation was settled with zeros rather than left open
-    const ledger = await client.execute(
-      "SELECT kind, state FROM usage_ledger WHERE owner_id = 'owner-a'",
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+    expect(outcome).toMatchObject({
+      degraded: true,
+      evidenceOnly: true,
+      degradationReason: "model-failed",
+    });
+    expect(outcome.usage).toBeUndefined(); // no usage presented for a failed call
+    expect(model.calls).toHaveLength(1); // one attempted call, no retry loop
+
+    // the answer is the stored evidence, self-cited, and never cached
+    const answer = await repos.answers.get("owner-a", outcome.answerId);
+    expect(answer?.evidenceOnly).toBe(true);
+    expect(answer?.blocks).toHaveLength(2);
+    expect(answer?.cacheKey).toBeUndefined();
+    for (const block of answer?.blocks ?? []) {
+      expect(block.unresolved).toBeUndefined();
+      expect(await repos.passages.get("owner-a", block.citations[0] ?? "")).toBeDefined();
+    }
+    expect((await repos.requests.get("owner-a", outcome.requestId ?? ""))?.status).toBe(
+      "completed",
     );
-    expect(ledger.rows.map((r) => `${String(r.kind)}:${String(r.state)}`)).toContain(
-      "reservation:settled",
+    // the reservation was settled with zeros rather than left open
+    const open = await client.execute(
+      "SELECT COUNT(*) AS n FROM usage_ledger WHERE owner_id = 'owner-a' AND state = 'open'",
+    );
+    expect(Number(open.rows[0]?.n)).toBe(0);
+  });
+
+  it("flags only the claims whose citations do not resolve (per-claim honesty)", async () => {
+    await seedEvidence();
+    const model = new FakeModelProvider({ citationBehavior: "partial-hallucinate" });
+    const outcome = await createAnswerService(makeDeps(model)).answer({
+      ownerId: "owner-a",
+      question: QUESTION,
+    });
+
+    expect(outcome).toMatchObject({
+      degraded: true,
+      evidenceOnly: false,
+      degradationReason: "citation-invalid",
+    });
+    const answer = await repos.answers.get("owner-a", outcome.answerId);
+    expect(answer?.blocks).toHaveLength(2);
+    // the surviving claim keeps a verified citation
+    expect(answer?.blocks[0]?.unresolved).toBeUndefined();
+    expect(
+      await repos.passages.get("owner-a", answer?.blocks[0]?.citations[0] ?? ""),
+    ).toBeDefined();
+    // the unresolved claim keeps its text but loses the fabricated citation
+    expect(answer?.blocks[1]?.unresolved).toBe(true);
+    expect(answer?.blocks[1]?.citations).toEqual([]);
+    expect(answer?.cacheKey).toBeUndefined(); // a degraded answer is never cached
+    expect((await repos.requests.get("owner-a", outcome.requestId ?? ""))?.status).toBe(
+      "completed",
     );
   });
 
