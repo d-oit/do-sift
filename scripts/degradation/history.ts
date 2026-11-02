@@ -36,6 +36,7 @@ export interface DegradationHistoryEntry {
   score: number;
   scenariosPassed: number;
   scenariosTotal: number;
+  /** Receipt reasons the run actually emitted; a failed scenario is not copied over. */
   reasons: Record<DegradationReasonBucket, number>;
 }
 
@@ -50,12 +51,14 @@ export interface DegradationRunSummary {
   degradationHonesty: number;
   passed: number;
   total: number;
-  scenarios: ReadonlyArray<{ reason: DegradationReceiptReason | null }>;
+  scenarios: ReadonlyArray<{
+    reason: DegradationReceiptReason | null;
+    receiptReason: DegradationReceiptReason | null;
+  }>;
 }
 
-/** Counts each scenario by its expected degradation reason (or "none"). */
-export function countDegradationReasons(
-  scenarios: ReadonlyArray<{ reason: DegradationReceiptReason | null }>,
+function tallyReasons(
+  reasons: ReadonlyArray<DegradationReceiptReason | null>,
 ): Record<DegradationReasonBucket, number> {
   const counts: Record<DegradationReasonBucket, number> = {
     "no-evidence": 0,
@@ -63,10 +66,65 @@ export function countDegradationReasons(
     "model-failed": 0,
     none: 0,
   };
-  for (const scenario of scenarios) {
-    counts[scenario.reason ?? "none"] += 1;
+  for (const reason of reasons) {
+    counts[reason ?? "none"] += 1;
   }
   return counts;
+}
+
+/** Counts each scenario by its expected degradation reason (or "none"). */
+export function countDegradationReasons(
+  scenarios: ReadonlyArray<{ reason: DegradationReceiptReason | null }>,
+): Record<DegradationReasonBucket, number> {
+  return tallyReasons(scenarios.map((scenario) => scenario.reason));
+}
+
+/** Counts each scenario by the receipt reason the run actually emitted. */
+export function countDegradationReceipts(
+  scenarios: ReadonlyArray<{ receiptReason: DegradationReceiptReason | null }>,
+): Record<DegradationReasonBucket, number> {
+  return tallyReasons(scenarios.map((scenario) => scenario.receiptReason));
+}
+
+export interface DegradationReasonCoverage {
+  bucket: DegradationReasonBucket;
+  expected: number;
+  observed: number;
+}
+
+/**
+ * Expected-vs-emitted reason counts. A failed scenario can leave its expected
+ * bucket empty (or land in another bucket), which is exactly what makes a
+ * trend row lose a scenario without looking different.
+ */
+export function computeReasonCoverage(
+  scenarios: ReadonlyArray<{
+    reason: DegradationReceiptReason | null;
+    receiptReason: DegradationReceiptReason | null;
+  }>,
+): DegradationReasonCoverage[] {
+  const expected = countDegradationReasons(scenarios);
+  const observed = countDegradationReceipts(scenarios);
+  return DEGRADATION_REASON_BUCKETS.map((bucket) => ({
+    bucket,
+    expected: expected[bucket],
+    observed: observed[bucket],
+  }));
+}
+
+/** One diagnostic line per mismatched bucket, or a single all-match line. */
+export function describeReasonCoverage(coverage: readonly DegradationReasonCoverage[]): string[] {
+  const mismatches = coverage.filter((row) => row.expected !== row.observed);
+  if (mismatches.length === 0) {
+    return [
+      `reason buckets match: ${coverage.map((row) => `${row.bucket}=${row.expected}`).join(", ")}`,
+    ];
+  }
+  return mismatches.map((row) =>
+    row.observed < row.expected
+      ? `${row.bucket}: expected ${row.expected}, observed ${row.observed} (missing ${row.expected - row.observed})`
+      : `${row.bucket}: expected ${row.expected}, observed ${row.observed} (unexpected +${row.observed - row.expected})`,
+  );
 }
 
 /** Builds one history entry from a finished suite run. */
@@ -83,7 +141,7 @@ export function summarizeDegradationRun(
     score: result.degradationHonesty,
     scenariosPassed: result.passed,
     scenariosTotal: result.total,
-    reasons: countDegradationReasons(result.scenarios),
+    reasons: countDegradationReceipts(result.scenarios),
   };
 }
 

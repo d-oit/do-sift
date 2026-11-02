@@ -237,7 +237,7 @@ export function buildDegradationPanel(
       : `<div class="table-container" style="margin-top: 18px;">
         <div class="section-title" style="margin-bottom: 10px;">
           <span>Reason Counts Across Suite Runs</span>
-          <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">${history.length} recorded run(s), oldest first</span>
+          <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">${history.length} recorded run(s), oldest first; counts are emitted receipts</span>
         </div>
         <table class="heatmap">
           <thead>
@@ -254,7 +254,7 @@ export function buildDegradationPanel(
           ${
             history.length === 1
               ? "This is the first recorded run; each additional <code>npm run evals:degradation</code> adds a row and turns the counts into a trend."
-              : "Each row is one committed suite run; a reason count that grows without a scenario change means the fixture scenarios drifted."
+              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation."
           }
         </p>
       </div>`;

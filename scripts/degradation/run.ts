@@ -37,6 +37,7 @@ import {
 } from "@do-sift/server";
 import { BudgetService, Repositories, applyMigrations, loadMigrations } from "@do-sift/storage";
 import { createClient, type Client } from "@libsql/client";
+import { DEGRADATION_RECEIPT_REASONS, type DegradationReceiptReason } from "./history.js";
 
 const ROOT = process.cwd();
 const OWNER_ID = "degradation-owner";
@@ -115,6 +116,8 @@ export interface DegradationScenarioResult {
   reason: "no-evidence" | "citation-invalid" | "model-failed" | null;
   /** Expected evidence-only flag; null when the scenario expects a hard failure. */
   degraded: boolean | null;
+  /** Receipt reason the run actually emitted, or null when it emitted none. */
+  receiptReason: DegradationReceiptReason | null;
   checks: DegradationCheck[];
 }
 
@@ -125,6 +128,10 @@ export interface DegradationSuiteResult {
   /** Quality gate dimension: passed scenarios / registered scenarios. */
   degradationHonesty: number;
   scenarios: DegradationScenarioResult[];
+}
+
+function isReceiptReason(value: unknown): value is DegradationReceiptReason {
+  return DEGRADATION_RECEIPT_REASONS.includes(value as DegradationReceiptReason);
 }
 
 const INJECTIONS: readonly Injection[] = [
@@ -301,6 +308,7 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
   const client = createClient({ url: ":memory:" });
   const events: OperationalEvent[] = [];
   let server: Server | undefined;
+  let receiptReason: DegradationReceiptReason | null = null;
   try {
     await applyMigrations(client, loadMigrations(join(ROOT, "migrations")));
     const repos = new Repositories(client);
@@ -544,6 +552,9 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
     );
 
     const degradedEvents = events.filter((event) => event.type === "answer.degraded");
+    const receipt = degradedEvents[0];
+    receiptReason =
+      receipt !== undefined && isReceiptReason(receipt.reason) ? receipt.reason : null;
     if (expected.event === null) {
       addCheck(
         checks,
@@ -553,7 +564,6 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
         degradedEvents,
       );
     } else {
-      const receipt = degradedEvents[0];
       addCheck(
         checks,
         "answer.degraded receipt",
@@ -655,6 +665,7 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
     passed: checks.every((check) => check.ok),
     reason: def.expect.event?.reason ?? null,
     degraded: def.expect.degraded,
+    receiptReason,
     checks,
   };
 }

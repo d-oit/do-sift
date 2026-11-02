@@ -34,6 +34,18 @@ describe("degradation honesty suite (issue #127)", () => {
     expect(result.passed).toBe(result.total);
   });
 
+  it("records the receipt each scenario actually emitted", () => {
+    expect(result.scenarios.map((scenario) => scenario.receiptReason)).toEqual([
+      "no-evidence",
+      "no-evidence",
+      "model-failed",
+      null,
+      "citation-invalid",
+      "citation-invalid",
+      null,
+    ]);
+  });
+
   it("computes the quality gate degradation-honesty score from the suite", () => {
     expect(result.degradationHonesty).toBe(result.passed / result.total);
     expect(result.degradationHonesty).toBe(1);

@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEGRADATION_HISTORY_FILE,
   appendDegradationHistory,
+  computeReasonCoverage,
   countDegradationReasons,
+  countDegradationReceipts,
+  describeReasonCoverage,
   loadDegradationHistory,
   summarizeDegradationRun,
   type DegradationHistoryEntry,
@@ -45,6 +48,12 @@ describe("degradation suite history", () => {
     ).toEqual({ "no-evidence": 2, "citation-invalid": 0, "model-failed": 1, none: 1 });
   });
 
+  it("counts emitted receipts separately from expected reasons", () => {
+    expect(
+      countDegradationReceipts([{ receiptReason: "model-failed" }, { receiptReason: null }]),
+    ).toEqual({ "no-evidence": 0, "citation-invalid": 0, "model-failed": 1, none: 1 });
+  });
+
   it("summarizes a suite run into a history entry with a complete reason bucket set", () => {
     const summary = summarizeDegradationRun(
       {
@@ -52,7 +61,10 @@ describe("degradation suite history", () => {
         degradationHonesty: 0.5,
         passed: 1,
         total: 2,
-        scenarios: [{ reason: "citation-invalid" }, { reason: null }],
+        scenarios: [
+          { reason: "citation-invalid", receiptReason: "citation-invalid" },
+          { reason: null, receiptReason: null },
+        ],
       },
       "2026-11-02T10:00:00.000Z",
     );
@@ -63,6 +75,27 @@ describe("degradation suite history", () => {
       none: 1,
     });
     expect(summary.score).toBe(0.5);
+  });
+
+  it("names the reason bucket a failed run let go missing", () => {
+    const coverage = computeReasonCoverage([
+      { reason: "model-failed", receiptReason: null },
+      { reason: "no-evidence", receiptReason: "no-evidence" },
+    ]);
+    expect(describeReasonCoverage(coverage)).toEqual([
+      "model-failed: expected 1, observed 0 (missing 1)",
+      "none: expected 0, observed 1 (unexpected +1)",
+    ]);
+  });
+
+  it("reports matching coverage as one line", () => {
+    const coverage = computeReasonCoverage([
+      { reason: "no-evidence", receiptReason: "no-evidence" },
+      { reason: null, receiptReason: null },
+    ]);
+    expect(describeReasonCoverage(coverage)).toEqual([
+      "reason buckets match: no-evidence=1, citation-invalid=0, model-failed=0, none=1",
+    ]);
   });
 
   it("rejects a non-finite score instead of recording unusable evidence", () => {
@@ -78,6 +111,28 @@ describe("degradation suite history", () => {
         "2026-11-02T10:00:00.000Z",
       ),
     ).toThrow(/finite/);
+  });
+
+  it("counts receipts even when a run failed to emit one", () => {
+    const summary = summarizeDegradationRun(
+      {
+        suiteVersion: "deg-1",
+        degradationHonesty: 0.5,
+        passed: 1,
+        total: 2,
+        scenarios: [
+          { reason: "model-failed", receiptReason: null },
+          { reason: "no-evidence", receiptReason: "no-evidence" },
+        ],
+      },
+      "2026-11-02T11:00:00.000Z",
+    );
+    expect(summary.reasons).toEqual({
+      "no-evidence": 1,
+      "citation-invalid": 0,
+      "model-failed": 0,
+      none: 1,
+    });
   });
 
   it("appends in time order and trims to the newest runs without mutating input", () => {

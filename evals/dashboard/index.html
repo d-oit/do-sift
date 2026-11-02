@@ -486,7 +486,7 @@
       <div class="table-container" style="margin-top: 18px;">
         <div class="section-title" style="margin-bottom: 10px;">
           <span>Reason Counts Across Suite Runs</span>
-          <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">1 recorded run(s), oldest first</span>
+          <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">2 recorded run(s), oldest first; counts are emitted receipts</span>
         </div>
         <table class="heatmap">
           <thead>
@@ -498,6 +498,11 @@
             </tr>
           </thead>
           <tbody><tr>
+        <td>2026-11-02</td>
+        <td class="score-cell score-pass">1.000</td>
+        <td>7/7</td>
+        <td>2</td><td>2</td><td>1</td><td>2</td>
+      </tr><tr>
         <td>2026-11-02 <span class="reason-pill score-pass">latest</span></td>
         <td class="score-cell score-pass">1.000</td>
         <td>7/7</td>
@@ -505,7 +510,7 @@
       </tr></tbody>
         </table>
         <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
-          This is the first recorded run; each additional <code>npm run evals:degradation</code> adds a row and turns the counts into a trend.
+          Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation.
         </p>
       </div>
       <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
