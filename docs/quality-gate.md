@@ -105,9 +105,10 @@ live runs. The gate also carries a deterministic, **machine-computed** score
 over failure modes, so honesty regressions fail CI instead of waiting for a
 human re-score:
 
-- `evals/degradation/scenarios.json` registers six scenarios: search returns
-  no results, search provider timeout, model synthesis failure, evidence
-  storage full, citation resolution failure, and cross-question evidence.
+- `evals/degradation/scenarios.json` registers seven scenarios: search
+  returns no results, search provider timeout, model synthesis failure,
+  evidence storage full, citation resolution failure, partial citation
+  failure, and cross-question evidence.
 - `scripts/degradation/run.ts` injects each failure into the real answer path
   (in-memory database, research harness, answer service, HTTP surface) and
   asserts the exact user-facing message, the `answer.degraded` /
@@ -117,8 +118,11 @@ human re-score:
   computes it from the suite and enforces **1.0** in the `evals` step of
   `npm run check`; an empty suite fails closed.
 - `npm run evals:degradation` writes `evals/degradation/latest.json` with
-  `qualityGate.degradationHonesty`; quality-run notes cite that artifact's
-  score for these failure modes instead of a hand-entered number.
+  `qualityGate.degradationHonesty` and each scenario's expected reason;
+  quality-run notes cite that artifact's score for these failure modes
+  instead of a hand-entered number. `npm run evals:dashboard` renders the
+  same artifact as a "Degradation Honesty" panel in
+  `evals/dashboard/index.html` (score, reason counts, per-scenario rows).
 
 Limits and residuals: fake providers and a constructed corpus mean this
 measures the harness's honesty behavior, not a live provider's outage

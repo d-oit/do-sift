@@ -23,6 +23,8 @@ void runDegradationSuite().then((result) => {
       id: scenario.id,
       name: scenario.name,
       passed: scenario.passed,
+      degraded: scenario.degraded,
+      reason: scenario.reason,
       checks:
         scenario.checks.length -
         scenario.checks.filter((check) => !check.ok).length +
