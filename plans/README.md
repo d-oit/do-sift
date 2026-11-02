@@ -18,6 +18,7 @@ This folder is the project's memory. Agents and humans update it together.
 
 ## Current queue
 
+- `022-degradation-history.md` — done (2026-11-02); records each degradation-suite run so the dashboard can trend reason counts instead of one snapshot.
 - `021-degradation-dashboard.md` — done (2026-11-02); surfaces the suite's score and expected degradation reasons in the evals dashboard.
 - `020-degradation-behavior.md` — done (2026-11-02); evidence-only model fallback, per-claim unresolved citations, and `degradationReason` receipts (issue #127 follow-ups).
 - `019-degradation-honesty-suite.md` — done (2026-11-02); issue #127 failure-mode suite with a machine-computed degradation-honesty score enforced by `npm run check`.

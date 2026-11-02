@@ -120,9 +120,15 @@ human re-score:
 - `npm run evals:degradation` writes `evals/degradation/latest.json` with
   `qualityGate.degradationHonesty` and each scenario's expected reason;
   quality-run notes cite that artifact's score for these failure modes
-  instead of a hand-entered number. `npm run evals:dashboard` renders the
-  same artifact as a "Degradation Honesty" panel in
-  `evals/dashboard/index.html` (score, reason counts, per-scenario rows).
+  instead of a hand-entered number. The same command appends one compact
+  entry to `evals/degradation/history.json` (newest 30 runs; timestamp,
+  score, pass counts, reason buckets), so repeated runs leave a trail rather
+  than overwriting one snapshot. `npm run evals:dashboard` renders the
+  artifact and that history as a "Degradation Honesty" panel in
+  `evals/dashboard/index.html` (score, reason counts, per-scenario rows,
+  and a "Reason Counts Across Suite Runs" table). History is evidence only:
+  `scripts/eval.ts` still scores the current in-memory run and enforces 1.0,
+  so a missing or stale history file cannot change the gate.
 
 Limits and residuals: fake providers and a constructed corpus mean this
 measures the harness's honesty behavior, not a live provider's outage

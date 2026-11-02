@@ -207,6 +207,43 @@ describe("Evals Dashboard Generator", () => {
     expect(html).toContain("npm run evals:degradation");
   });
 
+  it("trends reason counts across recorded suite runs, oldest first", () => {
+    const html = buildDashboardHtml(
+      [],
+      {
+        suiteVersion: "deg-1",
+        executedAtUtc: "2026-11-02T10:00:00.000Z",
+        qualityGate: { score: 1, scenariosPassed: 7, scenariosTotal: 7 },
+        scenarios: [],
+      },
+      [
+        {
+          executedAtUtc: "2026-11-01T09:00:00.000Z",
+          suiteVersion: "deg-1",
+          score: 0.857,
+          scenariosPassed: 6,
+          scenariosTotal: 7,
+          reasons: { "no-evidence": 2, "citation-invalid": 1, "model-failed": 1, none: 3 },
+        },
+        {
+          executedAtUtc: "2026-11-02T10:00:00.000Z",
+          suiteVersion: "deg-1",
+          score: 1,
+          scenariosPassed: 7,
+          scenariosTotal: 7,
+          reasons: { "no-evidence": 2, "citation-invalid": 1, "model-failed": 1, none: 3 },
+        },
+      ],
+    );
+
+    expect(html).toContain("Reason Counts Across Suite Runs");
+    expect(html).toContain("2 recorded run(s), oldest first");
+    expect(html.indexOf("2026-11-01")).toBeLessThan(html.indexOf("2026-11-02"));
+    expect(html).toContain("0.857");
+    expect(html).toContain("latest");
+    expect(html).toContain("Latest artifact: 2026-11-02");
+  });
+
   it("README.md links to evals/dashboard/index.html and package.json defines evals:dashboard", () => {
     const readme = readFileSync(join(ROOT, "README.md"), "utf8");
     expect(readme).toContain("evals/dashboard/index.html");
