@@ -168,6 +168,16 @@
       font-weight: 600;
       font-variant-numeric: tabular-nums;
     }
+    table.heatmap tfoot td {
+      border-top: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+      font-weight: 600;
+    }
+    .bucket-total-runs {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: normal;
+      font-variant-numeric: tabular-nums;
+    }
 
     /* Diff View styles */
     .diff-controls {
@@ -519,9 +529,18 @@
         <td>2</td><td>2</td><td>1</td><td>2</td>
         <td class="diff-steady">unchanged</td>
       </tr></tbody>
+          <tfoot>
+            <tr>
+              <td>Lifetime total &middot; 2 run(s)</td>
+              <td class="diff-steady">&mdash;</td>
+              <td>14/14</td>
+              <td>4<span class="bucket-total-runs"> &middot; 2/2 runs</span></td><td>4<span class="bucket-total-runs"> &middot; 2/2 runs</span></td><td>2<span class="bucket-total-runs"> &middot; 2/2 runs</span></td><td>4<span class="bucket-total-runs"> &middot; 2/2 runs</span></td>
+              <td class="diff-steady">&mdash;</td>
+            </tr>
+          </tfoot>
         </table>
         <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
-          Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas.
+          Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket.
         </p>
       </div>
       <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">

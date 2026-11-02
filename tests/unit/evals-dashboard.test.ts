@@ -11,6 +11,7 @@ import {
   getCaseScore,
   loadDegradationArtifact,
   loadQualityRuns,
+  summarizeReasonTotals,
   type QualityRun,
 } from "../../scripts/evals-dashboard.ts";
 
@@ -243,6 +244,65 @@ describe("Evals Dashboard Generator", () => {
     expect(html).toContain("0.857");
     expect(html).toContain("latest");
     expect(html).toContain("Latest artifact: 2026-11-02");
+  });
+
+  it("sums each reason bucket across every recorded run", () => {
+    const history = [
+      {
+        executedAtUtc: "2026-11-01T09:00:00.000Z",
+        suiteVersion: "deg-1",
+        score: 0.857,
+        scenariosPassed: 6,
+        scenariosTotal: 7,
+        reasons: { "no-evidence": 2, "citation-invalid": 1, "model-failed": 1, none: 3 },
+      },
+      {
+        executedAtUtc: "2026-11-02T10:00:00.000Z",
+        suiteVersion: "deg-1",
+        score: 1,
+        scenariosPassed: 7,
+        scenariosTotal: 7,
+        reasons: { "no-evidence": 2, "citation-invalid": 1, "model-failed": 0, none: 4 },
+      },
+    ];
+
+    const lifetime = summarizeReasonTotals(history);
+    expect(lifetime.runCount).toBe(2);
+    expect(lifetime.totals).toEqual({
+      "no-evidence": 4,
+      "citation-invalid": 2,
+      "model-failed": 1,
+      none: 7,
+    });
+    expect(lifetime.runsWithBucket).toEqual({
+      "no-evidence": 2,
+      "citation-invalid": 2,
+      "model-failed": 1,
+      none: 2,
+    });
+    expect(summarizeReasonTotals([]).totals).toEqual({
+      "no-evidence": 0,
+      "citation-invalid": 0,
+      "model-failed": 0,
+      none: 0,
+    });
+
+    const html = buildDashboardHtml(
+      [],
+      {
+        suiteVersion: "deg-1",
+        executedAtUtc: "2026-11-02T10:00:00.000Z",
+        qualityGate: { score: 1, scenariosPassed: 7, scenariosTotal: 7 },
+        scenarios: [],
+      },
+      history,
+    );
+
+    expect(html).toContain("Lifetime total &middot; 2 run(s)");
+    expect(html).toContain("13/14");
+    // A bucket that appeared only in the failed run keeps its count and coverage.
+    expect(html).toContain('1<span class="bucket-total-runs"> &middot; 1/2 runs</span>');
+    expect(html).toContain('4<span class="bucket-total-runs"> &middot; 2/2 runs</span>');
   });
 
   it("highlights trend rows whose reason buckets moved since the previous run", () => {

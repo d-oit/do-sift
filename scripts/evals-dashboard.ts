@@ -4,6 +4,7 @@ import {
   DEGRADATION_REASON_BUCKETS,
   loadDegradationHistory,
   type DegradationHistoryEntry,
+  type DegradationReasonBucket,
 } from "./degradation/history.js";
 
 export interface QualityCase {
@@ -174,6 +175,40 @@ export function describeReasonChanges(
   return changes.length === 0 ? null : changes.join(", ");
 }
 
+export interface DegradationReasonTotals {
+  /** Number of recorded runs the totals cover. */
+  runCount: number;
+  /** Receipt buckets emitted, summed across every recorded run. */
+  totals: Record<DegradationReasonBucket, number>;
+  /** How many runs emitted at least one receipt in the bucket. */
+  runsWithBucket: Record<DegradationReasonBucket, number>;
+}
+
+/**
+ * Sums each reason bucket across every recorded run and counts the runs that
+ * emitted it, so a receipt that only appeared in an earlier (possibly failed)
+ * run stays visible once the table has scrolled past it.
+ */
+export function summarizeReasonTotals(
+  history: readonly DegradationHistoryEntry[],
+): DegradationReasonTotals {
+  const totals: Record<DegradationReasonBucket, number> = {
+    "no-evidence": 0,
+    "citation-invalid": 0,
+    "model-failed": 0,
+    none: 0,
+  };
+  const runsWithBucket: Record<DegradationReasonBucket, number> = { ...totals };
+  for (const entry of history) {
+    for (const bucket of DEGRADATION_REASON_BUCKETS) {
+      const count = entry.reasons[bucket] ?? 0;
+      totals[bucket] += count;
+      if (count > 0) runsWithBucket[bucket] += 1;
+    }
+  }
+  return { runCount: history.length, totals, runsWithBucket };
+}
+
 /**
  * Renders the degradation-honesty panel: score, reason counts, and per-scenario
  * outcomes from the failure-mode suite.
@@ -259,6 +294,22 @@ export function buildDegradationPanel(
     })
     .join("");
 
+  const lifetime = summarizeReasonTotals(history);
+  const lifetimePassed = history.reduce((sum, entry) => sum + entry.scenariosPassed, 0);
+  const lifetimeTotal = history.reduce((sum, entry) => sum + entry.scenariosTotal, 0);
+  const lifetimeRow = `<tfoot>
+            <tr>
+              <td>Lifetime total &middot; ${lifetime.runCount} run(s)</td>
+              <td class="diff-steady">&mdash;</td>
+              <td>${lifetimePassed}/${lifetimeTotal}</td>
+              ${DEGRADATION_REASON_BUCKETS.map(
+                (bucket) =>
+                  `<td>${lifetime.totals[bucket]}<span class="bucket-total-runs"> &middot; ${lifetime.runsWithBucket[bucket]}/${lifetime.runCount} runs</span></td>`,
+              ).join("")}
+              <td class="diff-steady">&mdash;</td>
+            </tr>
+          </tfoot>`;
+
   const historyHtml =
     history.length === 0
       ? `<p style="font-size: 12px; color: var(--text-muted); margin-top: 14px;">
@@ -281,12 +332,13 @@ export function buildDegradationPanel(
             </tr>
           </thead>
           <tbody>${historyRows}</tbody>
+          ${lifetimeRow}
         </table>
         <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
           ${
             history.length === 1
               ? "This is the first recorded run; each additional <code>npm run evals:degradation</code> adds a row and turns the counts into a trend."
-              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas."
+              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket."
           }
         </p>
       </div>`;
@@ -637,6 +689,16 @@ export function buildDashboardHtml(
     .bucket-delta {
       color: var(--partial);
       font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    table.heatmap tfoot td {
+      border-top: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+      font-weight: 600;
+    }
+    .bucket-total-runs {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: normal;
       font-variant-numeric: tabular-nums;
     }
 

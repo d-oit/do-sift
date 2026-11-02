@@ -134,8 +134,9 @@ human re-score:
   in both `npm run evals:degradation` and the `evals` step, so the lost
   receipt is named. Rows whose bucket counts moved since the previous run
   are highlighted and list their signed deltas (`model-failed -1, none +1`),
-  so a change is visible without subtracting columns. History is evidence
-  only: `scripts/eval.ts` still scores
+  so a change is visible without subtracting columns, and a lifetime total
+  row sums each bucket across the retained history with the number of runs
+  that emitted it. History is evidence only: `scripts/eval.ts` still scores
   the current in-memory run and enforces 1.0, so a missing or stale history
   file cannot change the gate.
 

@@ -18,6 +18,7 @@ This folder is the project's memory. Agents and humans update it together.
 
 ## Current queue
 
+- `025-degradation-lifetime-totals.md` — done (2026-11-02); the trend table sums each reason bucket across recorded runs and shows per-bucket run coverage.
 - `024-degradation-trend-deltas.md` — done (2026-11-02); the trend table highlights rows whose reason buckets moved and lists the per-bucket delta.
 - `023-degradation-reason-coverage.md` — done (2026-11-02); failing suite runs name the reason bucket that went missing, and the trend counts emitted receipts.
 - `022-degradation-history.md` — done (2026-11-02); records each degradation-suite run so the dashboard can trend reason counts instead of one snapshot.
