@@ -157,6 +157,24 @@ export function loadDegradationArtifact(degradationDir: string): DegradationArti
 }
 
 /**
+ * Per-bucket deltas between two recorded runs, or null when no bucket moved.
+ * Compares emitted receipt counts, so a change means the run emitted a
+ * different receipt mix — not that the scenario table was edited.
+ */
+export function describeReasonChanges(
+  current: DegradationHistoryEntry,
+  previous: DegradationHistoryEntry,
+): string | null {
+  const changes = DEGRADATION_REASON_BUCKETS.filter(
+    (bucket) => (current.reasons[bucket] ?? 0) !== (previous.reasons[bucket] ?? 0),
+  ).map((bucket) => {
+    const delta = (current.reasons[bucket] ?? 0) - (previous.reasons[bucket] ?? 0);
+    return `${bucket} ${delta > 0 ? "+" : "-"}${Math.abs(delta)}`;
+  });
+  return changes.length === 0 ? null : changes.join(", ");
+}
+
+/**
  * Renders the degradation-honesty panel: score, reason counts, and per-scenario
  * outcomes from the failure-mode suite.
  */
@@ -217,13 +235,26 @@ export function buildDegradationPanel(
   const historyRows = history
     .map((entry, index) => {
       const isLatest = index === history.length - 1;
-      return `<tr>
+      const previous: DegradationHistoryEntry | undefined =
+        index > 0 ? history[index - 1] : undefined;
+      const change = previous === undefined ? null : describeReasonChanges(entry, previous);
+      const rowClass = change === null ? "" : ' class="bucket-changed"';
+      const changeCell =
+        previous === undefined
+          ? '<td class="diff-steady" title="first recorded run">&mdash;</td>'
+          : change === null
+            ? '<td class="diff-steady">unchanged</td>'
+            : `<td class="bucket-delta" title="changed since ${escapeHtml(
+                previous.executedAtUtc.slice(0, 10),
+              )}">${escapeHtml(change)}</td>`;
+      return `<tr${rowClass}>
         <td>${escapeHtml(entry.executedAtUtc.slice(0, 10))}${
           isLatest ? ' <span class="reason-pill score-pass">latest</span>' : ""
         }</td>
         <td class="score-cell ${entry.score === 1 ? "score-pass" : "score-fail"}">${entry.score.toFixed(3)}</td>
         <td>${entry.scenariosPassed}/${entry.scenariosTotal}</td>
         ${DEGRADATION_REASON_BUCKETS.map((bucket) => `<td>${entry.reasons[bucket] ?? 0}</td>`).join("")}
+        ${changeCell}
       </tr>`;
     })
     .join("");
@@ -246,6 +277,7 @@ export function buildDegradationPanel(
               <th>Score</th>
               <th>Passed</th>
               ${DEGRADATION_REASON_BUCKETS.map((bucket) => `<th>${escapeHtml(DEGRADATION_REASON_LABELS[bucket] ?? bucket)}</th>`).join("")}
+              <th>Change vs previous</th>
             </tr>
           </thead>
           <tbody>${historyRows}</tbody>
@@ -254,7 +286,7 @@ export function buildDegradationPanel(
           ${
             history.length === 1
               ? "This is the first recorded run; each additional <code>npm run evals:degradation</code> adds a row and turns the counts into a trend."
-              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation."
+              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas."
           }
         </p>
       </div>`;
@@ -598,6 +630,14 @@ export function buildDashboardHtml(
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+    }
+    table.heatmap tr.bucket-changed td:not(.score-cell) {
+      background: rgba(245, 158, 11, 0.1);
+    }
+    .bucket-delta {
+      color: var(--partial);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
     }
 
     /* Diff View styles */

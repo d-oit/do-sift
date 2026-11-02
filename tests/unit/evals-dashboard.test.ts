@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildDashboardHtml,
+  describeReasonChanges,
   DIMENSION_LABELS,
   DIMENSIONS,
   generateDashboard,
@@ -242,6 +243,57 @@ describe("Evals Dashboard Generator", () => {
     expect(html).toContain("0.857");
     expect(html).toContain("latest");
     expect(html).toContain("Latest artifact: 2026-11-02");
+  });
+
+  it("highlights trend rows whose reason buckets moved since the previous run", () => {
+    const history = [
+      {
+        executedAtUtc: "2026-11-01T09:00:00.000Z",
+        suiteVersion: "deg-1",
+        score: 1,
+        scenariosPassed: 7,
+        scenariosTotal: 7,
+        reasons: { "no-evidence": 2, "citation-invalid": 2, "model-failed": 1, none: 2 },
+      },
+      {
+        executedAtUtc: "2026-11-02T09:00:00.000Z",
+        suiteVersion: "deg-1",
+        score: 0.857,
+        scenariosPassed: 6,
+        scenariosTotal: 7,
+        reasons: { "no-evidence": 2, "citation-invalid": 2, "model-failed": 0, none: 3 },
+      },
+      {
+        executedAtUtc: "2026-11-02T10:00:00.000Z",
+        suiteVersion: "deg-1",
+        score: 0.857,
+        scenariosPassed: 6,
+        scenariosTotal: 7,
+        reasons: { "no-evidence": 2, "citation-invalid": 2, "model-failed": 0, none: 3 },
+      },
+    ];
+
+    expect(describeReasonChanges(history[0]!, history[0]!)).toBeNull();
+    expect(describeReasonChanges(history[1]!, history[0]!)).toBe("model-failed -1, none +1");
+    expect(describeReasonChanges(history[2]!, history[1]!)).toBeNull();
+
+    const html = buildDashboardHtml(
+      [],
+      {
+        suiteVersion: "deg-1",
+        executedAtUtc: "2026-11-02T10:00:00.000Z",
+        qualityGate: { score: 0.857, scenariosPassed: 6, scenariosTotal: 7 },
+        scenarios: [],
+      },
+      history,
+    );
+
+    // Only the row that lost the model-failed bucket is highlighted.
+    expect(html.match(/<tr class="bucket-changed">/g)).toHaveLength(1);
+    expect(html).toContain("model-failed -1, none +1");
+    expect(html).toContain("Change vs previous");
+    expect(html.match(/unchanged/g)?.length).toBeGreaterThanOrEqual(1);
+    expect(html).toContain("first recorded run");
   });
 
   it("README.md links to evals/dashboard/index.html and package.json defines evals:dashboard", () => {

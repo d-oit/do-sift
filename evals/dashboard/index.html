@@ -160,6 +160,14 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
+    table.heatmap tr.bucket-changed td:not(.score-cell) {
+      background: rgba(245, 158, 11, 0.1);
+    }
+    .bucket-delta {
+      color: var(--partial);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
 
     /* Diff View styles */
     .diff-controls {
@@ -495,6 +503,7 @@
               <th>Score</th>
               <th>Passed</th>
               <th>no evidence</th><th>citation invalid</th><th>model failed</th><th>no degradation</th>
+              <th>Change vs previous</th>
             </tr>
           </thead>
           <tbody><tr>
@@ -502,15 +511,17 @@
         <td class="score-cell score-pass">1.000</td>
         <td>7/7</td>
         <td>2</td><td>2</td><td>1</td><td>2</td>
+        <td class="diff-steady" title="first recorded run">&mdash;</td>
       </tr><tr>
         <td>2026-11-02 <span class="reason-pill score-pass">latest</span></td>
         <td class="score-cell score-pass">1.000</td>
         <td>7/7</td>
         <td>2</td><td>2</td><td>1</td><td>2</td>
+        <td class="diff-steady">unchanged</td>
       </tr></tbody>
         </table>
         <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
-          Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation.
+          Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas.
         </p>
       </div>
       <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">

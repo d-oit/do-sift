@@ -132,7 +132,10 @@ human re-score:
   instead of copying its expectation. A failing run also prints a
   reason-coverage line per mismatched bucket (`missing N` / `unexpected +N`)
   in both `npm run evals:degradation` and the `evals` step, so the lost
-  receipt is named. History is evidence only: `scripts/eval.ts` still scores
+  receipt is named. Rows whose bucket counts moved since the previous run
+  are highlighted and list their signed deltas (`model-failed -1, none +1`),
+  so a change is visible without subtracting columns. History is evidence
+  only: `scripts/eval.ts` still scores
   the current in-memory run and enforces 1.0, so a missing or stale history
   file cannot change the gate.
 
