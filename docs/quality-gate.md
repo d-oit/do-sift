@@ -136,11 +136,13 @@ human re-score:
   are highlighted and list their signed deltas (`model-failed -1, none +1`),
   so a change is visible without subtracting columns, and a lifetime total
   row sums each bucket across the retained history with the number of runs
-  that emitted it, and a "Coverage shrinking" note above the table compares
-  each bucket's share of runs across a recency-weighted split — every older
-  run keeps 90% of the weight of the one recorded after it, so a full 30-run
-  history weighs its newest seven runs against the twenty-three before them
-  instead of comparing two fixed halves. History is evidence only: `scripts/eval.ts` still scores
+  that emitted it, and a coverage note above the table compares each bucket's
+  share of runs across a recency-weighted split — every older run keeps 90% of
+  the weight of the one recorded after it, so a full 30-run history weighs its
+  newest seven runs against the twenty-three before them instead of comparing
+  two fixed halves. A bucket whose share fell is called out as "Coverage
+  shrinking" and one whose share rose as "Coverage growing", so a recovered
+  receipt is as visible as a lost one; flat coverage is not noted. History is evidence only: `scripts/eval.ts` still scores
   the current in-memory run and enforces 1.0, so a missing or stale history
   file cannot change the gate.
 

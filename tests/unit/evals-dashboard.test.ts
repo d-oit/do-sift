@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DegradationHistoryEntry } from "../../scripts/degradation/history.ts";
 import {
   buildDashboardHtml,
+  describeCoverageShifts,
   describeReasonChanges,
-  describeShrinkingCoverage,
   DIMENSION_LABELS,
   recentCoverageSplit,
   DIMENSIONS,
@@ -336,19 +336,20 @@ describe("Evals Dashboard Generator", () => {
       entry("2026-11-02", 0),
     ];
 
-    expect(describeShrinkingCoverage(history)).toEqual([
+    expect(describeCoverageShifts(history)).toEqual([
       {
         bucket: "model-failed",
+        direction: "shrinking",
         earlierRuns: 2,
         earlierWithBucket: 2,
         recentRuns: 2,
         recentWithBucket: 0,
       },
     ]);
-    // A single run has no halves to compare, and flat or growing coverage is not a warning.
-    expect(describeShrinkingCoverage([entry("2026-11-01", 1)])).toEqual([]);
-    expect(describeShrinkingCoverage([entry("2026-11-01", 1), entry("2026-11-02", 1)])).toEqual([]);
-    expect(describeShrinkingCoverage([entry("2026-11-01", 0), entry("2026-11-02", 1)])).toEqual([]);
+    // A single run has no windows to compare, and flat coverage is not a note.
+    expect(describeCoverageShifts([entry("2026-11-01", 1)])).toEqual([]);
+    expect(describeCoverageShifts([entry("2026-11-01", 1), entry("2026-11-02", 1)])).toEqual([]);
+    expect(describeCoverageShifts([entry("2026-11-01", 0), entry("2026-11-02", 0)])).toEqual([]);
 
     const html = buildDashboardHtml([], artifact, history);
     expect(html).toContain('<span class="reason-pill score-partial">Coverage shrinking</span>');
@@ -356,6 +357,51 @@ describe("Evals Dashboard Generator", () => {
     expect(
       buildDashboardHtml([], artifact, [entry("2026-11-01", 1), entry("2026-11-02", 1)]),
     ).not.toContain("Coverage shrinking");
+  });
+
+  it("notes a reason bucket whose coverage grew across the recency split", () => {
+    const artifact = {
+      suiteVersion: "deg-1",
+      executedAtUtc: "2026-11-02T10:00:00.000Z",
+      qualityGate: { score: 1, scenariosPassed: 7, scenariosTotal: 7 },
+      scenarios: [],
+    };
+    const entry = (day: string, modelFailed: number): DegradationHistoryEntry => ({
+      executedAtUtc: `${day}T09:00:00.000Z`,
+      suiteVersion: "deg-1",
+      score: modelFailed > 0 ? 1 : 0.857,
+      scenariosPassed: modelFailed > 0 ? 7 : 6,
+      scenariosTotal: 7,
+      reasons: {
+        "no-evidence": 2,
+        "citation-invalid": 1,
+        "model-failed": modelFailed,
+        none: modelFailed > 0 ? 3 : 4,
+      },
+    });
+
+    const history = [
+      entry("2026-11-01", 0),
+      entry("2026-11-01", 0),
+      entry("2026-11-02", 1),
+      entry("2026-11-02", 1),
+    ];
+
+    expect(describeCoverageShifts(history)).toEqual([
+      {
+        bucket: "model-failed",
+        direction: "growing",
+        earlierRuns: 2,
+        earlierWithBucket: 0,
+        recentRuns: 2,
+        recentWithBucket: 2,
+      },
+    ]);
+
+    const html = buildDashboardHtml([], artifact, history);
+    expect(html).toContain('<span class="reason-pill score-pass">Coverage growing</span>');
+    expect(html).toContain("0/2 &rarr; 2/2 runs");
+    expect(html).not.toContain("Coverage shrinking");
   });
 
   it("weights the coverage split toward the newest runs", () => {
@@ -398,9 +444,20 @@ describe("Evals Dashboard Generator", () => {
       scenarios: [],
     };
 
-    expect(describeShrinkingCoverage(history)).toEqual([]);
-    expect(describeShrinkingCoverage(history.slice(0, 10))).toEqual([]);
-    expect(buildDashboardHtml([], artifact, history)).not.toContain("Coverage shrinking");
+    expect(describeCoverageShifts(history)).toEqual([
+      {
+        bucket: "model-failed",
+        direction: "growing",
+        earlierRuns: 23,
+        earlierWithBucket: 10,
+        recentRuns: 7,
+        recentWithBucket: 7,
+      },
+    ]);
+    expect(describeCoverageShifts(history.slice(0, 10))).toEqual([]);
+    const html = buildDashboardHtml([], artifact, history);
+    expect(html).not.toContain("Coverage shrinking");
+    expect(html).toContain('<span class="reason-pill score-pass">Coverage growing</span>');
   });
 
   it("highlights trend rows whose reason buckets moved since the previous run", () => {

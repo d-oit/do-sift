@@ -209,8 +209,13 @@ export function summarizeReasonTotals(
   return { runCount: history.length, totals, runsWithBucket };
 }
 
+/** Direction a bucket's run coverage moved across the recency-weighted split. */
+export type CoverageShiftDirection = "growing" | "shrinking";
+
 export interface BucketCoverageShift {
   bucket: DegradationReasonBucket;
+  /** Whether the bucket now covers a larger or smaller share of runs. */
+  direction: CoverageShiftDirection;
   /** Runs before the recency-weighted split. */
   earlierRuns: number;
   /** Earlier runs that emitted the bucket at least once. */
@@ -253,12 +258,13 @@ export function recentCoverageSplit(runCount: number): number {
 }
 
 /**
- * Buckets whose run coverage shrank across the recency-weighted split of the
+ * Buckets whose run coverage moved across the recency-weighted split of the
  * recorded history (see `recentCoverageSplit`). Coverage is compared as a
- * fraction rather than a raw count because the two windows differ in size, and
- * a bucket that only gained coverage is never flagged.
+ * fraction rather than a raw count because the two windows differ in size;
+ * both directions are reported so a recovery is as visible as a regression,
+ * and equal coverage yields no entry.
  */
-export function describeShrinkingCoverage(
+export function describeCoverageShifts(
   history: readonly DegradationHistoryEntry[],
 ): BucketCoverageShift[] {
   if (history.length < 2) return [];
@@ -269,15 +275,18 @@ export function describeShrinkingCoverage(
   for (const bucket of DEGRADATION_REASON_BUCKETS) {
     const earlierWithBucket = earlier.filter((entry) => (entry.reasons[bucket] ?? 0) > 0).length;
     const recentWithBucket = recent.filter((entry) => (entry.reasons[bucket] ?? 0) > 0).length;
-    if (recentWithBucket * earlier.length < earlierWithBucket * recent.length) {
-      shifts.push({
-        bucket,
-        earlierRuns: earlier.length,
-        earlierWithBucket,
-        recentRuns: recent.length,
-        recentWithBucket,
-      });
-    }
+    // Cross-multiplied fractions: no float compare decides the direction.
+    const recentShare = recentWithBucket * earlier.length;
+    const earlierShare = earlierWithBucket * recent.length;
+    if (recentShare === earlierShare) continue;
+    shifts.push({
+      bucket,
+      direction: recentShare > earlierShare ? "growing" : "shrinking",
+      earlierRuns: earlier.length,
+      earlierWithBucket,
+      recentRuns: recent.length,
+      recentWithBucket,
+    });
   }
   return shifts;
 }
@@ -383,21 +392,28 @@ export function buildDegradationPanel(
             </tr>
           </tfoot>`;
 
-  const shrinking = describeShrinkingCoverage(history);
-  const coverageWarning =
-    shrinking.length === 0
-      ? ""
-      : `<div class="coverage-warning">
-          <span class="reason-pill score-partial">Coverage shrinking</span>
-          ${shrinking
-            .map(
-              (shift) =>
-                `<span>${escapeHtml(
-                  DEGRADATION_REASON_LABELS[shift.bucket] ?? shift.bucket,
-                )} ${shift.earlierWithBucket}/${shift.earlierRuns} &rarr; ${shift.recentWithBucket}/${shift.recentRuns} runs</span>`,
-            )
-            .join("")}
-        </div>`;
+  const coverageShifts = describeCoverageShifts(history);
+  const coverageGroups = (
+    [
+      { direction: "shrinking", label: "Coverage shrinking", badge: "score-partial" },
+      { direction: "growing", label: "Coverage growing", badge: "score-pass" },
+    ] as const
+  )
+    .map((group) => {
+      const shifts = coverageShifts.filter((shift) => shift.direction === group.direction);
+      if (shifts.length === 0) return "";
+      return `<span class="reason-pill ${group.badge}">${group.label}</span>${shifts
+        .map(
+          (shift) =>
+            `<span>${escapeHtml(
+              DEGRADATION_REASON_LABELS[shift.bucket] ?? shift.bucket,
+            )} ${shift.earlierWithBucket}/${shift.earlierRuns} &rarr; ${shift.recentWithBucket}/${shift.recentRuns} runs</span>`,
+        )
+        .join("")}`;
+    })
+    .join("");
+  const coverageNote =
+    coverageGroups === "" ? "" : `<div class="coverage-warning">${coverageGroups}</div>`;
 
   const historyHtml =
     history.length === 0
@@ -410,7 +426,7 @@ export function buildDegradationPanel(
           <span>Reason Counts Across Suite Runs</span>
           <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">${history.length} recorded run(s), oldest first; counts are emitted receipts</span>
         </div>
-        ${coverageWarning}
+        ${coverageNote}
         <table class="heatmap">
           <thead>
             <tr>
@@ -428,7 +444,7 @@ export function buildDegradationPanel(
           ${
             history.length === 1
               ? "This is the first recorded run; each additional <code>npm run evals:degradation</code> adds a row and turns the counts into a trend."
-              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket. A bucket whose share of runs fell between the earlier and newer halves of the history is called out above the table with its before/after coverage."
+              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket. A bucket whose share of runs fell or rose across the recency-weighted split is called out above the table with its before/after coverage."
           }
         </p>
       </div>`;

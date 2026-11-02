@@ -550,7 +550,7 @@
           </tfoot>
         </table>
         <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
-          Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket. A bucket whose share of runs fell between the earlier and newer halves of the history is called out above the table with its before/after coverage.
+          Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket. A bucket whose share of runs fell or rose across the recency-weighted split is called out above the table with its before/after coverage.
         </p>
       </div>
       <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
