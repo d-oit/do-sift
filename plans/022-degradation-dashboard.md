@@ -1,6 +1,6 @@
-# 021 — Degradation honesty on the evals dashboard (DEG-04)
+# 022 — Degradation honesty on the evals dashboard (DEG-04)
 
-Status: done (2026-11-02). Follow-up to plans 019/020 (issue #127).
+Status: done (2026-11-02). Follow-up to plans 020/021 (issue #127).
 
 ## Goal
 

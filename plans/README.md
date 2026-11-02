@@ -19,7 +19,7 @@ This folder is the project's memory. Agents and humans update it together.
 ## Current queue
 
 - `019-guardrails-policy-as-code.md` — done (2026-11-02, issue #124); the ethical guardrails are now a standalone declarative policy document (`packages/contracts/src/guardrails.json`) evaluated by a typed engine the kernel injects and both harnesses consult per action, with an integrity floor that refuses weakening and tests in `npm run check`. OPA parity is documented, not adopted (Node-only, hermetic pipeline).
-- `021-degradation-behavior.md` — done (2026-11-02); evidence-only model fallback, per-claim unresolved citations, and `degradationReason` receipts (issue #127 follow-ups).
+- `023-degradation-history.md` — done (2026-11-02); records each degradation-suite run so the dashboard can trend reason counts instead of one snapshot.
 - `022-degradation-dashboard.md` — done (2026-11-02); surfaces the suite's score and expected degradation reasons in the evals dashboard.
 - `021-degradation-behavior.md` — done (2026-11-02); evidence-only model fallback, per-claim unresolved citations, and `degradationReason` receipts (issue #127 follow-ups).
 - `020-degradation-honesty-suite.md` — done (2026-11-02); issue #127 failure-mode suite with a machine-computed degradation-honesty score enforced by `npm run check`.
