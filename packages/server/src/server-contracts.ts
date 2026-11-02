@@ -41,7 +41,14 @@ export interface AnswerSuspectEvent {
   passages: number;
   markers: string[];
 }
-export type OperationalEvent = HttpRequestEvent | AnswerSuspectEvent;
+/** Honest-degradation receipt: every degraded answer names why it degraded. */
+export interface AnswerDegradedEvent {
+  type: "answer.degraded";
+  requestId: string;
+  /** No evidence, unresolved model citations, or the model provider failed. */
+  reason: "no-evidence" | "citation-invalid" | "model-failed";
+}
+export type OperationalEvent = HttpRequestEvent | AnswerSuspectEvent | AnswerDegradedEvent;
 export interface ResearchServerOptions {
   /** #63: per-owner concurrency and request-rate limits (defaults apply when omitted). */
   ownerLimits?: OwnerLimits;
@@ -95,10 +102,19 @@ export interface AnswerHttpResponse {
    * "legacy" = pre-linkage evidence. Absent on the empty-evidence path.
    */
   evidenceFromRun?: "run" | "legacy" | "cross-question" | undefined;
+  /**
+   * Why the answer degraded: no evidence could be packed, the model's
+   * citations did not resolve, or the model provider failed. Absent on
+   * grounded answers (and on cache hits, which are only grounded or
+   * no-evidence).
+   */
+  degradationReason?: "no-evidence" | "citation-invalid" | "model-failed" | undefined;
   blocks: Array<{
     kind: "paragraph" | "list" | "caveat";
     text: string;
     citations: string[];
+    /** Claim-level honesty flag: its citations did not resolve. */
+    unresolved?: boolean | undefined;
   }>;
   usage?:
     | {

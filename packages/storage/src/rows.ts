@@ -86,6 +86,8 @@ export interface AnswerBlocks {
   kind: "paragraph" | "list" | "caveat";
   text: string;
   citations: string[];
+  /** Per-claim honesty flag (issue #127): citations did not resolve. */
+  unresolved?: boolean | undefined;
 }
 export interface AnswerUsage {
   inputTokens: number;

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "runs": [
+    {
+      "executedAtUtc": "2026-11-02T12:01:24.490Z",
+      "suiteVersion": "deg-1",
+      "score": 1,
+      "scenariosPassed": 7,
+      "scenariosTotal": 7,
+      "reasons": {
+        "no-evidence": 2,
+        "citation-invalid": 2,
+        "model-failed": 1,
+        "none": 2
+      }
+    }
+  ]
+}

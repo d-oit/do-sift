@@ -48,6 +48,7 @@ export interface AnswerTask {
   ownerId: string;
   question: string;
 }
+export type DegradationReason = "no-evidence" | "citation-invalid" | "model-failed";
 export interface UsageReconciliation {
   overrun: boolean;
   deltaInput: number;
@@ -66,6 +67,8 @@ export interface AnswerOutcome {
   degraded: boolean;
   /** True when no model claims are present (evidence-only output). */
   evidenceOnly: boolean;
+  /** Why the answer degraded; absent on grounded answers and cache hits of them. */
+  degradationReason?: DegradationReason | undefined;
   /**
    * Evidence basis (ANS-07, R-15/F9): "run" = at least one packed passage
    * came from a COMPLETED research run for this owner+question;

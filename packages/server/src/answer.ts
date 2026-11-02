@@ -6,6 +6,7 @@ import {
   normalizeQuestion,
   validateCitations,
   type Answer,
+  type DraftAnswer,
   type SynthesisRequest,
 } from "@do-sift/contracts";
 import { hybridSearch, searchPassages, type PassageHit } from "@do-sift/storage";
@@ -15,9 +16,15 @@ import type {
   AnswerServiceDeps,
   AnswerServiceOptions,
   AnswerTask,
+  DegradationReason,
   UsageReconciliation,
 } from "./answer-contracts.js";
-import { detectSuspects, evidenceOnlyAnswer, packPassages } from "./answer-evidence.js";
+import {
+  detectSuspects,
+  evidenceOnlyAnswer,
+  markUnresolvedClaims,
+  packPassages,
+} from "./answer-evidence.js";
 export type { AnswerRevisions } from "./answer-contracts.js";
 export type { AnswerServiceOptions } from "./answer-contracts.js";
 export type { AnswerServiceDeps } from "./answer-contracts.js";
@@ -188,6 +195,9 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
           cached: true,
           degraded: cached.evidenceOnly,
           evidenceOnly: cached.evidenceOnly,
+          // Only no-evidence answers are cached while degraded; unresolved
+          // and model-failure answers never get a cache key.
+          ...(cached.evidenceOnly ? { degradationReason: "no-evidence" as const } : {}),
           evidenceFromRun: cached.evidenceFromRun ?? "legacy",
           usage: cached.usage,
         };
@@ -221,6 +231,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
             cached: false,
             degraded: true,
             evidenceOnly: true,
+            degradationReason: "no-evidence",
             evidenceFromRun: undefined,
           };
         }
@@ -259,25 +270,51 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
           reservationId = id;
         }
 
-        let answer: Answer;
+        let answer: Answer | undefined;
         let degraded = false;
+        let degradedReason: DegradationReason | undefined;
         if (signal?.aborted) throw new AnswerCancelledError();
-        const draft = await deps.model.complete(request, signal);
-        actual = { inputTokens: draft.usage.inputTokens, outputTokens: draft.usage.outputTokens };
-        answer = {
-          ownerId: task.ownerId,
-          question: task.question,
-          blocks: draft.blocks,
-          usage: draft.usage,
-          evidenceOnly: false,
-        };
+        let draft: DraftAnswer | undefined;
         try {
-          // the model may only cite evidence it was actually given
-          validateCitations(answer, new Set(packed.map((p) => p.id)));
+          draft = await deps.model.complete(request, signal);
         } catch (e) {
-          if (!(e instanceof CitationError)) throw e;
-          degraded = true; // no repair loop: degrade to evidence-only
+          if (signal?.aborted || e instanceof AnswerCancelledError) throw e;
+          // Honest fallback: the model failed, but the stored evidence can
+          // still answer with receipts. No fabricated claims, no fail-closed
+          // 500, no cache entry (the next question retries the model).
+          degraded = true;
+          degradedReason = "model-failed";
           answer = evidenceOnlyAnswer(task.ownerId, task.question, packed);
+        }
+        if (draft !== undefined) {
+          actual = { inputTokens: draft.usage.inputTokens, outputTokens: draft.usage.outputTokens };
+          answer = {
+            ownerId: task.ownerId,
+            question: task.question,
+            blocks: draft.blocks,
+            usage: draft.usage,
+            evidenceOnly: false,
+          };
+          try {
+            // the model may only cite evidence it was actually given
+            validateCitations(answer, new Set(packed.map((p) => p.id)));
+          } catch (e) {
+            if (!(e instanceof CitationError)) throw e;
+            degraded = true;
+            degradedReason = "citation-invalid";
+            // Per-claim honesty: keep claims whose citations resolve, flag the
+            // rest unresolved. When nothing survives, the whole answer still
+            // degrades to self-citing stored evidence (no repair loop).
+            const marked = markUnresolvedClaims(answer, new Set(packed.map((p) => p.id)));
+            answer =
+              marked.resolvedClaims === 0
+                ? evidenceOnlyAnswer(task.ownerId, task.question, packed)
+                : { ...answer, blocks: marked.blocks };
+          }
+        }
+        if (answer === undefined) {
+          // Unreachable: either the draft branch or the fallback assigned it.
+          throw new Error("answer path produced no answer");
         }
 
         const answerId = await deps.repositories.answers.insert({
@@ -323,6 +360,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
           cached: false,
           degraded,
           evidenceOnly: answer.evidenceOnly,
+          ...(degradedReason === undefined ? {} : { degradationReason: degradedReason }),
           evidenceFromRun: basis,
           usage: answer.usage,
           reconciliation,

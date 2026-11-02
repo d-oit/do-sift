@@ -81,7 +81,7 @@ export class FakeSearchProvider implements SearchProvider {
   }
 }
 
-export type FakeModelCitationBehavior = "grounded" | "hallucinate";
+export type FakeModelCitationBehavior = "grounded" | "hallucinate" | "partial-hallucinate";
 
 export interface FakeModelProviderOptions {
   name?: string;
@@ -90,7 +90,9 @@ export interface FakeModelProviderOptions {
    * grounded (default): every citation resolves to a passage id in the
    * request — the pass path for ANS-03. hallucinate: citations reference
    * ids that were never provided — feeds the invalid-citation →
-   * evidence-only degradation tests.
+   * evidence-only degradation tests. partial-hallucinate: the first block
+   * cites its real passage, the rest cite absent ids — feeds the per-claim
+   * unresolved-flag tests.
    */
   citationBehavior?: FakeModelCitationBehavior;
   /** When set, complete() rejects with this error (provider-failure path). */
@@ -134,15 +136,16 @@ export class FakeModelProvider implements ModelProvider {
 
   async complete(request: SynthesisRequest, signal?: AbortSignal): Promise<DraftAnswer> {
     assertNotAborted(signal);
-    if (this.failWith) throw this.failWith;
-    SynthesisRequest.parse(request);
-
+    // A failing provider attempt is still an attempt: record it before the
+    // throw so call counts describe what the harness actually asked for.
     this.calls.push({
       question: request.question,
       passageIds: request.passages.map((p) => p.id),
       maxInputTokens: request.maxInputTokens,
       maxOutputTokens: request.maxOutputTokens,
     });
+    if (this.failWith) throw this.failWith;
+    SynthesisRequest.parse(request);
 
     const blocks =
       this.citationBehavior === "hallucinate"
@@ -151,11 +154,17 @@ export class FakeModelProvider implements ModelProvider {
             text: `Claim citing absent evidence for ${p.id}.`,
             citations: [`ev-hallucinated-${p.id}`],
           }))
-        : request.passages.map((p) => ({
-            kind: "paragraph" as const,
-            text: `According to evidence ${p.id}: ${p.text}`,
-            citations: [p.id],
-          }));
+        : this.citationBehavior === "partial-hallucinate"
+          ? request.passages.map((p, index) => ({
+              kind: "paragraph" as const,
+              text: `Claim ${index + 1} about ${p.id}.`,
+              citations: [index === 0 ? p.id : `ev-hallucinated-${p.id}`],
+            }))
+          : request.passages.map((p) => ({
+              kind: "paragraph" as const,
+              text: `According to evidence ${p.id}: ${p.text}`,
+              citations: [p.id],
+            }));
 
     const text = blocks.map((b) => b.text).join(" ");
     return {

@@ -43,6 +43,11 @@ describe("MetricsRegistry", () => {
       passages: 4,
       markers: ["x"],
     });
+    registry.observe({
+      type: "answer.degraded",
+      requestId: "r3",
+      reason: "no-evidence",
+    });
     const text = registry.render();
     expect(text).toContain(
       'do_sift_http_requests_total{method="GET",route="other",outcome="client_error",status="404"} 1',
@@ -50,6 +55,7 @@ describe("MetricsRegistry", () => {
     expect(text).not.toContain("random/unknown");
     expect(text).toContain("do_sift_answer_suspect_total 1");
     expect(text).toContain("do_sift_answer_suspect_passages_total 4");
+    expect(text).toContain("do_sift_answer_degraded_total 1");
   });
 });
 

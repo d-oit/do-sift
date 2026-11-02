@@ -25,6 +25,12 @@ export const AnswerBlock = z.object({
   /** Claim text. Citations reference evidence IDs, validated before display. */
   text: z.string().min(1),
   citations: z.array(EvidenceId),
+  /**
+   * Per-claim honesty flag: the model cited at least one unknown evidence id
+   * (or cited nothing), so this claim is displayed as unresolved while any
+   * surviving claims keep their verified citations. Absent on grounded claims.
+   */
+  unresolved: z.boolean().optional(),
 });
 export type AnswerBlock = z.infer<typeof AnswerBlock>;
 

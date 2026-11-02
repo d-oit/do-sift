@@ -192,6 +192,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
         cached: outcome.cached,
         degraded: outcome.degraded,
         evidenceOnly: outcome.evidenceOnly,
+        ...(outcome.degradationReason === undefined
+          ? {}
+          : { degradationReason: outcome.degradationReason }),
         ...(outcome.evidenceFromRun === undefined
           ? {}
           : { evidenceFromRun: outcome.evidenceFromRun }),

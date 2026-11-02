@@ -98,6 +98,48 @@ model** (`evals/quality/run-017-2026-10-13.json` is the first run).
   planted attack lines, NOT the detector's precision/recall over real
   pages — that live re-measure stays owner-gated (R-12 residual).
 
+## Machine-computed degradation honesty (issue #127, 2026-11-02)
+
+The manual protocol above keeps its authorial degradation-honesty score for
+live runs. The gate also carries a deterministic, **machine-computed** score
+over failure modes, so honesty regressions fail CI instead of waiting for a
+human re-score:
+
+- `evals/degradation/scenarios.json` registers seven scenarios: search
+  returns no results, search provider timeout, model synthesis failure,
+  evidence storage full, citation resolution failure, partial citation
+  failure, and cross-question evidence.
+- `scripts/degradation/run.ts` injects each failure into the real answer path
+  (in-memory database, research harness, answer service, HTTP surface) and
+  asserts the exact user-facing message, the `answer.degraded` /
+  `http.request` operational receipt, and persisted state (request status,
+  stored answers, cache key, budget ledger).
+- The score is `passed scenarios / registered scenarios`. `scripts/eval.ts`
+  computes it from the suite and enforces **1.0** in the `evals` step of
+  `npm run check`; an empty suite fails closed.
+- `npm run evals:degradation` writes `evals/degradation/latest.json` with
+  `qualityGate.degradationHonesty` and each scenario's expected reason;
+  quality-run notes cite that artifact's score for these failure modes
+  instead of a hand-entered number. The same command appends one compact
+  entry to `evals/degradation/history.json` (newest 30 runs; timestamp,
+  score, pass counts, reason buckets), so repeated runs leave a trail rather
+  than overwriting one snapshot. `npm run evals:dashboard` renders the
+  artifact and that history as a "Degradation Honesty" panel in
+  `evals/dashboard/index.html` (score, reason counts, per-scenario rows,
+  and a "Reason Counts Across Suite Runs" table). History is evidence only:
+  `scripts/eval.ts` still scores the current in-memory run and enforces 1.0,
+  so a missing or stale history file cannot change the gate.
+
+Limits and residuals: fake providers and a constructed corpus mean this
+measures the harness's honesty behavior, not a live provider's outage
+behavior — live QUAL runs still score real degradations per the protocol
+above. The suite also pins the honest-degradation behavior itself: a model
+provider failure falls back to evidence-only output (`200`, stored evidence,
+no fabricated claims, no cache entry, no retry loop), and citation validation
+is per claim — claims whose citations resolve stay grounded, the rest are
+flagged `unresolved` and shown with the UNRESOLVED label. When no claim
+survives, the whole answer degrades to self-citing stored passages.
+
 ## Live-Model Quality & Prompt Injection Remeasurement (protocol v2.0, 2026-10-30)
 
 Before activating any live model provider (`DO_SIFT_MODEL_PROVIDER=openai-compat`), an explicit opt-in evaluation run must pass the live evaluation gate (`npm run eval:live`).
