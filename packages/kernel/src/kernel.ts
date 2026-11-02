@@ -1,4 +1,14 @@
 import {
+  SHIPPED_GUARDRAILS,
+  GuardrailError,
+  assertGuardrailsIntegrity,
+  evaluateGuardrails,
+  type GuardrailCapability,
+  type GuardrailDecision,
+  type GuardrailRequest,
+  type GuardrailsPolicy,
+} from "@do-sift/contracts";
+import {
   parseManifest,
   requiresGrant,
   type Capability,
@@ -35,6 +45,17 @@ export interface PluginContext {
      */
     resolve(name: string): Promise<string>;
   };
+  /**
+   * Declarative ethical guardrails (ADR 0005, issue #124). The kernel builds
+   * this from the policy document; browser/computer harnesses MUST consult it
+   * for every action they execute. Capabilities the plugin does not declare
+   * are denied, and `granted` reflects the activation gate (INV-003).
+   */
+  readonly guardrails: {
+    readonly policy: GuardrailsPolicy;
+    check(request?: GuardrailRequest): GuardrailDecision;
+    assertAllowed(request?: GuardrailRequest): void;
+  };
 }
 
 /** Minimal plugin contract: a factory receiving the kernel-built context. */
@@ -68,6 +89,12 @@ export type KernelEnvironment = "local" | "ci" | "production";
 export interface KernelOptions {
   /** Resolves a secret name to its value; the host decides the backing store. */
   secretResolver?: (name: string) => Promise<string | undefined>;
+  /**
+   * Guardrails policy document (issue #124). Defaults to the shipped policy;
+   * a document that weakens the shipped guarantees is rejected at
+   * construction (`assertGuardrailsIntegrity`), so this is extension-only.
+   */
+  guardrails?: unknown;
 }
 
 interface ActivateOptions {
@@ -86,11 +113,15 @@ export class Kernel {
   private readonly active = new Map<string, PluginInstance>();
   /** Owner grants keyed by plugin name (#60): a grant for plugin A never authorizes plugin B. */
   private readonly grants = new Map<string, Set<Capability>>();
+  /** The validated guardrails policy every automation action is judged by. */
+  private readonly guardrailsPolicy: GuardrailsPolicy;
 
   constructor(
     private readonly environment: KernelEnvironment = "local",
     private readonly options: KernelOptions = {},
-  ) {}
+  ) {
+    this.guardrailsPolicy = assertGuardrailsIntegrity(options.guardrails ?? SHIPPED_GUARDRAILS);
+  }
 
   register(manifestInput: unknown, factory: PluginFactory): RegisteredPlugin {
     const manifest = parseManifest(manifestInput);
@@ -143,6 +174,17 @@ export class Kernel {
       }
     }
 
+    // Activation consults the guardrails policy (issue #124): a capability
+    // the policy does not keep grant-gated can never activate.
+    for (const capability of plugin.manifest.capabilities) {
+      if (capability !== "browser" && capability !== "computer") continue;
+      if (this.guardrailsPolicy.capabilities[capability].grantRequired !== true) {
+        throw new CapabilityError(
+          `guardrails policy must keep "${capability}" grant-gated (INV-003): plugin ${name} refused`,
+        );
+      }
+    }
+
     const ctx = this.buildContext(plugin.manifest);
     const instance = plugin.factory(ctx);
     await instance.activate(ctx);
@@ -156,12 +198,53 @@ export class Kernel {
     await instance.deactivate();
   }
 
+  /**
+   * Kernel-verified guardrails check. The plugin may only ask about
+   * capabilities it declares; `granted: true` because activation already
+   * passed the recorded-grant gate (INV-003).
+   */
+  private checkGuardrails(
+    declared: readonly GuardrailCapability[],
+    request: GuardrailRequest,
+  ): GuardrailDecision {
+    const merged: GuardrailRequest = { granted: true };
+    const capability = request.capability;
+    if (capability === undefined) {
+      const only = declared.length === 1 ? declared[0] : undefined;
+      if (only !== undefined) merged.capability = only;
+    } else if (!declared.includes(capability)) {
+      return {
+        decision: "deny",
+        rule: "unknown-capability",
+        reason: `guardrails: plugin declares no "${capability}" capability`,
+      };
+    } else {
+      merged.capability = capability;
+    }
+    if (request.action !== undefined) merged.action = request.action;
+    if (request.host !== undefined) merged.host = request.host;
+    if (request.consent !== undefined) merged.consent = request.consent;
+    return evaluateGuardrails(this.guardrailsPolicy, merged);
+  }
+
   private buildContext(manifest: PluginManifest): PluginContext {
     const hosts = new Set(manifest.permissions.networkHosts);
     const secretNames = new Set(manifest.permissions.secrets);
+    const declaredAutomation = manifest.capabilities.filter(
+      (capability): capability is GuardrailCapability =>
+        capability === "browser" || capability === "computer",
+    );
     return {
       pluginName: manifest.name,
       kind: manifest.kind,
+      guardrails: {
+        policy: this.guardrailsPolicy,
+        check: (request = {}) => this.checkGuardrails(declaredAutomation, request),
+        assertAllowed: (request = {}) => {
+          const decision = this.checkGuardrails(declaredAutomation, request);
+          if (decision.decision !== "allow") throw new GuardrailError(decision);
+        },
+      },
       config: manifest.config,
       logger: {
         info: (message) => console.info(`[${manifest.name}] ${message}`),
