@@ -8,6 +8,7 @@ import {
   generateDashboard,
   generateTrendChartSvg,
   getCaseScore,
+  loadDegradationArtifact,
   loadQualityRuns,
   type QualityRun,
 } from "../../scripts/evals-dashboard.ts";
@@ -154,6 +155,56 @@ describe("Evals Dashboard Generator", () => {
     const mrna16 = r16?.cases?.find((c) => c.question === "How does mRNA vaccination work?");
     expect(mrna12?.scores.retrievalRelevance).toBe(1);
     expect(mrna16?.scores.retrievalRelevance).toBe(0.5);
+  });
+
+  it("loads the degradation artifact and tolerates a missing directory", () => {
+    expect(loadDegradationArtifact(TEST_DIR)).toBeNull();
+
+    writeFileSync(
+      join(TEST_DIR, "latest.json"),
+      JSON.stringify({ qualityGate: { score: 1 }, scenarios: [] }),
+      "utf8",
+    );
+    expect(loadDegradationArtifact(TEST_DIR)?.qualityGate?.score).toBe(1);
+  });
+
+  it("renders the degradation-honesty panel with score, reasons, and per-scenario status", () => {
+    const html = buildDashboardHtml([], {
+      suiteVersion: "deg-1",
+      qualityGate: { score: 0.5, scenariosPassed: 1, scenariosTotal: 2 },
+      scenarios: [
+        {
+          id: "model-synthesis-failure",
+          name: "Model fails",
+          passed: true,
+          checks: "20/20",
+          degraded: true,
+          reason: "model-failed",
+        },
+        {
+          id: "partial-citation-failure",
+          name: "Partial citations",
+          passed: false,
+          checks: "19/20",
+          degraded: true,
+          reason: "citation-invalid",
+        },
+      ],
+    });
+
+    expect(html).toContain("Degradation Honesty (failure-mode suite)");
+    expect(html).toContain("0.500 across 1/2 scenarios");
+    expect(html).toContain("model failed");
+    expect(html).toContain("citation invalid");
+    expect(html).toContain("model-synthesis-failure");
+    expect(html).toContain("PASS");
+    expect(html).toContain("FAIL");
+  });
+
+  it("explains a missing degradation artifact instead of failing", () => {
+    const html = buildDashboardHtml([], null);
+    expect(html).toContain("No degradation artifact recorded yet");
+    expect(html).toContain("npm run evals:degradation");
   });
 
   it("README.md links to evals/dashboard/index.html and package.json defines evals:dashboard", () => {

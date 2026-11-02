@@ -111,6 +111,10 @@ export interface DegradationScenarioResult {
   id: string;
   name: string;
   passed: boolean;
+  /** Expected honest-degradation receipt, or null when the scenario expects no event. */
+  reason: "no-evidence" | "citation-invalid" | "model-failed" | null;
+  /** Expected evidence-only flag; null when the scenario expects a hard failure. */
+  degraded: boolean | null;
   checks: DegradationCheck[];
 }
 
@@ -649,6 +653,8 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
     id: def.id,
     name: def.name,
     passed: checks.every((check) => check.ok),
+    reason: def.expect.event?.reason ?? null,
+    degraded: def.expect.degraded,
     checks,
   };
 }
