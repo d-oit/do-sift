@@ -9,7 +9,7 @@
  * fail-closed.
  */
 import { describe, expect, it } from "vitest";
-import { loadThresholds, runE2E, scoreCase } from "../eval-e2e.js";
+import { loadThresholds, redactSecrets, runE2E, scoreCase } from "../eval-e2e.js";
 
 const LIVE_GATES = {
   "opt-in": true,
@@ -128,5 +128,23 @@ describe("a non-run leaves no evidence artifact", () => {
     const refusal = await runE2E({}, args({ "model-id": "m" }));
     expect(refusal.mode).toBe("live");
     expect(refusal.cases).toEqual([]);
+  });
+});
+
+describe("redactSecrets", () => {
+  it("removes a resolved key value from a message", () => {
+    const key = "sk-livevalue0123456789abcdef";
+    expect(redactSecrets(`call failed with ${key}`, [key])).not.toContain(key);
+  });
+
+  it("removes bearer tokens and sk-shaped keys it was not told about", () => {
+    expect(redactSecrets("Authorization: Bearer abc.def.ghi")).toContain("[REDACTED]");
+    expect(redactSecrets("sk-abcdefghijklmnopqrstuvwxyz")).toBe("[REDACTED]");
+  });
+
+  it("leaves ordinary text alone", () => {
+    expect(redactSecrets("mean quality 0 is below the 0.95 floor")).toBe(
+      "mean quality 0 is below the 0.95 floor",
+    );
   });
 });

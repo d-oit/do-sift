@@ -151,22 +151,41 @@ async function buildProviders(
   fetchPage: (url: string, signal?: AbortSignal) => Promise<{ text: string; contentType: string }>;
   model: ModelProvider;
 }> {
-  if (fixture) {
-    return {
-      search: new FakeSearchProvider({
-        hits: [
-          { url: "https://e2e.test/fts5", title: "FTS5 and bm25 ranking" },
-          { url: "https://e2e.test/bm25", title: "Bm25 scoring" },
-        ],
-      }),
-      fetchPage: async (url: string) => ({
-        text: `<html><body><p>FTS5 provides full-text search to SQLite. Ranking uses the bm25 function where lower scores are better (${url}).</p></body></html>`,
-        contentType: "text/html",
-      }),
-      model: new FakeModelProvider(),
-    };
-  }
+  return fixture ? buildFixtureProviders() : buildLiveProviders(env, cliArgs, dns, terms);
+}
 
+/** The hermetic pair: labeled fakes, no network, no credentials. */
+function buildFixtureProviders(): {
+  search: SearchProvider;
+  fetchPage: (url: string, signal?: AbortSignal) => Promise<{ text: string; contentType: string }>;
+  model: ModelProvider;
+} {
+  return {
+    search: new FakeSearchProvider({
+      hits: [
+        { url: "https://e2e.test/fts5", title: "FTS5 and bm25 ranking" },
+        { url: "https://e2e.test/bm25", title: "Bm25 scoring" },
+      ],
+    }),
+    fetchPage: async (url: string) => ({
+      text: `<html><body><p>FTS5 provides full-text search to SQLite. Ranking uses the bm25 function where lower scores are better (${url}).</p></body></html>`,
+      contentType: "text/html",
+    }),
+    model: new FakeModelProvider(),
+  };
+}
+
+/** The real adapters, wired the way `apps/server` wires them. */
+async function buildLiveProviders(
+  env: Record<string, string | undefined>,
+  cliArgs: ReturnType<typeof parseCLIArgs>,
+  dns: DnsResolver,
+  terms: { termsAcceptedAt: string; sourcesEntry: string },
+): Promise<{
+  search: SearchProvider;
+  fetchPage: (url: string, signal?: AbortSignal) => Promise<{ text: string; contentType: string }>;
+  model: ModelProvider;
+}> {
   // Live search: the Wikipedia adapter (the only live adapter this runner
   // claims to exercise — the refusal above enforces that).
   const siteAccess = createSiteAccessPolicy();
@@ -228,8 +247,11 @@ async function buildProviders(
     keySecretName !== "" &&
     (apiKey === undefined || apiKey === "")
   ) {
+    // Deliberately does not name the variable: an error message reaches logs
+    // and uploaded artifacts, and this repo's rule is that even the NAME of a
+    // secret-bearing variable stays out of them (CodeQL clear-text-logging).
     throw new Error(
-      `DO_SIFT_MODEL_API_KEY_SECRET names "${keySecretName}" but it holds no value — refusing to run live e2e keyless`,
+      "the configured model-key variable holds no value — refusing to run live e2e keyless (set it, or unset DO_SIFT_MODEL_API_KEY_SECRET for a keyless local server)",
     );
   }
   const compat = createOpenAICompatModel({
@@ -435,8 +457,40 @@ export async function runE2E(
   return result;
 }
 
+/**
+ * Redact secret values before anything reaches a log or artifact (EXT-04).
+ * `eval-live.ts` does the same for completion text; here the inputs are the
+ * resolved model key and any env var this process treats as secret-bearing.
+ * The pattern list is a backstop for keys that arrived some other way.
+ */
+export function redactSecrets(text: string, secrets: readonly string[] = []): string {
+  let redacted = text;
+  for (const secret of secrets) {
+    if (secret.length >= 8) redacted = redacted.split(secret).join("[REDACTED]");
+  }
+  return redacted
+    .replace(/(Bearer\s+)[A-Za-z0-9._-]+/giu, "$1[REDACTED]")
+    .replace(/(sk-[A-Za-z0-9_-]{20,})/giu, "[REDACTED]")
+    .replace(/(api[_-]?key["']?\s*[:=]\s*["']?)[A-Za-z0-9._-]+/giu, "$1[REDACTED]");
+}
+
+/** Every env value this process could log through an error path. */
+function secretValues(env: Record<string, string | undefined>): string[] {
+  const out: string[] = [];
+  const named = env.DO_SIFT_MODEL_API_KEY_SECRET;
+  const candidates = [
+    env.DO_SIFT_MODEL_API_KEY,
+    named === undefined || named === "" ? undefined : env[named],
+  ];
+  for (const value of candidates) {
+    if (value !== undefined && value !== "") out.push(value);
+  }
+  return out;
+}
+
 if (process.argv[1] && process.argv[1].endsWith("eval-e2e.ts")) {
   const args = parseCLIArgs();
+  const secrets = secretValues(process.env);
   runE2E(process.env, args)
     .then((result) => {
       // A live run that actually RAN is evidence — pass or fail — and lands in
@@ -454,7 +508,8 @@ if (process.argv[1] && process.argv[1].endsWith("eval-e2e.ts")) {
         writeFileSync(outputPath, JSON.stringify(result, null, 2), "utf8");
       }
       if (!result.passed) {
-        console.error(`eval-e2e: FAIL — ${result.refusalReason ?? "thresholds not met"}`);
+        const reason = result.refusalReason ?? "thresholds not met";
+        console.error(`eval-e2e: FAIL — ${redactSecrets(reason, secrets)}`);
         process.exit(1);
       }
       console.log(
@@ -463,7 +518,10 @@ if (process.argv[1] && process.argv[1].endsWith("eval-e2e.ts")) {
       process.exit(0);
     })
     .catch((error: unknown) => {
-      console.error(`eval-e2e: ERROR — ${error instanceof Error ? error.message : String(error)}`);
+      // Provider errors can carry response bodies or URLs; redact before
+      // printing, and never print the env object itself.
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`eval-e2e: ERROR — ${redactSecrets(message, secrets)}`);
       process.exit(1);
     });
 }

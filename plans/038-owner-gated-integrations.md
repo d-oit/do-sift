@@ -141,7 +141,7 @@ Docs and records:
 | `npx vitest run apps/server/test/main.pricing.test.ts`                  | **9 tests pass**                                                                                 |
 | `npx vitest run packages/server/test/answer.synthesis-log.test.ts`      | **10 tests pass**                                                                                |
 | `npx vitest run apps/server/test/e2e.live.test.ts`                      | **2 tests pass**                                                                                 |
-| `npx vitest run scripts/test/eval-e2e.test.ts`                          | **14 tests pass** (scorer + refusal contract)                                                    |
+| `npx vitest run scripts/test/eval-e2e.test.ts`                          | **17 tests pass** (scorer + refusal contract)                                                    |
 | `npx tsx scripts/eval-e2e.ts --fixture`                                 | `PASS (fixture)`, exit 0, no artifact written                                                    |
 | `npx tsx scripts/eval-e2e.ts` (no flags)                                | exit 1 with the four named refusal reasons                                                       |
 | `npx tsx scripts/eval-e2e.ts --opt-in --owner-approval …` (no endpoint) | exit 1: refuses to fall back to the fixture model                                                |
