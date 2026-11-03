@@ -18,6 +18,7 @@ This folder is the project's memory. Agents and humans update it together.
 
 ## Current queue
 
+- `033-pr-issue-link.md` — done (2026-11-03); the branch now carries a `Closes #127` commit and a changelog entry for the degradation-honesty contract, so merging the PR links the work to its issue without editing GitHub metadata.
 - `032-merge-main-guardrails.md` — done (2026-11-03); merged `main` (#130 guardrails, #131 suite) into the #127 branch keeping both sides, dropped four duplicate degradation plans in favour of main's 019–023 numbering, and renumbered the reason-coverage plan to 031.
 - `031-degradation-reason-coverage.md` — done (2026-11-02); failing suite runs name the reason bucket that went missing, and the trend counts emitted receipts. Renumbered from 023 when main's canonical 019–023 numbering was kept in the #130/#131 merge.
 - `030-evidence-storage-failure.md` — done (2026-11-02); the degradation suite covers a rejected evidence write (research stores nothing, answer says it has no evidence) beside the answer-write failure, so both issue #127 storage modes are exercised.
