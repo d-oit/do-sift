@@ -220,10 +220,14 @@ export interface BucketCoverageShift {
   earlierRuns: number;
   /** Earlier runs that emitted the bucket at least once. */
   earlierWithBucket: number;
+  /** Receipts the earlier runs emitted for the bucket. */
+  earlierReceipts: number;
   /** Runs at and after the recency-weighted split. */
   recentRuns: number;
   /** Newer runs that emitted the bucket at least once. */
   recentWithBucket: number;
+  /** Receipts the newer runs emitted for the bucket. */
+  recentReceipts: number;
 }
 
 /** Share of the run after it that each older run keeps when weighting recency. */
@@ -263,6 +267,11 @@ export function recentCoverageSplit(runCount: number): number {
  * fraction rather than a raw count because the two windows differ in size;
  * both directions are reported so a recovery is as visible as a regression,
  * and equal coverage yields no entry.
+ *
+ * Growth must also raise the bucket's receipt total. A bucket can cover a
+ * larger share of a smaller recent window while the suite emits fewer of its
+ * receipts overall — a scenario added late widens coverage without a failure
+ * recovering — so a wider share alone is not treated as a recovery.
  */
 export function describeCoverageShifts(
   history: readonly DegradationHistoryEntry[],
@@ -271,6 +280,10 @@ export function describeCoverageShifts(
   const split = recentCoverageSplit(history.length);
   const earlier = history.slice(0, split);
   const recent = history.slice(split);
+  const receiptsFor = (
+    runs: readonly DegradationHistoryEntry[],
+    bucket: DegradationReasonBucket,
+  ): number => runs.reduce((sum, run) => sum + (run.reasons[bucket] ?? 0), 0);
   const shifts: BucketCoverageShift[] = [];
   for (const bucket of DEGRADATION_REASON_BUCKETS) {
     const earlierWithBucket = earlier.filter((entry) => (entry.reasons[bucket] ?? 0) > 0).length;
@@ -279,13 +292,19 @@ export function describeCoverageShifts(
     const recentShare = recentWithBucket * earlier.length;
     const earlierShare = earlierWithBucket * recent.length;
     if (recentShare === earlierShare) continue;
+    const growing = recentShare > earlierShare;
+    const earlierReceipts = receiptsFor(earlier, bucket);
+    const recentReceipts = receiptsFor(recent, bucket);
+    if (growing && recentReceipts <= earlierReceipts) continue;
     shifts.push({
       bucket,
-      direction: recentShare > earlierShare ? "growing" : "shrinking",
+      direction: growing ? "growing" : "shrinking",
       earlierRuns: earlier.length,
       earlierWithBucket,
+      earlierReceipts,
       recentRuns: recent.length,
       recentWithBucket,
+      recentReceipts,
     });
   }
   return shifts;

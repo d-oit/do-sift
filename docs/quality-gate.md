@@ -142,7 +142,10 @@ human re-score:
   newest seven runs against the twenty-three before them instead of comparing
   two fixed halves. A bucket whose share fell is called out as "Coverage
   shrinking" and one whose share rose as "Coverage growing", so a recovered
-  receipt is as visible as a lost one; flat coverage is not noted. History is evidence only: `scripts/eval.ts` still scores
+  receipt is as visible as a lost one; flat coverage is not noted, and a
+  bucket only counts as growing when its receipt total also rose, so a
+  scenario added to the suite widens coverage without reading as a recovery.
+  History is evidence only: `scripts/eval.ts` still scores
   the current in-memory run and enforces 1.0, so a missing or stale history
   file cannot change the gate.
 

@@ -342,8 +342,10 @@ describe("Evals Dashboard Generator", () => {
         direction: "shrinking",
         earlierRuns: 2,
         earlierWithBucket: 2,
+        earlierReceipts: 2,
         recentRuns: 2,
         recentWithBucket: 0,
+        recentReceipts: 0,
       },
     ]);
     // A single run has no windows to compare, and flat coverage is not a note.
@@ -393,8 +395,10 @@ describe("Evals Dashboard Generator", () => {
         direction: "growing",
         earlierRuns: 2,
         earlierWithBucket: 0,
+        earlierReceipts: 0,
         recentRuns: 2,
         recentWithBucket: 2,
+        recentReceipts: 2,
       },
     ]);
 
@@ -402,6 +406,73 @@ describe("Evals Dashboard Generator", () => {
     expect(html).toContain('<span class="reason-pill score-pass">Coverage growing</span>');
     expect(html).toContain("0/2 &rarr; 2/2 runs");
     expect(html).not.toContain("Coverage shrinking");
+  });
+
+  it("does not call a bucket recovering when only its share of runs rose", () => {
+    const artifact = {
+      suiteVersion: "deg-1",
+      executedAtUtc: "2026-11-02T10:00:00.000Z",
+      qualityGate: { score: 1, scenariosPassed: 7, scenariosTotal: 7 },
+      scenarios: [],
+    };
+    const entry = (minute: number, modelFailed: number): DegradationHistoryEntry => ({
+      executedAtUtc: new Date(Date.UTC(2026, 9, 1, 0, minute)).toISOString(),
+      suiteVersion: "deg-1",
+      score: 1,
+      scenariosPassed: 7,
+      scenariosTotal: 7,
+      reasons: {
+        "no-evidence": 2,
+        "citation-invalid": 1,
+        "model-failed": modelFailed,
+        none: 3,
+      },
+    });
+
+    // Ten runs split 6/4: the earlier six runs emit the bucket twice (ten
+    // receipts), and a scenario added late makes the four newest runs emit it
+    // once each. Coverage widens from 2/6 to 4/4 runs while the suite emits
+    // fewer receipts (10 → 4), so this is a wider net, not a recovery.
+    const widened = [
+      entry(0, 5),
+      entry(1, 5),
+      entry(2, 0),
+      entry(3, 0),
+      entry(4, 0),
+      entry(5, 0),
+      entry(6, 1),
+      entry(7, 1),
+      entry(8, 1),
+      entry(9, 1),
+    ];
+
+    expect(describeCoverageShifts(widened)).toEqual([]);
+    const html = buildDashboardHtml([], artifact, widened);
+    expect(html).not.toContain("Coverage growing");
+    expect(html).not.toContain("Coverage shrinking");
+
+    // Once the newest runs emit more receipts than the earlier window (12 → 10)
+    // the bucket covers more runs and produces more receipts, so it is reported.
+    const recovered = widened.map((run, index) =>
+      index >= 6
+        ? {
+            ...run,
+            reasons: { ...run.reasons, "model-failed": 3, none: 1 },
+          }
+        : run,
+    );
+    expect(describeCoverageShifts(recovered)).toEqual([
+      {
+        bucket: "model-failed",
+        direction: "growing",
+        earlierRuns: 6,
+        earlierWithBucket: 2,
+        earlierReceipts: 10,
+        recentRuns: 4,
+        recentWithBucket: 4,
+        recentReceipts: 12,
+      },
+    ]);
   });
 
   it("weights the coverage split toward the newest runs", () => {
@@ -428,8 +499,11 @@ describe("Evals Dashboard Generator", () => {
     });
 
     // Ten early runs emitted the bucket, thirteen in the middle did not, and the
-    // seven newest runs emit it again. A fixed midpoint split (10 of 15 against
-    // 7 of 15) would still call this shrinking; recency weighting does not.
+    // seven newest runs emit it again. Recency weighting compares those 10/23
+    // runs against 7/7 instead of two fixed 15-run halves, and each run emits a
+    // single receipt, so the newest window's seven receipts against the earlier
+    // window's ten keep this a coverage trend rather than a recovery (see the
+    // receipt rule in the recovery test below).
     const history = [
       ...Array.from({ length: 10 }, (_, i) => entry(i, 1)),
       ...Array.from({ length: 13 }, (_, i) => entry(10 + i, 0)),
@@ -444,20 +518,11 @@ describe("Evals Dashboard Generator", () => {
       scenarios: [],
     };
 
-    expect(describeCoverageShifts(history)).toEqual([
-      {
-        bucket: "model-failed",
-        direction: "growing",
-        earlierRuns: 23,
-        earlierWithBucket: 10,
-        recentRuns: 7,
-        recentWithBucket: 7,
-      },
-    ]);
+    expect(describeCoverageShifts(history)).toEqual([]);
     expect(describeCoverageShifts(history.slice(0, 10))).toEqual([]);
     const html = buildDashboardHtml([], artifact, history);
     expect(html).not.toContain("Coverage shrinking");
-    expect(html).toContain('<span class="reason-pill score-pass">Coverage growing</span>');
+    expect(html).not.toContain("Coverage growing");
   });
 
   it("highlights trend rows whose reason buckets moved since the previous run", () => {
