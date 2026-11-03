@@ -1,7 +1,7 @@
-# Plan 020 — honest-degradation behavior (issue #127 follow-ups)
+# Plan 021 — honest-degradation behavior (issue #127 follow-ups)
 
 Status: done (2026-11-02). Trigger: issue #127's failure-mode contract, after
-plan 019 shipped the suite and recorded two residual product gaps.
+plan 020 shipped the suite and recorded two residual product gaps.
 
 ## Tasks
 
@@ -61,7 +61,7 @@ Risks / open questions:
 - **Files:** `scripts/degradation/run.ts`, `evals/degradation/scenarios.json`,
   `packages/server/src/{answer,answer-contracts,answer-evidence,server,server-contracts,runtime,metrics,default-page,index}.ts`,
   `packages/contracts/src/evidence.ts`, `packages/storage/src/rows.ts`,
-  `packages/fake-providers/src/fake-providers.ts`, tests, docs, plan 019.
+  `packages/fake-providers/src/fake-providers.ts`, tests, docs, plan 020.
 - **Commands:** recorded in the final handoff message.
 - **Risks:** listed above.
 - **Next suggested task:** expose `degradationReason` breakdown in the evals

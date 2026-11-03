@@ -1,6 +1,8 @@
-# 023 — Degradation reason coverage on failure (DEG-06)
+# 031 — Degradation reason coverage on failure (DEG-06)
 
-Status: done (2026-11-02). Follow-up to plans 019/021/022 (issue #127).
+Status: done (2026-11-02). Follow-up to plans 020/022/023 (issue #127).
+Renumbered from 023 to 031 when the #130/#131 merge kept main's canonical
+019–023 numbering for the guardrails and degradation plans.
 
 ## Goal
 

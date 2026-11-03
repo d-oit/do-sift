@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1",
+  "name": "do-sift ethical guardrails",
+  "authority": {
+    "adr": "0005",
+    "invariants": ["INV-003", "INV-004", "INV-007"],
+    "extend": "docs/guardrails.md"
+  },
+  "defaultDecision": "deny",
+  "prohibited": {
+    "stealth": [
+      "fingerprint-spoofing",
+      "headless-evasion",
+      "webdriver-masking",
+      "proxy-rotation-for-evasion"
+    ],
+    "captcha": ["captcha-solving", "captcha-bypass", "captcha-service"],
+    "credential-entry": ["type-credential"]
+  },
+  "siteAccess": {
+    "defaultDenySites": ["linkedin.com"]
+  },
+  "capabilities": {
+    "browser": {
+      "grantRequired": true,
+      "consentRequired": false,
+      "siteAccessRequired": true,
+      "siteScopedActions": ["navigate"],
+      "allowedActions": ["navigate", "scroll", "type", "click"]
+    },
+    "computer": {
+      "grantRequired": true,
+      "consentRequired": true,
+      "siteAccessRequired": false,
+      "siteScopedActions": [],
+      "allowedActions": ["open", "type", "click", "scroll", "key"]
+    }
+  }
+}

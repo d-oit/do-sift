@@ -8,6 +8,16 @@ with an explicit 0.x compatibility policy (minor = breaking, patch = safe).
 
 ### Added
 
+- Ethical guardrails as code (issue #124, ADR 0005): the browser/computer
+  boundaries are now a standalone declarative policy
+  (`packages/contracts/src/guardrails.json`) evaluated by a typed engine in
+  `@do-sift/contracts`. The kernel validates the policy at construction,
+  refuses one that weakens the shipped guarantees, and injects a
+  capability-scoped `context.guardrails` that both harnesses consult for
+  every action; prohibited stealth/CAPTCHA classes, the LinkedIn
+  default-deny, grants, and computer consent are policy decisions covered by
+  `tests/security/guardrails.test.ts`. Guides for extension live in
+  `docs/guardrails.md`.
 - FND milestone: plugin kernel (`packages/kernel`) with manifest validation,
   capability grants, and lifecycle; shared contracts (`packages/contracts`);
   sample plugin; verification harness (`scripts/`); agent foundation

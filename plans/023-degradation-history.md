@@ -1,6 +1,6 @@
-# 022 — Degradation-suite run history (DEG-05)
+# 023 — Degradation-suite run history (DEG-05)
 
-Status: done (2026-11-02). Follow-up to plans 019/021 (issue #127).
+Status: done (2026-11-02). Follow-up to plans 020/022 (issue #127).
 
 ## Goal
 

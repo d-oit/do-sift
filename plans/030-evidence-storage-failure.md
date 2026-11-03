@@ -1,6 +1,6 @@
 # 030 — Exercise evidence storage failure in the degradation suite (DEG-13)
 
-Status: done (2026-11-02). Follow-up to plan 019/020 and issue #127.
+Status: done (2026-11-02). Follow-up to plans 020/021 and issue #127.
 
 ## Goal
 

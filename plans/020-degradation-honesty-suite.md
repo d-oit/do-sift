@@ -1,4 +1,4 @@
-# Plan 019 — degradation-honesty failure suite (issue #127)
+# Plan 020 — degradation-honesty failure suite (issue #127)
 
 Status: done (2026-11-02). Trigger: GitHub issue #127, "Add a 'Degradation
 Honesty' Test Suite for Failure Scenarios".
@@ -87,7 +87,7 @@ Risks / open questions:
 ## Follow-up (2026-11-02)
 
 The two residuals above were implemented the same day in
-`plans/020-degradation-behavior.md`: model-provider failure now falls back to
+`plans/021-degradation-behavior.md`: model-provider failure now falls back to
 evidence-only output, and citation validation is per claim with an
 `unresolved` flag. This plan's scenario set grew to seven and pins the new
 behavior; the earlier fail-closed expectations are superseded.
