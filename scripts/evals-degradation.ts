@@ -12,6 +12,8 @@ import {
   DEGRADATION_HISTORY_FILE,
   DEGRADATION_HISTORY_LIMIT,
   appendDegradationHistory,
+  computeReasonCoverage,
+  describeReasonCoverage,
   loadDegradationHistory,
   summarizeDegradationRun,
 } from "./degradation/history.js";
@@ -67,6 +69,10 @@ void runDegradationSuite().then((result) => {
           `  FAIL ${scenario.id} / ${check.name}: expected ${check.expected}, got ${check.actual}`,
         );
       }
+    }
+    console.error("  reason coverage (expected vs emitted receipts):");
+    for (const line of describeReasonCoverage(computeReasonCoverage(result.scenarios))) {
+      console.error(`    ${line}`);
     }
     process.exit(1);
   }

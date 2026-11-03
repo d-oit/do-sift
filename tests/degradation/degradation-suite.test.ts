@@ -19,6 +19,7 @@ describe("degradation honesty suite (issue #127)", () => {
       "search-no-results",
       "search-provider-timeout",
       "model-synthesis-failure",
+      "answer-storage-full",
       "evidence-storage-full",
       "citation-resolution-failure",
       "partial-citation-failure",
@@ -32,6 +33,19 @@ describe("degradation honesty suite (issue #127)", () => {
       ).toEqual([]);
     }
     expect(result.passed).toBe(result.total);
+  });
+
+  it("records the receipt each scenario actually emitted", () => {
+    expect(result.scenarios.map((scenario) => scenario.receiptReason)).toEqual([
+      "no-evidence",
+      "no-evidence",
+      "model-failed",
+      null,
+      "no-evidence",
+      "citation-invalid",
+      "citation-invalid",
+      null,
+    ]);
   });
 
   it("computes the quality gate degradation-honesty score from the suite", () => {

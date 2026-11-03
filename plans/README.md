@@ -18,11 +18,21 @@ This folder is the project's memory. Agents and humans update it together.
 
 ## Current queue
 
-- `019-guardrails-policy-as-code.md` — done (2026-11-02, issue #124); the ethical guardrails are now a standalone declarative policy document (`packages/contracts/src/guardrails.json`) evaluated by a typed engine the kernel injects and both harnesses consult per action, with an integrity floor that refuses weakening and tests in `npm run check`. OPA parity is documented, not adopted (Node-only, hermetic pipeline).
+- `033-pr-issue-link.md` — done (2026-11-03); the branch now carries a `Closes #127` commit and a changelog entry for the degradation-honesty contract, so merging the PR links the work to its issue without editing GitHub metadata.
+- `032-merge-main-guardrails.md` — done (2026-11-03); merged `main` (#130 guardrails, #131 suite) into the #127 branch keeping both sides, dropped four duplicate degradation plans in favour of main's 019–023 numbering, and renumbered the reason-coverage plan to 031.
+- `031-degradation-reason-coverage.md` — done (2026-11-02); failing suite runs name the reason bucket that went missing, and the trend counts emitted receipts. Renumbered from 023 when main's canonical 019–023 numbering was kept in the #130/#131 merge.
+- `030-evidence-storage-failure.md` — done (2026-11-02); the degradation suite covers a rejected evidence write (research stores nothing, answer says it has no evidence) beside the answer-write failure, so both issue #127 storage modes are exercised.
+- `029-coverage-recovery-receipts.md` — done (2026-11-02); the growing-coverage note also requires the bucket's receipt total to rise, so a wider share of a smaller recent window with fewer receipts is not read as a recovery.
+- `028-coverage-recovery-note.md` — done (2026-11-02); the coverage note reports buckets whose share of runs grew across the recency-weighted split as well as those that shrank, so a recovered receipt is visible.
+- `027-coverage-recency-weights.md` — done (2026-11-02); the shrinking-coverage warning picks its window from a 0.9-per-run recency decay instead of splitting the history in half, so the newest runs decide.
+- `026-degradation-coverage-shrink.md` — done (2026-11-02); the panel warns when a reason bucket's share of runs falls between the earlier and newer halves of the history.
+- `025-degradation-lifetime-totals.md` — done (2026-11-02); the trend table sums each reason bucket across recorded runs and shows per-bucket run coverage.
+- `024-degradation-trend-deltas.md` — done (2026-11-02); the trend table highlights rows whose reason buckets moved and lists the per-bucket delta.
 - `023-degradation-history.md` — done (2026-11-02); records each degradation-suite run so the dashboard can trend reason counts instead of one snapshot.
 - `022-degradation-dashboard.md` — done (2026-11-02); surfaces the suite's score and expected degradation reasons in the evals dashboard.
 - `021-degradation-behavior.md` — done (2026-11-02); evidence-only model fallback, per-claim unresolved citations, and `degradationReason` receipts (issue #127 follow-ups).
 - `020-degradation-honesty-suite.md` — done (2026-11-02); issue #127 failure-mode suite with a machine-computed degradation-honesty score enforced by `npm run check`.
+- `019-guardrails-policy-as-code.md` — done (2026-11-02, issue #124); the ethical guardrails are now a standalone declarative policy document (`packages/contracts/src/guardrails.json`) evaluated by a typed engine the kernel injects and both harnesses consult per action, with an integrity floor that refuses weakening and tests in `npm run check`. OPA parity is documented, not adopted (Node-only, hermetic pipeline).
 - `013-ans-evidence-hardening.md` — done (2026-10-13, ANS-10 → ANS-13); live-model steering re-measure stays owner-gated.
 - `014-production-usage.md` — done (OPS-07 through OPS-10); public-domain TLS and public-IP 403 smoke remain owner-side evidence.
 - `015-workflow-compaction.md` — done; DHC-06 closed as resolved upstream (v0.2.1, see plan 017 DHC-10).
