@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "suiteVersion": "deg-1",
-  "executedAtUtc": "2026-11-02T12:09:03.045Z",
+  "executedAtUtc": "2026-11-03T06:37:58.660Z",
   "source": "evals/degradation/scenarios.json",
   "qualityGate": {
     "dimension": "degradationHonesty",
     "score": 1,
-    "scenariosPassed": 7,
-    "scenariosTotal": 7
+    "scenariosPassed": 8,
+    "scenariosTotal": 8
   },
   "scenarios": [
     {
@@ -35,12 +35,20 @@
       "checks": "20/20"
     },
     {
-      "id": "evidence-storage-full",
-      "name": "Evidence storage is full — the failure is surfaced, not papered over with uncited text",
+      "id": "answer-storage-full",
+      "name": "Answer storage is full — the failure is surfaced, not papered over with uncited text",
       "passed": true,
       "degraded": null,
       "reason": null,
       "checks": "12/12"
+    },
+    {
+      "id": "evidence-storage-full",
+      "name": "Evidence storage is full — the run stores nothing and the answer says it has no evidence",
+      "passed": true,
+      "degraded": true,
+      "reason": "no-evidence",
+      "checks": "19/19"
     },
     {
       "id": "citation-resolution-failure",

@@ -57,11 +57,12 @@ type Injection =
   | "search-timeout"
   | "model-failure"
   | "storage-full"
+  | "evidence-failure"
   | "citation-invalid"
   | "partial-citation"
   | "cross-question";
 
-type ResearchMode = "none" | "empty" | "seed" | "cross-question" | "fails";
+type ResearchMode = "none" | "empty" | "seed" | "cross-question" | "fails" | "storage-full";
 
 interface ScenarioExpectation {
   research: ResearchMode;
@@ -139,6 +140,7 @@ const INJECTIONS: readonly Injection[] = [
   "search-timeout",
   "model-failure",
   "storage-full",
+  "evidence-failure",
   "citation-invalid",
   "partial-citation",
   "cross-question",
@@ -215,6 +217,19 @@ function failingAnswerStorage(repos: Repositories): Repositories {
   Object.assign(patch, {
     answers: {
       ...repos.answers,
+      insert: async () => {
+        throw new Error("SQLITE_FULL: database or disk is full");
+      },
+    },
+  });
+  return patch;
+}
+
+function failingEvidenceStorage(repos: Repositories): Repositories {
+  const patch = Object.create(repos) as Repositories;
+  Object.assign(patch, {
+    documents: {
+      ...repos.documents,
       insert: async () => {
         throw new Error("SQLITE_FULL: database or disk is full");
       },
@@ -319,10 +334,12 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
       events: { emit: () => {} },
       config: {},
     } as unknown as Parameters<typeof createResearchHarness>[0];
+    const harnessRepos =
+      def.injection === "evidence-failure" ? failingEvidenceStorage(repos) : repos;
     const harness = createResearchHarness(ctx, {
       search: makeSearch(def.injection),
       fetchPage: async () => ({ text: PAGE_TEXT, contentType: "text/html" }),
-      repositories: repos,
+      repositories: harnessRepos,
       budget,
     });
     await harness.activate({
@@ -421,7 +438,7 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
       } else {
         const done = sse.find((event) => event.event === "done");
         addCheck(checks, "research done event", done !== undefined, "done", done?.event ?? "none");
-        if (def.expect.research === "empty") {
+        if (def.expect.research === "empty" || def.expect.research === "storage-full") {
           addCheck(
             checks,
             "research stored no sources",
@@ -436,6 +453,28 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
             0,
             done?.data.passagesStored,
           );
+          if (def.expect.research === "storage-full") {
+            // Evidence storage rejected the write: the run reports the failed
+            // fetch instead of counting a source it never stored.
+            addCheck(
+              checks,
+              "research recorded the storage failure",
+              done?.data.fetchErrors === 1,
+              1,
+              done?.data.fetchErrors,
+            );
+            const storedDocuments = await count(
+              client,
+              "SELECT COUNT(*) AS n FROM documents WHERE owner_id = ?",
+            );
+            addCheck(
+              checks,
+              "no evidence persisted after the storage failure",
+              storedDocuments === 0,
+              0,
+              storedDocuments,
+            );
+          }
         } else {
           const passages = Number(done?.data.passagesStored ?? 0);
           addCheck(checks, "research stored evidence", passages > 0, "> 0", passages);

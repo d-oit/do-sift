@@ -105,10 +105,10 @@ live runs. The gate also carries a deterministic, **machine-computed** score
 over failure modes, so honesty regressions fail CI instead of waiting for a
 human re-score:
 
-- `evals/degradation/scenarios.json` registers seven scenarios: search
+- `evals/degradation/scenarios.json` registers eight scenarios: search
   returns no results, search provider timeout, model synthesis failure,
-  evidence storage full, citation resolution failure, partial citation
-  failure, and cross-question evidence.
+  answer storage full, evidence storage full, citation resolution failure,
+  partial citation failure, and cross-question evidence.
 - `scripts/degradation/run.ts` injects each failure into the real answer path
   (in-memory database, research harness, answer service, HTTP surface) and
   asserts the exact user-facing message, the `answer.degraded` /
