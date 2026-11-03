@@ -105,10 +105,10 @@ live runs. The gate also carries a deterministic, **machine-computed** score
 over failure modes, so honesty regressions fail CI instead of waiting for a
 human re-score:
 
-- `evals/degradation/scenarios.json` registers seven scenarios: search
+- `evals/degradation/scenarios.json` registers eight scenarios: search
   returns no results, search provider timeout, model synthesis failure,
-  evidence storage full, citation resolution failure, partial citation
-  failure, and cross-question evidence.
+  answer storage full, evidence storage full, citation resolution failure,
+  partial citation failure, and cross-question evidence.
 - `scripts/degradation/run.ts` injects each failure into the real answer path
   (in-memory database, research harness, answer service, HTTP surface) and
   asserts the exact user-facing message, the `answer.degraded` /
@@ -126,9 +126,28 @@ human re-score:
   than overwriting one snapshot. `npm run evals:dashboard` renders the
   artifact and that history as a "Degradation Honesty" panel in
   `evals/dashboard/index.html` (score, reason counts, per-scenario rows,
-  and a "Reason Counts Across Suite Runs" table). History is evidence only:
-  `scripts/eval.ts` still scores the current in-memory run and enforces 1.0,
-  so a missing or stale history file cannot change the gate.
+  and a "Reason Counts Across Suite Runs" table). Counts in that table are
+  the `answer.degraded` receipts each run actually emitted, not restatements
+  of the scenario table; a run that loses a receipt shows a shrinking bucket
+  instead of copying its expectation. A failing run also prints a
+  reason-coverage line per mismatched bucket (`missing N` / `unexpected +N`)
+  in both `npm run evals:degradation` and the `evals` step, so the lost
+  receipt is named. Rows whose bucket counts moved since the previous run
+  are highlighted and list their signed deltas (`model-failed -1, none +1`),
+  so a change is visible without subtracting columns, and a lifetime total
+  row sums each bucket across the retained history with the number of runs
+  that emitted it, and a coverage note above the table compares each bucket's
+  share of runs across a recency-weighted split — every older run keeps 90% of
+  the weight of the one recorded after it, so a full 30-run history weighs its
+  newest seven runs against the twenty-three before them instead of comparing
+  two fixed halves. A bucket whose share fell is called out as "Coverage
+  shrinking" and one whose share rose as "Coverage growing", so a recovered
+  receipt is as visible as a lost one; flat coverage is not noted, and a
+  bucket only counts as growing when its receipt total also rose, so a
+  scenario added to the suite widens coverage without reading as a recovery.
+  History is evidence only: `scripts/eval.ts` still scores
+  the current in-memory run and enforces 1.0, so a missing or stale history
+  file cannot change the gate.
 
 Limits and residuals: fake providers and a constructed corpus mean this
 measures the harness's honesty behavior, not a live provider's outage

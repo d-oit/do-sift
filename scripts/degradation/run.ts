@@ -37,6 +37,7 @@ import {
 } from "@do-sift/server";
 import { BudgetService, Repositories, applyMigrations, loadMigrations } from "@do-sift/storage";
 import { createClient, type Client } from "@libsql/client";
+import { DEGRADATION_RECEIPT_REASONS, type DegradationReceiptReason } from "./history.js";
 
 const ROOT = process.cwd();
 const OWNER_ID = "degradation-owner";
@@ -56,11 +57,12 @@ type Injection =
   | "search-timeout"
   | "model-failure"
   | "storage-full"
+  | "evidence-failure"
   | "citation-invalid"
   | "partial-citation"
   | "cross-question";
 
-type ResearchMode = "none" | "empty" | "seed" | "cross-question" | "fails";
+type ResearchMode = "none" | "empty" | "seed" | "cross-question" | "fails" | "storage-full";
 
 interface ScenarioExpectation {
   research: ResearchMode;
@@ -115,6 +117,8 @@ export interface DegradationScenarioResult {
   reason: "no-evidence" | "citation-invalid" | "model-failed" | null;
   /** Expected evidence-only flag; null when the scenario expects a hard failure. */
   degraded: boolean | null;
+  /** Receipt reason the run actually emitted, or null when it emitted none. */
+  receiptReason: DegradationReceiptReason | null;
   checks: DegradationCheck[];
 }
 
@@ -127,11 +131,16 @@ export interface DegradationSuiteResult {
   scenarios: DegradationScenarioResult[];
 }
 
+function isReceiptReason(value: unknown): value is DegradationReceiptReason {
+  return DEGRADATION_RECEIPT_REASONS.includes(value as DegradationReceiptReason);
+}
+
 const INJECTIONS: readonly Injection[] = [
   "search-empty",
   "search-timeout",
   "model-failure",
   "storage-full",
+  "evidence-failure",
   "citation-invalid",
   "partial-citation",
   "cross-question",
@@ -208,6 +217,19 @@ function failingAnswerStorage(repos: Repositories): Repositories {
   Object.assign(patch, {
     answers: {
       ...repos.answers,
+      insert: async () => {
+        throw new Error("SQLITE_FULL: database or disk is full");
+      },
+    },
+  });
+  return patch;
+}
+
+function failingEvidenceStorage(repos: Repositories): Repositories {
+  const patch = Object.create(repos) as Repositories;
+  Object.assign(patch, {
+    documents: {
+      ...repos.documents,
       insert: async () => {
         throw new Error("SQLITE_FULL: database or disk is full");
       },
@@ -301,6 +323,7 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
   const client = createClient({ url: ":memory:" });
   const events: OperationalEvent[] = [];
   let server: Server | undefined;
+  let receiptReason: DegradationReceiptReason | null = null;
   try {
     await applyMigrations(client, loadMigrations(join(ROOT, "migrations")));
     const repos = new Repositories(client);
@@ -311,10 +334,12 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
       events: { emit: () => {} },
       config: {},
     } as unknown as Parameters<typeof createResearchHarness>[0];
+    const harnessRepos =
+      def.injection === "evidence-failure" ? failingEvidenceStorage(repos) : repos;
     const harness = createResearchHarness(ctx, {
       search: makeSearch(def.injection),
       fetchPage: async () => ({ text: PAGE_TEXT, contentType: "text/html" }),
-      repositories: repos,
+      repositories: harnessRepos,
       budget,
     });
     await harness.activate({
@@ -413,7 +438,7 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
       } else {
         const done = sse.find((event) => event.event === "done");
         addCheck(checks, "research done event", done !== undefined, "done", done?.event ?? "none");
-        if (def.expect.research === "empty") {
+        if (def.expect.research === "empty" || def.expect.research === "storage-full") {
           addCheck(
             checks,
             "research stored no sources",
@@ -428,6 +453,28 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
             0,
             done?.data.passagesStored,
           );
+          if (def.expect.research === "storage-full") {
+            // Evidence storage rejected the write: the run reports the failed
+            // fetch instead of counting a source it never stored.
+            addCheck(
+              checks,
+              "research recorded the storage failure",
+              done?.data.fetchErrors === 1,
+              1,
+              done?.data.fetchErrors,
+            );
+            const storedDocuments = await count(
+              client,
+              "SELECT COUNT(*) AS n FROM documents WHERE owner_id = ?",
+            );
+            addCheck(
+              checks,
+              "no evidence persisted after the storage failure",
+              storedDocuments === 0,
+              0,
+              storedDocuments,
+            );
+          }
         } else {
           const passages = Number(done?.data.passagesStored ?? 0);
           addCheck(checks, "research stored evidence", passages > 0, "> 0", passages);
@@ -544,6 +591,9 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
     );
 
     const degradedEvents = events.filter((event) => event.type === "answer.degraded");
+    const receipt = degradedEvents[0];
+    receiptReason =
+      receipt !== undefined && isReceiptReason(receipt.reason) ? receipt.reason : null;
     if (expected.event === null) {
       addCheck(
         checks,
@@ -553,7 +603,6 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
         degradedEvents,
       );
     } else {
-      const receipt = degradedEvents[0];
       addCheck(
         checks,
         "answer.degraded receipt",
@@ -655,6 +704,7 @@ async function runScenario(def: ScenarioDefinition): Promise<DegradationScenario
     passed: checks.every((check) => check.ok),
     reason: def.expect.event?.reason ?? null,
     degraded: def.expect.degraded,
+    receiptReason,
     checks,
   };
 }

@@ -160,6 +160,33 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
+    table.heatmap tr.bucket-changed td:not(.score-cell) {
+      background: rgba(245, 158, 11, 0.1);
+    }
+    .bucket-delta {
+      color: var(--partial);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    table.heatmap tfoot td {
+      border-top: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+      font-weight: 600;
+    }
+    .bucket-total-runs {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: normal;
+      font-variant-numeric: tabular-nums;
+    }
+    .coverage-warning {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
 
     /* Diff View styles */
     .diff-controls {
@@ -424,9 +451,9 @@
     <div class="section-card">
       <div class="section-title">
         <span>Degradation Honesty (failure-mode suite)</span>
-        <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">1.000 across 7/7 scenarios</span>
+        <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">1.000 across 8/8 scenarios</span>
       </div>
-      <div class="diff-summary-banner"><div class="diff-metric-pill score-na">no evidence: 2</div><div class="diff-metric-pill score-fail">model failed: 1</div><div class="diff-metric-pill score-pass">no degradation: 2</div><div class="diff-metric-pill score-partial">citation invalid: 2</div></div>
+      <div class="diff-summary-banner"><div class="diff-metric-pill score-na">no evidence: 3</div><div class="diff-metric-pill score-fail">model failed: 1</div><div class="diff-metric-pill score-pass">no degradation: 2</div><div class="diff-metric-pill score-partial">citation invalid: 2</div></div>
       <div class="table-container">
         <table class="heatmap">
           <thead>
@@ -457,11 +484,17 @@
         <td>20/20</td>
         <td><span class="reason-pill score-fail">model failed</span></td>
       </tr><tr>
-        <td><code>evidence-storage-full</code></td>
-        <td>Evidence storage is full — the failure is surfaced, not papered over with uncited text</td>
+        <td><code>answer-storage-full</code></td>
+        <td>Answer storage is full — the failure is surfaced, not papered over with uncited text</td>
         <td class="score-cell score-pass">PASS</td>
         <td>12/12</td>
         <td><span class="reason-pill score-pass">no degradation</span></td>
+      </tr><tr>
+        <td><code>evidence-storage-full</code></td>
+        <td>Evidence storage is full — the run stores nothing and the answer says it has no evidence</td>
+        <td class="score-cell score-pass">PASS</td>
+        <td>19/19</td>
+        <td><span class="reason-pill score-na">no evidence</span></td>
       </tr><tr>
         <td><code>citation-resolution-failure</code></td>
         <td>No citations resolve — every block degrades to a self-citing stored passage</td>
@@ -486,8 +519,9 @@
       <div class="table-container" style="margin-top: 18px;">
         <div class="section-title" style="margin-bottom: 10px;">
           <span>Reason Counts Across Suite Runs</span>
-          <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">1 recorded run(s), oldest first</span>
+          <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">2 recorded run(s), oldest first; counts are emitted receipts</span>
         </div>
+        
         <table class="heatmap">
           <thead>
             <tr>
@@ -495,21 +529,38 @@
               <th>Score</th>
               <th>Passed</th>
               <th>no evidence</th><th>citation invalid</th><th>model failed</th><th>no degradation</th>
+              <th>Change vs previous</th>
             </tr>
           </thead>
           <tbody><tr>
+        <td>2026-11-02</td>
+        <td class="score-cell score-pass">1.000</td>
+        <td>7/7</td>
+        <td>2</td><td>2</td><td>1</td><td>2</td>
+        <td class="diff-steady" title="first recorded run">&mdash;</td>
+      </tr><tr>
         <td>2026-11-02 <span class="reason-pill score-pass">latest</span></td>
         <td class="score-cell score-pass">1.000</td>
         <td>7/7</td>
         <td>2</td><td>2</td><td>1</td><td>2</td>
+        <td class="diff-steady">unchanged</td>
       </tr></tbody>
+          <tfoot>
+            <tr>
+              <td>Lifetime total &middot; 2 run(s)</td>
+              <td class="diff-steady">&mdash;</td>
+              <td>14/14</td>
+              <td>4<span class="bucket-total-runs"> &middot; 2/2 runs</span></td><td>4<span class="bucket-total-runs"> &middot; 2/2 runs</span></td><td>2<span class="bucket-total-runs"> &middot; 2/2 runs</span></td><td>4<span class="bucket-total-runs"> &middot; 2/2 runs</span></td>
+              <td class="diff-steady">&mdash;</td>
+            </tr>
+          </tfoot>
         </table>
         <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
-          This is the first recorded run; each additional <code>npm run evals:degradation</code> adds a row and turns the counts into a trend.
+          Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket. A bucket whose share of runs fell or rose across the recency-weighted split is called out above the table with its before/after coverage.
         </p>
       </div>
       <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
-        Latest artifact: 2026-11-02. Generated by <code>npm run evals:degradation</code>; the same score is
+        Latest artifact: 2026-11-03. Generated by <code>npm run evals:degradation</code>; the same score is
         enforced at 1.0 by the <code>evals</code> step of <code>npm run check</code>.
       </p>
     </div>

@@ -25,6 +25,7 @@ import {
   Repositories,
   searchPassages,
 } from "@do-sift/storage";
+import { computeReasonCoverage, describeReasonCoverage } from "./degradation/history.js";
 import { runDegradationSuite } from "./degradation/run.js";
 
 const ROOT = process.cwd();
@@ -338,6 +339,13 @@ async function evalDegradation(): Promise<void> {
         .map((check) => `${check.name}: expected ${check.expected}, got ${check.actual}`);
       assert(`degradation: ${scenario.id}`, scenario.passed, failed.join("; "));
     }
+    const coverageLines = describeReasonCoverage(computeReasonCoverage(result.scenarios));
+    const mismatched = coverageLines.filter((line) => !line.startsWith("reason buckets match"));
+    assert(
+      "degradation reason buckets cover registered scenarios",
+      mismatched.length === 0,
+      mismatched.join("; "),
+    );
     assert(
       "degradation honesty score computed from the suite is 1.0",
       result.degradationHonesty === 1,

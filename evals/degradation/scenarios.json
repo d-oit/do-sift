@@ -74,8 +74,8 @@
       }
     },
     {
-      "id": "evidence-storage-full",
-      "name": "Evidence storage is full — the failure is surfaced, not papered over with uncited text",
+      "id": "answer-storage-full",
+      "name": "Answer storage is full — the failure is surfaced, not papered over with uncited text",
       "question": "what did the 2026 orbiter find?",
       "injection": "storage-full",
       "expect": {
@@ -93,6 +93,29 @@
         "openReservations": 0,
         "event": null,
         "http": { "path": "/api/answer", "status": 500, "outcome": "server_error" },
+        "retry": null
+      }
+    },
+    {
+      "id": "evidence-storage-full",
+      "name": "Evidence storage is full — the run stores nothing and the answer says it has no evidence",
+      "question": "what did the 2026 orbiter find?",
+      "injection": "evidence-failure",
+      "expect": {
+        "research": "storage-full",
+        "answerStatus": 200,
+        "userMessage": "Evidence-only output: no model claims (citations failed validation or no evidence).",
+        "degraded": true,
+        "evidenceOnly": true,
+        "blockCount": 0,
+        "evidenceFromRun": null,
+        "modelCalls": 0,
+        "requestStatus": "completed",
+        "answersStored": 1,
+        "cacheKeyStored": true,
+        "openReservations": 0,
+        "event": { "type": "answer.degraded", "reason": "no-evidence" },
+        "http": { "path": "/api/answer", "status": 200, "outcome": "success" },
         "retry": null
       }
     },

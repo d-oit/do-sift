@@ -4,6 +4,7 @@ import {
   DEGRADATION_REASON_BUCKETS,
   loadDegradationHistory,
   type DegradationHistoryEntry,
+  type DegradationReasonBucket,
 } from "./degradation/history.js";
 
 export interface QualityCase {
@@ -157,6 +158,159 @@ export function loadDegradationArtifact(degradationDir: string): DegradationArti
 }
 
 /**
+ * Per-bucket deltas between two recorded runs, or null when no bucket moved.
+ * Compares emitted receipt counts, so a change means the run emitted a
+ * different receipt mix — not that the scenario table was edited.
+ */
+export function describeReasonChanges(
+  current: DegradationHistoryEntry,
+  previous: DegradationHistoryEntry,
+): string | null {
+  const changes = DEGRADATION_REASON_BUCKETS.filter(
+    (bucket) => (current.reasons[bucket] ?? 0) !== (previous.reasons[bucket] ?? 0),
+  ).map((bucket) => {
+    const delta = (current.reasons[bucket] ?? 0) - (previous.reasons[bucket] ?? 0);
+    return `${bucket} ${delta > 0 ? "+" : "-"}${Math.abs(delta)}`;
+  });
+  return changes.length === 0 ? null : changes.join(", ");
+}
+
+export interface DegradationReasonTotals {
+  /** Number of recorded runs the totals cover. */
+  runCount: number;
+  /** Receipt buckets emitted, summed across every recorded run. */
+  totals: Record<DegradationReasonBucket, number>;
+  /** How many runs emitted at least one receipt in the bucket. */
+  runsWithBucket: Record<DegradationReasonBucket, number>;
+}
+
+/**
+ * Sums each reason bucket across every recorded run and counts the runs that
+ * emitted it, so a receipt that only appeared in an earlier (possibly failed)
+ * run stays visible once the table has scrolled past it.
+ */
+export function summarizeReasonTotals(
+  history: readonly DegradationHistoryEntry[],
+): DegradationReasonTotals {
+  const totals: Record<DegradationReasonBucket, number> = {
+    "no-evidence": 0,
+    "citation-invalid": 0,
+    "model-failed": 0,
+    none: 0,
+  };
+  const runsWithBucket: Record<DegradationReasonBucket, number> = { ...totals };
+  for (const entry of history) {
+    for (const bucket of DEGRADATION_REASON_BUCKETS) {
+      const count = entry.reasons[bucket] ?? 0;
+      totals[bucket] += count;
+      if (count > 0) runsWithBucket[bucket] += 1;
+    }
+  }
+  return { runCount: history.length, totals, runsWithBucket };
+}
+
+/** Direction a bucket's run coverage moved across the recency-weighted split. */
+export type CoverageShiftDirection = "growing" | "shrinking";
+
+export interface BucketCoverageShift {
+  bucket: DegradationReasonBucket;
+  /** Whether the bucket now covers a larger or smaller share of runs. */
+  direction: CoverageShiftDirection;
+  /** Runs before the recency-weighted split. */
+  earlierRuns: number;
+  /** Earlier runs that emitted the bucket at least once. */
+  earlierWithBucket: number;
+  /** Receipts the earlier runs emitted for the bucket. */
+  earlierReceipts: number;
+  /** Runs at and after the recency-weighted split. */
+  recentRuns: number;
+  /** Newer runs that emitted the bucket at least once. */
+  recentWithBucket: number;
+  /** Receipts the newer runs emitted for the bucket. */
+  recentReceipts: number;
+}
+
+/** Share of the run after it that each older run keeps when weighting recency. */
+export const COVERAGE_RECENCY_DECAY = 0.9;
+
+/**
+ * Index where the recent window of a coverage comparison starts: the shortest
+ * suffix of newest runs that holds at least half of the history's recency
+ * weight, leaving one run on each side.
+ *
+ * A fixed midpoint split lets the older bulk outvote a recent recovery; here
+ * each older run keeps 90% of the weight of the run recorded after it, so a
+ * short history still splits near its middle (2 runs → 1, 4 → 2) while a full
+ * 30-run history weighs its newest ~7 runs against the ~23 before them.
+ */
+export function recentCoverageSplit(runCount: number): number {
+  if (runCount < 2) return runCount;
+  let total = 0;
+  let weight = 1;
+  for (let k = 0; k < runCount; k += 1) {
+    total += weight;
+    weight *= COVERAGE_RECENCY_DECAY;
+  }
+  let recent = 0;
+  weight = 1;
+  for (let k = 0; k < runCount - 1; k += 1) {
+    recent += weight;
+    if (recent >= total / 2) return runCount - 1 - k;
+    weight *= COVERAGE_RECENCY_DECAY;
+  }
+  return 1;
+}
+
+/**
+ * Buckets whose run coverage moved across the recency-weighted split of the
+ * recorded history (see `recentCoverageSplit`). Coverage is compared as a
+ * fraction rather than a raw count because the two windows differ in size;
+ * both directions are reported so a recovery is as visible as a regression,
+ * and equal coverage yields no entry.
+ *
+ * Growth must also raise the bucket's receipt total. A bucket can cover a
+ * larger share of a smaller recent window while the suite emits fewer of its
+ * receipts overall — a scenario added late widens coverage without a failure
+ * recovering — so a wider share alone is not treated as a recovery.
+ */
+export function describeCoverageShifts(
+  history: readonly DegradationHistoryEntry[],
+): BucketCoverageShift[] {
+  if (history.length < 2) return [];
+  const split = recentCoverageSplit(history.length);
+  const earlier = history.slice(0, split);
+  const recent = history.slice(split);
+  const receiptsFor = (
+    runs: readonly DegradationHistoryEntry[],
+    bucket: DegradationReasonBucket,
+  ): number => runs.reduce((sum, run) => sum + (run.reasons[bucket] ?? 0), 0);
+  const shifts: BucketCoverageShift[] = [];
+  for (const bucket of DEGRADATION_REASON_BUCKETS) {
+    const earlierWithBucket = earlier.filter((entry) => (entry.reasons[bucket] ?? 0) > 0).length;
+    const recentWithBucket = recent.filter((entry) => (entry.reasons[bucket] ?? 0) > 0).length;
+    // Cross-multiplied fractions: no float compare decides the direction.
+    const recentShare = recentWithBucket * earlier.length;
+    const earlierShare = earlierWithBucket * recent.length;
+    if (recentShare === earlierShare) continue;
+    const growing = recentShare > earlierShare;
+    const earlierReceipts = receiptsFor(earlier, bucket);
+    const recentReceipts = receiptsFor(recent, bucket);
+    if (growing && recentReceipts <= earlierReceipts) continue;
+    shifts.push({
+      bucket,
+      direction: growing ? "growing" : "shrinking",
+      earlierRuns: earlier.length,
+      earlierWithBucket,
+      earlierReceipts,
+      recentRuns: recent.length,
+      recentWithBucket,
+      recentReceipts,
+    });
+  }
+  return shifts;
+}
+
+/**
  * Renders the degradation-honesty panel: score, reason counts, and per-scenario
  * outcomes from the failure-mode suite.
  */
@@ -217,16 +371,68 @@ export function buildDegradationPanel(
   const historyRows = history
     .map((entry, index) => {
       const isLatest = index === history.length - 1;
-      return `<tr>
+      const previous: DegradationHistoryEntry | undefined =
+        index > 0 ? history[index - 1] : undefined;
+      const change = previous === undefined ? null : describeReasonChanges(entry, previous);
+      const rowClass = change === null ? "" : ' class="bucket-changed"';
+      const changeCell =
+        previous === undefined
+          ? '<td class="diff-steady" title="first recorded run">&mdash;</td>'
+          : change === null
+            ? '<td class="diff-steady">unchanged</td>'
+            : `<td class="bucket-delta" title="changed since ${escapeHtml(
+                previous.executedAtUtc.slice(0, 10),
+              )}">${escapeHtml(change)}</td>`;
+      return `<tr${rowClass}>
         <td>${escapeHtml(entry.executedAtUtc.slice(0, 10))}${
           isLatest ? ' <span class="reason-pill score-pass">latest</span>' : ""
         }</td>
         <td class="score-cell ${entry.score === 1 ? "score-pass" : "score-fail"}">${entry.score.toFixed(3)}</td>
         <td>${entry.scenariosPassed}/${entry.scenariosTotal}</td>
         ${DEGRADATION_REASON_BUCKETS.map((bucket) => `<td>${entry.reasons[bucket] ?? 0}</td>`).join("")}
+        ${changeCell}
       </tr>`;
     })
     .join("");
+
+  const lifetime = summarizeReasonTotals(history);
+  const lifetimePassed = history.reduce((sum, entry) => sum + entry.scenariosPassed, 0);
+  const lifetimeTotal = history.reduce((sum, entry) => sum + entry.scenariosTotal, 0);
+  const lifetimeRow = `<tfoot>
+            <tr>
+              <td>Lifetime total &middot; ${lifetime.runCount} run(s)</td>
+              <td class="diff-steady">&mdash;</td>
+              <td>${lifetimePassed}/${lifetimeTotal}</td>
+              ${DEGRADATION_REASON_BUCKETS.map(
+                (bucket) =>
+                  `<td>${lifetime.totals[bucket]}<span class="bucket-total-runs"> &middot; ${lifetime.runsWithBucket[bucket]}/${lifetime.runCount} runs</span></td>`,
+              ).join("")}
+              <td class="diff-steady">&mdash;</td>
+            </tr>
+          </tfoot>`;
+
+  const coverageShifts = describeCoverageShifts(history);
+  const coverageGroups = (
+    [
+      { direction: "shrinking", label: "Coverage shrinking", badge: "score-partial" },
+      { direction: "growing", label: "Coverage growing", badge: "score-pass" },
+    ] as const
+  )
+    .map((group) => {
+      const shifts = coverageShifts.filter((shift) => shift.direction === group.direction);
+      if (shifts.length === 0) return "";
+      return `<span class="reason-pill ${group.badge}">${group.label}</span>${shifts
+        .map(
+          (shift) =>
+            `<span>${escapeHtml(
+              DEGRADATION_REASON_LABELS[shift.bucket] ?? shift.bucket,
+            )} ${shift.earlierWithBucket}/${shift.earlierRuns} &rarr; ${shift.recentWithBucket}/${shift.recentRuns} runs</span>`,
+        )
+        .join("")}`;
+    })
+    .join("");
+  const coverageNote =
+    coverageGroups === "" ? "" : `<div class="coverage-warning">${coverageGroups}</div>`;
 
   const historyHtml =
     history.length === 0
@@ -237,8 +443,9 @@ export function buildDegradationPanel(
       : `<div class="table-container" style="margin-top: 18px;">
         <div class="section-title" style="margin-bottom: 10px;">
           <span>Reason Counts Across Suite Runs</span>
-          <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">${history.length} recorded run(s), oldest first</span>
+          <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">${history.length} recorded run(s), oldest first; counts are emitted receipts</span>
         </div>
+        ${coverageNote}
         <table class="heatmap">
           <thead>
             <tr>
@@ -246,15 +453,17 @@ export function buildDegradationPanel(
               <th>Score</th>
               <th>Passed</th>
               ${DEGRADATION_REASON_BUCKETS.map((bucket) => `<th>${escapeHtml(DEGRADATION_REASON_LABELS[bucket] ?? bucket)}</th>`).join("")}
+              <th>Change vs previous</th>
             </tr>
           </thead>
           <tbody>${historyRows}</tbody>
+          ${lifetimeRow}
         </table>
         <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
           ${
             history.length === 1
               ? "This is the first recorded run; each additional <code>npm run evals:degradation</code> adds a row and turns the counts into a trend."
-              : "Each row is one committed suite run; a reason count that grows without a scenario change means the fixture scenarios drifted."
+              : "Each row is one committed suite run. Counts are the receipts the run emitted, so a failed scenario shows up as a missing bucket instead of copying its expectation. Rows whose reason counts moved since the previous run are highlighted and list their deltas. The lifetime total row sums every recorded run and shows how many runs emitted each bucket. A bucket whose share of runs fell or rose across the recency-weighted split is called out above the table with its before/after coverage."
           }
         </p>
       </div>`;
@@ -598,6 +807,33 @@ export function buildDashboardHtml(
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+    }
+    table.heatmap tr.bucket-changed td:not(.score-cell) {
+      background: rgba(245, 158, 11, 0.1);
+    }
+    .bucket-delta {
+      color: var(--partial);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    table.heatmap tfoot td {
+      border-top: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+      font-weight: 600;
+    }
+    .bucket-total-runs {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: normal;
+      font-variant-numeric: tabular-nums;
+    }
+    .coverage-warning {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
     }
 
     /* Diff View styles */
