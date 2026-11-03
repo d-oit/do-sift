@@ -16,6 +16,7 @@
 import { randomUUID } from "node:crypto";
 import type { Client, Row, Transaction } from "@libsql/client";
 import {
+  DEFAULT_TENANT_ID,
   planReservation,
   reconcile,
   type BudgetRequest,
@@ -75,12 +76,17 @@ function utcDay(nowMs: number): string {
 }
 
 /** Mark this owner's overdue open reservations 'expired' inside a transaction. */
-async function expireDueTx(tx: Transaction, ownerId: string, nowMs: number): Promise<number> {
+async function expireDueTx(
+  tx: Transaction,
+  ownerId: string,
+  tenantId: string,
+  nowMs: number,
+): Promise<number> {
   const res = await tx.execute({
     sql: `UPDATE usage_ledger SET state = 'expired'
-          WHERE owner_id = ? AND kind = 'reservation' AND state = 'open'
+          WHERE tenant_id = ? AND owner_id = ? AND kind = 'reservation' AND state = 'open'
             AND expires_at IS NOT NULL AND expires_at < ?`,
-    args: [ownerId, new Date(nowMs).toISOString()],
+    args: [tenantId, ownerId, new Date(nowMs).toISOString()],
   });
   return res.rowsAffected;
 }
@@ -89,6 +95,7 @@ async function expireDueTx(tx: Transaction, ownerId: string, nowMs: number): Pro
 async function heldUsage(
   tx: Transaction,
   ownerId: string,
+  tenantId: string,
   day: string,
   nowMs?: number,
 ): Promise<HeldUsage> {
@@ -99,10 +106,10 @@ async function heldUsage(
                  COALESCE(SUM(search_calls), 0) AS s,
                  COALESCE(SUM(fetches), 0) AS f
           FROM usage_ledger
-          WHERE owner_id = ? AND day = ?
+          WHERE tenant_id = ? AND owner_id = ? AND day = ?
             AND ((kind = 'reservation' AND state = 'open' AND (? IS NULL OR expires_at IS NULL OR expires_at >= ?))
               OR (kind = 'settlement' AND state = 'settled'))`,
-    args: [ownerId, day, nowIso, nowIso],
+    args: [tenantId, ownerId, day, nowIso, nowIso],
   });
   const row = res.rows[0];
   return {
@@ -140,10 +147,21 @@ function reservationRow(row: Row): {
 }
 
 export class BudgetService {
+  /**
+   * Tenant this ledger instance is bound to (plan 024). Caps, reservations,
+   * and settlements never cross tenants, so one tenant can neither consume
+   * nor observe another tenant's daily budget.
+   */
+  readonly tenantId: string;
+
   constructor(
     private readonly client: Client,
     private readonly caps: DailyCaps,
-  ) {}
+    tenantId: string = DEFAULT_TENANT_ID,
+  ) {
+    if (tenantId.trim() === "") throw new Error("BudgetService needs a non-empty tenant id");
+    this.tenantId = tenantId;
+  }
 
   /**
    * Atomically reserve budget. Throws the contracts' estimate-exceeds-budget
@@ -160,7 +178,7 @@ export class BudgetService {
 
     const tx = await this.client.transaction("write");
     try {
-      const held = await heldUsage(tx, input.ownerId, day, input.nowMs);
+      const held = await heldUsage(tx, input.ownerId, this.tenantId, day, input.nowMs);
       if (held.inputTokens + reservation.inputTokens > this.caps.maxInputTokens) {
         throw new BudgetServiceError(
           "cap-exceeded",
@@ -188,11 +206,12 @@ export class BudgetService {
 
       const id = randomUUID();
       await tx.execute({
-        sql: `INSERT INTO usage_ledger (id, owner_id, request_id, kind, input_tokens, output_tokens,
+        sql: `INSERT INTO usage_ledger (id, tenant_id, owner_id, request_id, kind, input_tokens, output_tokens,
                search_calls, fetches, day, state, expires_at, created_at)
-              VALUES (?, ?, ?, 'reservation', ?, ?, ?, ?, ?, 'open', ?, ?)`,
+              VALUES (?, ?, ?, ?, 'reservation', ?, ?, ?, ?, ?, 'open', ?, ?)`,
         args: [
           id,
+          this.tenantId,
           input.ownerId,
           input.requestId ?? null,
           reservation.inputTokens,
@@ -224,8 +243,8 @@ export class BudgetService {
     const tx = await this.client.transaction("write");
     try {
       const res = await tx.execute({
-        sql: "SELECT id, day, state, input_tokens, output_tokens, search_calls, fetches, expires_at FROM usage_ledger WHERE id = ? AND owner_id = ? AND kind = 'reservation'",
-        args: [input.reservationId, input.ownerId],
+        sql: "SELECT id, day, state, input_tokens, output_tokens, search_calls, fetches, expires_at FROM usage_ledger WHERE id = ? AND owner_id = ? AND tenant_id = ? AND kind = 'reservation'",
+        args: [input.reservationId, input.ownerId, this.tenantId],
       });
       const row = res.rows[0];
       if (!row) {
@@ -244,14 +263,16 @@ export class BudgetService {
 
       const settlementId = randomUUID();
       await tx.execute({
-        sql: `INSERT INTO usage_ledger (id, owner_id, request_id, kind, input_tokens, output_tokens,
+        sql: `INSERT INTO usage_ledger (id, tenant_id, owner_id, request_id, kind, input_tokens, output_tokens,
                search_calls, fetches, day, state, expires_at, created_at)
-              VALUES (?, ?, (SELECT request_id FROM usage_ledger WHERE id = ?), 'settlement',
+              VALUES (?, ?, ?, (SELECT request_id FROM usage_ledger WHERE id = ? AND tenant_id = ?), 'settlement',
                       ?, ?, ?, ?, ?, 'settled', NULL, ?)`,
         args: [
           settlementId,
+          this.tenantId,
           input.ownerId,
           input.reservationId,
+          this.tenantId,
           input.actual.inputTokens,
           input.actual.outputTokens,
           input.actual.searchCalls ?? 0,
@@ -261,8 +282,8 @@ export class BudgetService {
         ],
       });
       await tx.execute({
-        sql: "UPDATE usage_ledger SET state = 'settled' WHERE id = ? AND owner_id = ?",
-        args: [input.reservationId, input.ownerId],
+        sql: "UPDATE usage_ledger SET state = 'settled' WHERE id = ? AND owner_id = ? AND tenant_id = ?",
+        args: [input.reservationId, input.ownerId, this.tenantId],
       });
       await tx.commit();
 
@@ -289,7 +310,7 @@ export class BudgetService {
   async expireDue(ownerId: string, nowMs: number): Promise<number> {
     const tx = await this.client.transaction("write");
     try {
-      const count = await expireDueTx(tx, ownerId, nowMs);
+      const count = await expireDueTx(tx, ownerId, this.tenantId, nowMs);
       await tx.commit();
       return count;
     } catch (e) {
@@ -302,7 +323,7 @@ export class BudgetService {
   async heldForDay(ownerId: string, nowMs: number): Promise<HeldUsage> {
     const tx = await this.client.transaction("read");
     try {
-      const held = await heldUsage(tx, ownerId, utcDay(nowMs), nowMs);
+      const held = await heldUsage(tx, ownerId, this.tenantId, utcDay(nowMs), nowMs);
       await tx.commit();
       return held;
     } catch (e) {

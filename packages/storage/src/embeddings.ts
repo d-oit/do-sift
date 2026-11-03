@@ -194,9 +194,12 @@ export async function storePassageEmbeddings(
   try {
     for (const row of rows) {
       await tx.execute({
-        sql: `INSERT OR REPLACE INTO passage_embeddings (passage_id, owner_id, model_id, vector, created_at)
-              VALUES (?, ?, ?, ?, ?)`,
-        args: [row.passageId, row.ownerId, modelId, vectorToBlob(row.vector), now],
+        // Plan 024: the tenant is copied from the authoritative owner row, so
+        // an embedding can never be filed under a tenant its passage's owner
+        // does not belong to.
+        sql: `INSERT OR REPLACE INTO passage_embeddings (passage_id, tenant_id, owner_id, model_id, vector, created_at)
+              VALUES (?, (SELECT tenant_id FROM owners WHERE id = ?), ?, ?, ?, ?)`,
+        args: [row.passageId, row.ownerId, row.ownerId, modelId, vectorToBlob(row.vector), now],
       });
     }
     await tx.commit();
@@ -243,10 +246,12 @@ export async function backfillPassageEmbeddings(
     const pending = await client.execute({
       sql: `SELECT p.id, p.excerpt FROM passages p
             LEFT JOIN passage_embeddings pe ON pe.passage_id = p.id AND pe.model_id = ?
-            WHERE p.owner_id = ? AND pe.passage_id IS NULL AND p.id > ?
+            WHERE p.owner_id = ?
+              AND p.tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
+              AND pe.passage_id IS NULL AND p.id > ?
             ORDER BY p.id ASC
             LIMIT ?`,
-      args: [embedder.modelId, ownerId, lastPassageId, batchSize],
+      args: [embedder.modelId, ownerId, ownerId, lastPassageId, batchSize],
     });
 
     if (pending.rows.length === 0) {
@@ -384,14 +389,18 @@ export async function searchByEmbedding(
     sql: `SELECT pe.passage_id, p.document_id, d.content_hash, p.excerpt, pe.vector
           FROM passage_embeddings pe
           JOIN passages p ON p.id = pe.passage_id AND p.owner_id = ?
-          JOIN documents d ON d.id = p.document_id
-          WHERE pe.owner_id = ? AND pe.model_id = ?${docFilter}${floorFilter}${noiseClause}
+          JOIN documents d ON d.id = p.document_id AND d.owner_id = p.owner_id
+          WHERE pe.owner_id = ? AND pe.model_id = ?
+            AND pe.tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
+            AND p.tenant_id = pe.tenant_id AND d.tenant_id = p.tenant_id${docFilter}${floorFilter}${noiseClause}
           ORDER BY pe.created_at DESC
           LIMIT ?`,
     args: [
       ownerId,
       ownerId,
       modelId,
+      // Plan 024: tenant derived from the authoritative owner row.
+      ownerId,
       ...(documentIds && documentIds.length > 0 ? documentIds : []),
       ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
       MAX_EMBEDDING_CANDIDATES,

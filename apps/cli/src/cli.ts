@@ -6,7 +6,11 @@
  */
 import type { Client } from "@libsql/client";
 import { writeFile } from "node:fs/promises";
-import { executeOwnerRetention } from "@do-sift/storage";
+import {
+  MIN_MEMBER_CHANGE_RETENTION_DAYS,
+  executeOwnerRetention,
+  pruneMemberChangeLog,
+} from "@do-sift/storage";
 
 export interface CliDeps {
   client: Client;
@@ -27,6 +31,7 @@ const USAGE = `usage: do-sift-cli <command> [options]
   research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
+  retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
 `;
 
 const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm"]);
@@ -475,6 +480,77 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       deps.out(`candidate_closed_usage\t${receipt.candidates.closedUsage}`);
       deps.out(`deleted_terminal_jobs\t${receipt.deleted.terminalJobs}`);
       deps.out(`deleted_closed_usage\t${receipt.deleted.closedUsage}`);
+      deps.out(`duration_ms\t${receipt.durationMs}`);
+      deps.out(`status\tsuccess`);
+
+      if (receipt.dryRun && !confirmed) {
+        deps.out("notice: dry-run mode completed. To execute deletion, pass --confirm");
+      }
+
+      return 0;
+    }
+    if (group === "retention" && action === "prune-changes") {
+      const tenant = flags.get("tenant");
+      if (tenant === undefined || tenant === "") throw new CliUsageError("--tenant is required");
+      const rawRetentionDays = flags.get("retention-days");
+      const rawCutoff = flags.get("cutoff");
+
+      if (rawRetentionDays === undefined && rawCutoff === undefined) {
+        throw new CliUsageError("either --retention-days or --cutoff is required");
+      }
+      if (rawRetentionDays !== undefined && rawCutoff !== undefined) {
+        throw new CliUsageError("cannot specify both --retention-days and --cutoff");
+      }
+
+      let retentionDays: number | undefined;
+      let beforeIso: string | undefined;
+
+      if (rawRetentionDays !== undefined) {
+        retentionDays = Number(rawRetentionDays);
+        if (!Number.isInteger(retentionDays) || retentionDays < 1) {
+          throw new CliUsageError("--retention-days must be a positive integer");
+        }
+        if (retentionDays < MIN_MEMBER_CHANGE_RETENTION_DAYS) {
+          throw new CliUsageError(
+            `--retention-days must be at least ${MIN_MEMBER_CHANGE_RETENTION_DAYS} to keep a reviewable membership history`,
+          );
+        }
+      }
+
+      if (rawCutoff !== undefined) {
+        beforeIso = parseTimestamp("cutoff", rawCutoff);
+      }
+
+      const explicitDryRun = flags.get("dry-run") === "true";
+      const confirmed = flags.get("confirm") === "true";
+      const dryRun = explicitDryRun || !confirmed;
+
+      const receipt = await pruneMemberChangeLog(deps.client, {
+        tenantId: tenant,
+        retentionDays,
+        beforeIso,
+        dryRun,
+        now: deps.now,
+      });
+
+      if (!receipt.success) {
+        deps.err(`error: retention failed: ${receipt.error}`);
+        return 1;
+      }
+
+      const out = flags.get("out");
+      if (out !== undefined && out !== "") {
+        const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
+        await write(out, `${JSON.stringify(receipt, null, 2)}\n`);
+        deps.out(`exported retention receipt to ${out}`);
+        return 0;
+      }
+
+      deps.out(`tenant_id\t${receipt.tenantId}`);
+      deps.out(`cutoff\t${receipt.cutoff}`);
+      deps.out(`mode\t${receipt.dryRun ? "dry-run" : "prune"}`);
+      deps.out(`candidate_changes\t${receipt.candidates}`);
+      deps.out(`deleted_changes\t${receipt.deleted}`);
       deps.out(`duration_ms\t${receipt.durationMs}`);
       deps.out(`status\tsuccess`);
 

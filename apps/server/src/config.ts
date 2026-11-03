@@ -51,6 +51,10 @@ export interface AppConfig {
   host: string;
   port: number;
   owners: string[];
+  /** Multi-tenant mode (issue #120): tenants this process serves. Empty =
+   * the single-tenant owner-allowlist deployment. Non-empty requires the
+   * OIDC trio and forbids the dev bypass (there is no tenant claim to use). */
+  tenants: string[];
   devBypass: boolean;
   devOwner?: string | undefined;
   /** SRC-16: one or more live/fixture search providers, in priority order
@@ -96,10 +100,21 @@ function isRemoteUrl(url: string): boolean {
 
 export function parseEnvConfig(env: Record<string, string | undefined>): AppConfig {
   const owners = splitList(env.DO_SIFT_OWNERS);
-  if (owners.length === 0) {
+  const tenants = splitList(env.DO_SIFT_TENANTS);
+  if (owners.length === 0 && tenants.length === 0) {
     throw new Error(
-      "DO_SIFT_OWNERS must list at least one owner id (comma-separated): an empty allowlist could never authenticate anyone",
+      "DO_SIFT_OWNERS must list at least one owner id (comma-separated) unless DO_SIFT_TENANTS configures multi-tenant mode: an empty allowlist could never authenticate anyone",
     );
+  }
+  if (new Set(tenants).size !== tenants.length) {
+    throw new Error(`DO_SIFT_TENANTS lists duplicate tenants (got "${env.DO_SIFT_TENANTS ?? ""}")`);
+  }
+  for (const tenant of tenants) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(tenant) || tenant.length > 64) {
+      throw new Error(
+        `DO_SIFT_TENANTS entries must be 1-64 characters of [A-Za-z0-9._-], starting alphanumeric (got "${tenant}")`,
+      );
+    }
   }
 
   const searchRaw = env.DO_SIFT_SEARCH_PROVIDER;
@@ -291,6 +306,16 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
   if (oidcSet.length === 3 && !oidcRaw.jwksUrl.startsWith("https://")) {
     throw new Error("DO_SIFT_OIDC_JWKS_URL must be an https URL");
   }
+  if (tenants.length > 0 && oidcSet.length !== 3) {
+    throw new Error(
+      "DO_SIFT_TENANTS requires the DO_SIFT_OIDC_ISSUER/AUDIENCE/JWKS_URL trio: a shared instance must authenticate per-tenant principals, not the single-owner allowlist",
+    );
+  }
+  if (tenants.length > 0 && devBypass) {
+    throw new Error(
+      "DO_SIFT_DEV_BYPASS cannot be combined with DO_SIFT_TENANTS: the dev bypass has no tenant claim to route on",
+    );
+  }
 
   const portRaw = env.DO_SIFT_PORT;
   let port = 8080;
@@ -307,6 +332,7 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
     host,
     port,
     owners,
+    tenants,
     devBypass,
     ...(devBypass && devOwner !== undefined && devOwner !== "" ? { devOwner } : {}),
     searchProviders: searchProviders as SearchProviderChoice[],

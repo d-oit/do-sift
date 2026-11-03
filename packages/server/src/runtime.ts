@@ -47,6 +47,13 @@ export interface RuntimeOptions {
    * bm25 on both sides, byte-identical to the pre-RET behavior.
    */
   embedder?: TextEmbedder | undefined;
+  /**
+   * Tenant this runtime is scoped to (issue #120, plan 024). Repositories and
+   * the usage ledger are bound to it, so one runtime can only ever read and
+   * write one tenant's data. Defaults to the migration-0011 backfill tenant,
+   * which keeps the single-owner allowlist deployment unchanged.
+   */
+  tenantId?: string | undefined;
   /** Harness limits (defaults: 6 hits, 3 fetches). */
   maxHits?: number;
   maxFetches?: number;
@@ -100,11 +107,11 @@ const NO_MODEL_MESSAGE =
   "no model configured: the answer surface needs a configured model (search mode runs with zero LLM calls)";
 
 export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
-  const repositories = new Repositories(options.client);
+  const repositories = new Repositories(options.client, options.tenantId);
   const budgets =
     options.budgetCaps === undefined
       ? undefined
-      : new BudgetService(options.client, options.budgetCaps);
+      : new BudgetService(options.client, options.budgetCaps, options.tenantId);
 
   // SRC-14: the runtime owns the floor for card prominence — the same
   // option (or the exported designed default) the answer service applies.

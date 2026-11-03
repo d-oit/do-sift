@@ -45,6 +45,15 @@ export class OwnerLimiter {
     };
   }
 }
+/**
+ * Admission-limit key (issue #120): `<tenant>/<owner>` once a provider
+ * resolves a tenant, the bare owner id otherwise. The same user id in two
+ * tenants is two callers, so one tenant's traffic cannot consume another's
+ * quota — and membership administration shares the caller's budget.
+ */
+export function admissionKey(owner: { ownerId: string; tenantId?: string | undefined }): string {
+  return owner.tenantId === undefined ? owner.ownerId : `${owner.tenantId}/${owner.ownerId}`;
+}
 export const limiters = new WeakMap<object, OwnerLimiter>();
 export function admitOwner(
   options: ResearchServerOptions,

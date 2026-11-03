@@ -80,7 +80,7 @@ describe("POST /api/research (SSE)", () => {
           if (signal?.aborted === true) onAbort();
           else signal?.addEventListener("abort", onAbort, { once: true });
         });
-      }) as ResearchServerOptions["runResearch"],
+      }) as NonNullable<ResearchServerOptions["runResearch"]>,
     });
     const lifecyclePort = await listen(lifecycleServer);
     const requestController = new AbortController();

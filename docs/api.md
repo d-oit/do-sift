@@ -33,8 +33,43 @@ Failed authentication returns `401` with a JSON error. Owners outside
 | GET    | `/readyz`       | Readiness: `{"ok":true}` or `503 {"ok":false}`     |
 | POST   | `/api/research` | Research run, streamed as SSE                      |
 | POST   | `/api/answer`   | Grounded answer, JSON                              |
+| GET    | `/api/evidence` | Newest stored sources of the caller's own corpus   |
+| GET    | `/api/answers`  | Newest stored answers of the caller's own corpus   |
 
 Other paths return `404`. Wrong methods on the POST routes return `405`.
+
+## GET /api/evidence and GET /api/answers
+
+Read-only views of what the caller has already stored (`viewer`, `member`, and
+`owner` all have them; a caller with no recorded membership is refused). Both
+are scoped by the authenticated principal — the owner is the token's user and
+the tenant is the token's tenant, never a query parameter — and neither
+reserves budget nor writes a row.
+
+| Route                             | Payload                                                                                 |
+| --------------------------------- | --------------------------------------------------------------------------------------- |
+| `GET /api/evidence?limit=<1..50>` | `{"evidence":[{"id","url","title"?,"fetchedAt"}]}` — newest first, default 20           |
+| `GET /api/answers?limit=<1..50>`  | `{"answers":[{"id","question","evidenceOnly","createdAt"}]}` — newest first, default 20 |
+
+Provenance only: the evidence list carries no page text, and the answer list
+carries no blocks or token usage. An out-of-range or non-numeric `limit` is
+`400` (not silently clamped), a non-`GET` method is `405`, and both paths are
+ordinary `404`s when the host has not configured a read surface.
+
+### Paging
+
+Both lists page, so a corpus larger than one page stays reachable instead of
+stopping at the newest 50 rows. A page is ordered by the timestamp the payload
+exposes — `fetchedAt` for evidence, `createdAt` for answers — newest first, with
+the row id as a stable tie-breaker so rows sharing a timestamp cannot be
+repeated or skipped.
+
+When more rows exist the response carries `nextCursor`; send it back as
+`?cursor=<value>`, keeping `limit` (or choosing another) to continue. The cursor
+is opaque and carries no authority: a forged one can only move the window inside
+the caller's own owner- and tenant-scoped rows, never reach another member's. A
+malformed cursor is a `400`, the same as a bad `limit`, rather than an ignored
+parameter that silently restarts the list.
 
 ## Request bodies (POST routes)
 

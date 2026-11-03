@@ -1,11 +1,13 @@
 import { createClient, type Client } from "@libsql/client";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_MEMBER_CHANGE_RETENTION_DAYS,
   applyMigrations,
   calculateSafeCutoff,
   calculateStartOfTodayUtc,
   executeOwnerRetention,
   loadMigrations,
+  pruneMemberChangeLog,
   pruneOwnerHistory,
   validateCutoffIso,
 } from "../src/index.js";
@@ -97,6 +99,133 @@ describe("calculateStartOfTodayUtc and calculateSafeCutoff", () => {
     );
     // Malformed date
     expect(() => validateCutoffIso("invalid-date", FIXED_NOW)).toThrow(/not a valid ISO timestamp/);
+  });
+});
+
+describe("membership change log retention (plan 024, MT-11)", () => {
+  const TENANT = "acme";
+  const OTHER_TENANT = "globex";
+
+  async function seedTenants() {
+    for (const [id, name] of [
+      [TENANT, "Acme"],
+      [OTHER_TENANT, "Globex"],
+    ] as const) {
+      await client.execute({
+        sql: "INSERT INTO tenants (id, display_name, created_at) VALUES (?, ?, ?)",
+        args: [id, name, OLD],
+      });
+    }
+  }
+
+  async function insertChange(tenantId: string, target: string, createdAt: string) {
+    await client.execute({
+      sql: "INSERT INTO tenant_member_changes (tenant_id, actor_user_id, target_user_id, action, from_role, to_role, created_at) VALUES (?, 'owner-1', ?, 'added', NULL, 'member', ?)",
+      args: [tenantId, target, createdAt],
+    });
+  }
+
+  async function targets(): Promise<string[]> {
+    const res = await client.execute(
+      "SELECT target_user_id FROM tenant_member_changes ORDER BY id",
+    );
+    return res.rows.map((row) => String(row.target_user_id));
+  }
+
+  it("prunes one tenant's old changes and nothing else", async () => {
+    await seedTenants();
+    await insertChange(TENANT, "old-1", "2026-01-01T00:00:00.000Z");
+    await insertChange(TENANT, "old-2", "2026-01-02T00:00:00.000Z");
+    await insertChange(TENANT, "new", "2026-06-15T00:00:00.000Z");
+    await insertChange(OTHER_TENANT, "old-other", "2026-01-01T00:00:00.000Z");
+
+    const receipt = await pruneMemberChangeLog(client, {
+      tenantId: TENANT,
+      beforeIso: CUTOFF,
+      now: FIXED_NOW,
+    });
+
+    expect(receipt).toMatchObject({
+      tenantId: TENANT,
+      cutoff: CUTOFF,
+      dryRun: false,
+      candidates: 2,
+      deleted: 2,
+      success: true,
+    });
+    expect(await targets()).toEqual(["new", "old-other"]);
+  });
+
+  it("reports candidates in dry-run mode without deleting", async () => {
+    await seedTenants();
+    await insertChange(TENANT, "old", "2026-01-01T00:00:00.000Z");
+    await insertChange(TENANT, "new", "2026-06-20T00:00:00.000Z");
+
+    const receipt = await pruneMemberChangeLog(client, {
+      tenantId: TENANT,
+      retentionDays: 30,
+      dryRun: true,
+      now: FIXED_NOW,
+    });
+
+    expect(receipt).toMatchObject({ dryRun: true, candidates: 1, deleted: 0, success: true });
+    expect(await targets()).toEqual(["old", "new"]);
+  });
+
+  it("refuses to shorten the review window below the floor", async () => {
+    await seedTenants();
+    await insertChange(TENANT, "old", "2026-01-01T00:00:00.000Z");
+
+    await expect(
+      pruneMemberChangeLog(client, { tenantId: TENANT, retentionDays: 7, now: FIXED_NOW }),
+    ).rejects.toThrow(/at least 30 days/);
+    await expect(
+      pruneMemberChangeLog(client, {
+        tenantId: TENANT,
+        beforeIso: calculateSafeCutoff(7, FIXED_NOW),
+        now: FIXED_NOW,
+      }),
+    ).rejects.toThrow(/30-day floor/);
+    expect(DEFAULT_MEMBER_CHANGE_RETENTION_DAYS).toBe(365);
+    expect(await targets()).toEqual(["old"]);
+  });
+
+  it("requires a tenant and an explicit window", async () => {
+    await expect(
+      pruneMemberChangeLog(client, { tenantId: " ", retentionDays: 30, now: FIXED_NOW }),
+    ).rejects.toThrow(/tenantId is required/);
+    await expect(
+      pruneMemberChangeLog(client, { tenantId: TENANT, now: FIXED_NOW }),
+    ).rejects.toThrow(/either beforeIso or retentionDays/);
+  });
+
+  it("is idempotent and leaves a year of history alone by default", async () => {
+    await seedTenants();
+    await insertChange(TENANT, "recent", "2026-01-01T00:00:00.000Z");
+    await insertChange(TENANT, "old", "2025-01-01T00:00:00.000Z");
+
+    const yearly = await pruneMemberChangeLog(client, {
+      tenantId: TENANT,
+      retentionDays: DEFAULT_MEMBER_CHANGE_RETENTION_DAYS,
+      now: FIXED_NOW,
+    });
+    expect(yearly).toMatchObject({ candidates: 1, deleted: 1 });
+    expect(await targets()).toEqual(["recent"]);
+
+    const again = await pruneMemberChangeLog(client, {
+      tenantId: TENANT,
+      beforeIso: CUTOFF,
+      now: FIXED_NOW,
+    });
+    expect(again).toMatchObject({ candidates: 1, deleted: 1, success: true });
+    expect(await targets()).toEqual([]);
+
+    const repeat = await pruneMemberChangeLog(client, {
+      tenantId: TENANT,
+      beforeIso: CUTOFF,
+      now: FIXED_NOW,
+    });
+    expect(repeat).toMatchObject({ candidates: 0, deleted: 0, success: true });
   });
 });
 

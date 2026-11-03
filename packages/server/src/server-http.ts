@@ -22,6 +22,14 @@ export function requestPath(rawUrl: string | undefined): string {
   if (rawPath.startsWith("//") || rawPath.includes("#") || rawPath.includes("\\")) {
     return "/unmatched";
   }
+  // Admin member routes carry one id segment. Anything deeper, empty, or
+  // otherwise shaped differently is unmatched — the dispatcher validates the
+  // id itself, so only the route shape is decided here.
+  const membersItemPrefix = "/api/admin/members/";
+  if (rawPath.startsWith(membersItemPrefix)) {
+    const rest = rawPath.slice(membersItemPrefix.length);
+    return rest !== "" && !rest.includes("/") ? rawPath : "/unmatched";
+  }
   switch (rawPath) {
     case "/":
     case "/index.html":
@@ -30,6 +38,10 @@ export function requestPath(rawUrl: string | undefined): string {
     case "/metrics":
     case "/api/research":
     case "/api/answer":
+    case "/api/evidence":
+    case "/api/answers":
+    case "/api/admin/members":
+    case "/api/admin/member-changes":
       return rawPath;
     default:
       return "/unmatched";

@@ -50,7 +50,14 @@ export class StaticOidcVerifier implements OidcVerifier {
 }
 
 export type AuthFailureKind =
-  "invalid-token" | "not-allowlisted" | "authentication-required" | "dev-bypass-refused";
+  | "invalid-token"
+  | "not-allowlisted"
+  | "authentication-required"
+  | "dev-bypass-refused"
+  // Multi-tenant providers (issue #120): a verified token whose tenant claim
+  // is missing or whose tenant is not permitted is refused, never defaulted.
+  | "tenant-claim-missing"
+  | "tenant-not-allowed";
 
 export class AuthError extends Error {
   constructor(

@@ -16,10 +16,17 @@ export function numberOrUndefined(row: Row, key: string): number | undefined {
   const n = Number(row[key]);
   return Number.isNaN(n) ? undefined : n;
 }
+export interface TenantRow {
+  id: string;
+  displayName: string;
+  createdAt: string;
+}
 export interface OwnerRow {
   id: string;
   displayName: string;
   createdAt: string;
+  /** Tenant the owner belongs to (migration 0011, plan 024). */
+  tenantId: string;
 }
 export interface DocumentInput {
   ownerId: string;

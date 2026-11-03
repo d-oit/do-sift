@@ -7,8 +7,9 @@ import {
   isLoopbackAddress,
   type OidcVerifier,
 } from "@do-sift/auth";
-import type { ModelProvider, SearchProvider } from "@do-sift/contracts";
+import type { ModelProvider, SearchProvider, TenantRole } from "@do-sift/contracts";
 import { FakeModelProvider, FakeSearchProvider } from "@do-sift/fake-providers";
+import { createOidcAuthPlugin } from "@do-sift/plugin-auth-oidc";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
 import type { PageContent } from "@do-sift/plugin-harness-research";
 import { createOpenAICompatModel } from "@do-sift/plugin-model-openai-compat";
@@ -22,14 +23,18 @@ import {
   createMergedSearchProvider,
   createResearchServer,
   createRuntime,
+  createRuntimeResolver,
   listen,
+  resolvePrincipalRuntime,
   type ResearchRunOutcome,
+  type ResearchServerOptions,
 } from "@do-sift/server";
 import {
   applyMigrations,
   createFastEmbedEmbedder,
   loadMigrations,
   Repositories,
+  TenantMembershipDirectory,
   type TextEmbedder,
 } from "@do-sift/storage";
 import { parseEnvConfig, type AppConfig } from "./config.js";
@@ -53,6 +58,12 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
   await applyMigrations(client, loadMigrations(config.migrationsDir));
   for (const owner of config.owners) {
     await repositories.owners.ensure(owner, owner);
+  }
+  // Multi-tenant mode: tenants exist before any member or data references
+  // them. Membership rows are NOT seeded here — granting a user access to a
+  // tenant is an explicit operator act (docs/multi-tenant-auth.md).
+  for (const tenant of config.tenants) {
+    await repositories.tenants.ensure(tenant, tenant);
   }
 
   // Site-access policy governs every live fetch (exhaustive when the
@@ -281,14 +292,24 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     model = compat;
   }
 
-  const runtime = await createRuntime({
+  const runtimeOptions = {
     client,
     search,
     fetchPage,
     ...(extract === undefined ? {} : { extract }),
     ...(model === undefined ? {} : { model }),
     ...(embedder === undefined ? {} : { embedder }),
-  });
+  };
+  const runtime = await createRuntime(runtimeOptions);
+  // Issue #120 (MT-07): in multi-tenant mode this process holds one runtime
+  // per configured tenant, created lazily on first use. Everything expensive
+  // (client, search, fetch, model, embedder) is shared; repositories and
+  // ledgers are not.
+  const memberships = new TenantMembershipDirectory(client);
+  const runtimeResolver =
+    config.tenants.length === 0
+      ? undefined
+      : await createRuntimeResolver({ ...runtimeOptions, tenantIds: config.tenants });
 
   // R-17: a real RS256/JWKS verifier when DO_SIFT_OIDC_* is configured. The
   // empty stub otherwise, so bearer tokens refuse and only the loopback dev
@@ -301,17 +322,118 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
           audience: config.oidc.audience,
           jwksUrl: config.oidc.jwksUrl,
         });
-  const auth = new AuthService(oidcVerifier, {
+  const ownerAuth = new AuthService(oidcVerifier, {
     allowlist: config.owners,
     devBypass: config.devBypass,
     ...(config.devOwner === undefined ? {} : { devOwner: config.devOwner }),
   });
+
+  let auth: ResearchServerOptions["auth"] = ownerAuth;
+  let runtimeFor: ResearchServerOptions["runtimeFor"];
+  let roleFor: ResearchServerOptions["roleFor"];
+  if (runtimeResolver !== undefined) {
+    // The OIDC door is the only one that can name a tenant, so multi-tenant
+    // mode replaces the allowlist door entirely (config.ts enforces that the
+    // OIDC trio is present). Membership is checked per request before a
+    // tenant's runtime is handed out: a verified token with a tenant claim is
+    // still refused when the user is not a member of that tenant.
+    const provider = createOidcAuthPlugin();
+    provider.activate({
+      pluginName: "auth-oidc",
+      config: { verifier: oidcVerifier, tenantAllowlist: config.tenants },
+      events: { emit: () => {} },
+    } as unknown as Parameters<typeof provider.activate>[0]);
+    auth = {
+      authenticateOwner: async (request) => {
+        const principal = await provider.authenticate(request);
+        return { ownerId: principal.userId, via: "oidc", tenantId: principal.tenantId };
+      },
+    };
+    // MT-12: the recorded role is policy, not a label. `roleFor` lets the
+    // server refuse a viewer's research/answer request before a runtime is
+    // resolved or budget is reserved; the admin surface keeps its own
+    // owner-only check.
+    roleFor = (principal) => memberships.roleOf(principal.tenantId, principal.userId);
+    runtimeFor = async (principal) => {
+      const scoped = await resolvePrincipalRuntime({
+        resolver: runtimeResolver,
+        membership: memberships,
+        principal,
+      });
+      return {
+        runResearch: (ownerId, question, onSource, signal) =>
+          scoped.runResearch(ownerId, question, onSource, signal),
+        ...(model === undefined
+          ? {}
+          : {
+              answer: (ownerId: string, question: string, signal?: AbortSignal) =>
+                scoped.answerResponse(ownerId, question, signal),
+            }),
+      };
+    };
+  }
 
   // #67: owner-authenticated Prometheus text at GET /metrics.
   const metrics = new MetricsRegistry();
   const server = createResearchServer({
     auth,
     metrics,
+    ...(runtimeFor === undefined ? {} : { runtimeFor }),
+    ...(roleFor === undefined ? {} : { roleFor }),
+    // MT-13: read-only views of the caller's own corpus. Repositories are
+    // bound to the principal's tenant, and the server passes only the
+    // authenticated owner id, so the tenant and owner are never caller input.
+    ...(runtimeResolver === undefined
+      ? {}
+      : {
+          readFor: (principal: {
+            tenantId: string;
+            userId: string;
+          }): Promise<{
+            evidence(
+              ownerId: string,
+              limit: number,
+              before?: { at: string; id: string },
+            ): Promise<
+              Array<{ id: string; url: string; title?: string | undefined; fetchedAt: string }>
+            >;
+            answers(
+              ownerId: string,
+              limit: number,
+              before?: { at: string; id: string },
+            ): Promise<
+              Array<{ id: string; question: string; evidenceOnly: boolean; createdAt: string }>
+            >;
+          }> => {
+            const repos = new Repositories(client, principal.tenantId);
+            return Promise.resolve({
+              evidence: async (ownerId, limit, before) =>
+                (await repos.documents.listPage(ownerId, limit, before)).map((row) => ({
+                  id: row.id,
+                  url: row.canonicalUrl,
+                  ...(row.title === undefined ? {} : { title: row.title }),
+                  fetchedAt: row.fetchedAt,
+                })),
+              answers: (ownerId, limit, before) => repos.answers.list(ownerId, limit, before),
+            });
+          },
+        }),
+    // MT-09: membership administration exists only where memberships are the
+    // authority (multi-tenant mode). It authorizes by the stored role and
+    // always acts on the caller's own tenant.
+    ...(runtimeResolver === undefined
+      ? {}
+      : {
+          membershipAdmin: {
+            roleOf: (tenantId: string, userId: string) => memberships.roleOf(tenantId, userId),
+            list: (tenantId: string) => memberships.members(tenantId),
+            upsert: (tenantId: string, userId: string, role: TenantRole, actorUserId: string) =>
+              memberships.add(tenantId, userId, role, actorUserId),
+            remove: (tenantId: string, userId: string, actorUserId: string) =>
+              memberships.remove(tenantId, userId, actorUserId),
+            changes: (tenantId: string) => memberships.changes(tenantId),
+          },
+        }),
     runResearch: (ownerId, question, onSource, signal): Promise<ResearchRunOutcome> =>
       runtime.runResearch(ownerId, question, onSource, signal),
     // OPS-09: readiness is a dependency probe, while /healthz remains a
@@ -363,6 +485,9 @@ export async function main(env: Record<string, string | undefined> = process.env
   console.log(`do-sift listening on http://${config.host}:${app.port}`);
   console.log(
     `  db: ${config.dbUrl} (migrations: ${config.migrationsDir}); owners: ${config.owners.length} allowlisted; dev bypass: ${config.devBypass ? "ON (loopback-only)" : "off"}`,
+  );
+  console.log(
+    `  tenants: ${config.tenants.length === 0 ? "single-tenant (owner allowlist)" : `${config.tenants.length} (${config.tenants.join(", ")}) — membership enforced per request`}`,
   );
   const providersLabel = config.searchProviders.join("+");
   const compositionLabel =

@@ -12,12 +12,19 @@
  */
 import { randomUUID } from "node:crypto";
 import type { Client, Row } from "@libsql/client";
+import { DEFAULT_TENANT_ID } from "@do-sift/contracts";
 
 export interface JobQueueOptions {
   /** Lease attempts before dead-lettering; default 3. */
   maxAttempts?: number | undefined;
   /** Lease duration in ms; default 60_000. */
   leaseMs?: number | undefined;
+  /**
+   * Tenant this queue is bound to (plan 024). Queues never claim, complete,
+   * or inspect another tenant's jobs, even for the same owner id string.
+   * Defaults to the migration-0011 backfill tenant.
+   */
+  tenantId?: string | undefined;
 }
 
 const DEFAULTS = { maxAttempts: 3, leaseMs: 60_000 };
@@ -66,17 +73,23 @@ function jobFromRow(row: Row): JobRecord {
 const iso = (ms: number): string => new Date(ms).toISOString();
 
 export class JobQueue {
-  constructor(
-    private readonly client: Client,
-    private readonly options: JobQueueOptions = {},
-  ) {}
-
   private get maxAttempts(): number {
     return this.options.maxAttempts ?? DEFAULTS.maxAttempts;
   }
 
   private get leaseMs(): number {
     return this.options.leaseMs ?? DEFAULTS.leaseMs;
+  }
+
+  readonly tenantId: string;
+
+  constructor(
+    private readonly client: Client,
+    private readonly options: JobQueueOptions = {},
+  ) {
+    // Assigned in the constructor body: field initializers run before a
+    // parameter property exists on `this`.
+    this.tenantId = options.tenantId ?? DEFAULT_TENANT_ID;
   }
 
   async enqueue(
@@ -87,8 +100,8 @@ export class JobQueue {
   ): Promise<string> {
     const id = randomUUID();
     await this.client.execute({
-      sql: "INSERT INTO jobs (id, owner_id, kind, payload_json, status, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 0, ?, ?)",
-      args: [id, ownerId, kind, JSON.stringify(payload), iso(nowMs), iso(nowMs)],
+      sql: "INSERT INTO jobs (id, tenant_id, owner_id, kind, payload_json, status, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?)",
+      args: [id, this.tenantId, ownerId, kind, JSON.stringify(payload), iso(nowMs), iso(nowMs)],
     });
     return id;
   }
@@ -104,12 +117,12 @@ export class JobQueue {
       const now = iso(nowMs);
       const candidate = await tx.execute({
         sql: `SELECT id FROM jobs
-              WHERE owner_id = ?
+              WHERE tenant_id = ? AND owner_id = ?
                 AND (status = 'queued'
                   OR (status = 'leased' AND lease_until IS NOT NULL AND lease_until < ?))
               ORDER BY created_at
               LIMIT 1`,
-        args: [ownerId, now],
+        args: [this.tenantId, ownerId, now],
       });
       const id = candidate.rows[0] ? String(candidate.rows[0].id) : undefined;
       if (id === undefined) {
@@ -118,18 +131,18 @@ export class JobQueue {
       }
       const claimed = await tx.execute({
         sql: `UPDATE jobs SET status = 'leased', attempts = attempts + 1, lease_until = ?, updated_at = ?
-              WHERE id = ? AND owner_id = ?
+              WHERE id = ? AND owner_id = ? AND tenant_id = ?
                 AND (status = 'queued'
                   OR (status = 'leased' AND lease_until IS NOT NULL AND lease_until < ?))`,
-        args: [iso(nowMs + this.leaseMs), now, id, ownerId, now],
+        args: [iso(nowMs + this.leaseMs), now, id, ownerId, this.tenantId, now],
       });
       if (claimed.rowsAffected === 0) {
         await tx.commit();
         return undefined;
       }
       const fresh = await tx.execute({
-        sql: "SELECT * FROM jobs WHERE id = ? AND owner_id = ?",
-        args: [id, ownerId],
+        sql: "SELECT * FROM jobs WHERE id = ? AND owner_id = ? AND tenant_id = ?",
+        args: [id, ownerId, this.tenantId],
       });
       await tx.commit();
       const row = fresh.rows[0];
@@ -144,8 +157,8 @@ export class JobQueue {
   async complete(ownerId: string, id: string, nowMs: number): Promise<void> {
     const res = await this.client.execute({
       sql: `UPDATE jobs SET status = 'done', lease_until = NULL, updated_at = ?
-            WHERE id = ? AND owner_id = ? AND status IN ('queued', 'leased')`,
-      args: [iso(nowMs), id, ownerId],
+            WHERE id = ? AND owner_id = ? AND tenant_id = ? AND status IN ('queued', 'leased')`,
+      args: [iso(nowMs), id, ownerId, this.tenantId],
     });
     if (res.rowsAffected === 0) {
       throw new JobQueueError(`job ${id} is not completable for owner ${ownerId}`);
@@ -165,8 +178,8 @@ export class JobQueue {
     const tx = await this.client.transaction("write");
     try {
       const current = await tx.execute({
-        sql: "SELECT status, attempts FROM jobs WHERE id = ? AND owner_id = ?",
-        args: [id, ownerId],
+        sql: "SELECT status, attempts FROM jobs WHERE id = ? AND owner_id = ? AND tenant_id = ?",
+        args: [id, ownerId, this.tenantId],
       });
       const row = current.rows[0];
       if (!row) throw new JobQueueError(`unknown job ${id} for owner ${ownerId}`);
@@ -178,8 +191,8 @@ export class JobQueue {
       const dead = attempts >= this.maxAttempts;
       await tx.execute({
         sql: `UPDATE jobs SET status = ?, lease_until = NULL, last_error = ?, updated_at = ?
-              WHERE id = ? AND owner_id = ?`,
-        args: [dead ? "dead" : "queued", errorMessage, iso(nowMs), id, ownerId],
+              WHERE id = ? AND owner_id = ? AND tenant_id = ?`,
+        args: [dead ? "dead" : "queued", errorMessage, iso(nowMs), id, ownerId, this.tenantId],
       });
       await tx.commit();
       return dead ? "dead" : "requeued";
@@ -191,8 +204,8 @@ export class JobQueue {
 
   async get(ownerId: string, id: string): Promise<JobRecord | undefined> {
     const res = await this.client.execute({
-      sql: "SELECT * FROM jobs WHERE id = ? AND owner_id = ?",
-      args: [id, ownerId],
+      sql: "SELECT * FROM jobs WHERE id = ? AND owner_id = ? AND tenant_id = ?",
+      args: [id, ownerId, this.tenantId],
     });
     const row = res.rows[0];
     return row ? jobFromRow(row) : undefined;
