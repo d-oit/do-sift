@@ -227,9 +227,27 @@ exceeding the bound is refused rather than silently evicting live runtimes.
   with `retention prune-changes --tenant <id>` (one tenant per run, dry-run
   unless `--confirm`, 365-day default, 30-day floor — see
   `docs/deployment.md`).
-- **`plans/invariants.json` has no tenant invariant.** Adding `INV-008`
-  (cross-tenant isolation) is an owner-approved change to that file; the
-  enforcement already runs in `npm run check`
-  (`tests/security/cross-tenant.test.ts`,
-  `packages/server/test/tenant-routing.test.ts`,
-  `packages/storage/test/membership.test.ts`).
+- **Every retrieval entry point takes the caller's tenant** (plan 035).
+  `searchPassages`, `searchByEmbedding`, `hybridSearch`,
+  `backfillPassageEmbeddings`, `backfillPassageNoiseClasses`, and
+  `getExistingModelDimension` all accept a tenant scope **in addition to**
+  deriving the tenant from the authoritative `owners` row; the two must agree,
+  so a runtime bound to the wrong tenant finds nothing rather than another
+  tenant's rows. `docs/deployment.md` records the one-argument forms that
+  remain valid for single-tenant tooling.
+- **The CLI is tenant-scoped too.** Every data command takes
+  `--tenant <id>` (default `default`), filters on `tenant_id`, and
+  `retention prune` prunes the tenant it was told about instead of silently
+  defaulting to `default`.
+- **Global surfaces, on purpose.** `tenants.ensure`/`tenants.get` address the
+  tenant registry itself, `applyMigrations`/`backupToFile`/`verifyRestore`
+  operate on the whole database, and the `/metrics` registry is
+  deployment-global (route/method/status counters, no rows). None of them
+  returns or writes tenant data on behalf of a principal. `INV-008` records
+  the isolation boundary that the enforcing suite proves.
+- **`plans/invariants.json` records `INV-008`** (cross-tenant isolation),
+  enforced by `tests/security/cross-tenant.test.ts` and
+  `tests/security/cross-tenant-scope.test.ts`, plus
+  `packages/server/test/tenant-routing.test.ts` and
+  `packages/storage/test/membership.test.ts`. Deleting the suites now fails
+  `npm run policy`.

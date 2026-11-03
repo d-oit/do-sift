@@ -314,9 +314,9 @@ async function measurePathHybrid(
   const embedder = await createFastEmbedEmbedder({
     cacheDir: join(ROOT, ".fastembed_cache"),
   });
-  await backfillPassageEmbeddings(client, "eval-owner", embedder);
+  await backfillPassageEmbeddings(client, "eval-owner", embedder, { tenantId: "default" });
   return measurePath(dataset, client, excerptToCorpusId, (q, k) =>
-    hybridSearch(client, "eval-owner", q, k, embedder),
+    hybridSearch(client, "eval-owner", q, k, embedder, undefined, undefined, undefined, "default"),
   );
 }
 

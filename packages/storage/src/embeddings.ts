@@ -62,6 +62,12 @@ export interface EmbeddingRowInput {
   passageId: string;
   ownerId: string;
   vector: number[];
+  /**
+   * The tenant the caller believes it is serving (plan 035). The write still
+   * copies `tenant_id` from the authoritative owners row; when supplied the
+   * two must agree or the write is refused.
+   */
+  tenantId?: string | undefined;
 }
 
 export interface BackfillOptions {
@@ -69,6 +75,8 @@ export interface BackfillOptions {
   batchSize?: number | undefined;
   /** Signal for cancellation / deadline. */
   signal?: AbortSignal | undefined;
+  /** Caller's tenant scope (plan 035); must agree with the owners row. */
+  tenantId?: string | undefined;
 }
 
 export interface BackfillResult {
@@ -150,13 +158,26 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
+/**
+ * Vector width recorded for this model, sampled from the caller's own rows
+ * (plan 035). Scoping the sample to `ownerId` keeps one tenant's model run
+ * from being silently coupled to another tenant's vector width; passing
+ * `tenantId` additionally requires the row to agree with the caller's tenant.
+ */
 export async function getExistingModelDimension(
   client: Client,
   modelId: string,
+  ownerId: string,
+  tenantId?: string,
 ): Promise<number | undefined> {
+  const scoped = tenantId !== undefined;
   const existing = await client.execute({
-    sql: "SELECT vector FROM passage_embeddings WHERE model_id = ? LIMIT 1",
-    args: [modelId],
+    sql: `SELECT vector FROM passage_embeddings
+          WHERE model_id = ? AND owner_id = ?
+            AND tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
+            ${scoped ? "AND tenant_id = ?" : ""}
+          LIMIT 1`,
+    args: [modelId, ownerId, ownerId, ...(scoped ? [tenantId] : [])],
   });
   if (existing.rows.length === 0 || !existing.rows[0]?.vector) {
     return undefined;
@@ -180,26 +201,66 @@ export async function storePassageEmbeddings(
   }
   if (rows.length === 0) return;
 
-  let expectedDimension = await getExistingModelDimension(client, modelId);
-  if (expectedDimension === undefined && rows[0]?.vector) {
-    expectedDimension = rows[0].vector.length;
+  // Plan 035: widths are learned from the rows this caller owns, never from
+  // an arbitrary row of the table.
+  const first = rows[0]!;
+  const scope = first.tenantId;
+  if (scope !== undefined) {
+    for (const row of rows) {
+      if (row.tenantId !== scope) {
+        throw new VectorValidationError("a batch may not mix tenant scopes");
+      }
+      if (row.ownerId !== first.ownerId) {
+        throw new VectorValidationError("a batch may not mix owner ids");
+      }
+    }
+  }
+
+  let expectedDimension = await getExistingModelDimension(client, modelId, first.ownerId, scope);
+  if (expectedDimension === undefined && first.vector) {
+    expectedDimension = first.vector.length;
   }
 
   for (const row of rows) {
     validateVector(row.vector, expectedDimension);
   }
 
+  if (scope !== undefined) {
+    const owner = await client.execute({
+      sql: "SELECT tenant_id FROM owners WHERE id = ? AND tenant_id = ?",
+      args: [first.ownerId, scope],
+    });
+    if (owner.rows.length === 0) {
+      throw new VectorValidationError(
+        `tenant scope ${scope} does not own ${first.ownerId}; refusing to store embeddings`,
+      );
+    }
+  }
+
   const now = new Date().toISOString();
   const tx = await client.transaction("write");
   try {
     for (const row of rows) {
+      // Plan 024: the tenant is copied from the authoritative owner row, so
+      // an embedding can never be filed under a tenant its passage's owner
+      // does not belong to. Plan 035: an explicit scope was checked above and
+      // is used as the stored value, so the two can never disagree.
+      const tenantSql =
+        scope === undefined
+          ? "(SELECT tenant_id FROM owners WHERE id = ?)"
+          : "(SELECT tenant_id FROM owners WHERE id = ? AND tenant_id = ?)";
       await tx.execute({
-        // Plan 024: the tenant is copied from the authoritative owner row, so
-        // an embedding can never be filed under a tenant its passage's owner
-        // does not belong to.
         sql: `INSERT OR REPLACE INTO passage_embeddings (passage_id, tenant_id, owner_id, model_id, vector, created_at)
-              VALUES (?, (SELECT tenant_id FROM owners WHERE id = ?), ?, ?, ?, ?)`,
-        args: [row.passageId, row.ownerId, row.ownerId, modelId, vectorToBlob(row.vector), now],
+              VALUES (?, ${tenantSql}, ?, ?, ?, ?)`,
+        args: [
+          row.passageId,
+          row.ownerId,
+          ...(scope === undefined ? [] : [scope]),
+          row.ownerId,
+          modelId,
+          vectorToBlob(row.vector),
+          now,
+        ],
       });
     }
     await tx.commit();
@@ -227,6 +288,7 @@ export async function backfillPassageEmbeddings(
   }
 
   const signal = options.signal;
+  const scope = options.tenantId;
   const startTime = Date.now();
   let lastPassageId = "";
   let batchCount = 0;
@@ -234,7 +296,7 @@ export async function backfillPassageEmbeddings(
   let passagesSkipped = 0;
   let failureClass: string | undefined;
 
-  let expectedDimension = await getExistingModelDimension(client, embedder.modelId);
+  let expectedDimension = await getExistingModelDimension(client, embedder.modelId, ownerId, scope);
 
   while (true) {
     if (signal?.aborted) {
@@ -248,10 +310,18 @@ export async function backfillPassageEmbeddings(
             LEFT JOIN passage_embeddings pe ON pe.passage_id = p.id AND pe.model_id = ?
             WHERE p.owner_id = ?
               AND p.tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
+              ${scope === undefined ? "" : "AND p.tenant_id = ?"}
               AND pe.passage_id IS NULL AND p.id > ?
             ORDER BY p.id ASC
             LIMIT ?`,
-      args: [embedder.modelId, ownerId, ownerId, lastPassageId, batchSize],
+      args: [
+        embedder.modelId,
+        ownerId,
+        ownerId,
+        ...(scope === undefined ? [] : [scope]),
+        lastPassageId,
+        batchSize,
+      ],
     });
 
     if (pending.rows.length === 0) {
@@ -289,11 +359,9 @@ export async function backfillPassageEmbeddings(
         if (!vector) {
           throw new VectorValidationError("missing vector for passage");
         }
-        return {
-          passageId: p.id,
-          ownerId,
-          vector,
-        };
+        const row: EmbeddingRowInput = { passageId: p.id, ownerId, vector };
+        if (scope !== undefined) row.tenantId = scope;
+        return row;
       });
 
       await storePassageEmbeddings(client, embedder.modelId, rows);
@@ -374,6 +442,7 @@ export async function searchByEmbedding(
   documentIds?: string[],
   relevanceFloor?: number,
   noiseFilter?: boolean,
+  tenantId?: string,
 ): Promise<VectorHit[]> {
   if (queryVector.length === 0) return [];
   const docFilter =
@@ -385,6 +454,7 @@ export async function searchByEmbedding(
       ? ""
       : " AND (d.relevance_score IS NULL OR d.relevance_score >= ?)";
   const noiseClause = noiseFilter === true ? " AND p.noise_class IS NULL" : "";
+  const tenantClause = tenantId === undefined ? "" : " AND pe.tenant_id = ?";
   const res = await client.execute({
     sql: `SELECT pe.passage_id, p.document_id, d.content_hash, p.excerpt, pe.vector
           FROM passage_embeddings pe
@@ -392,7 +462,7 @@ export async function searchByEmbedding(
           JOIN documents d ON d.id = p.document_id AND d.owner_id = p.owner_id
           WHERE pe.owner_id = ? AND pe.model_id = ?
             AND pe.tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
-            AND p.tenant_id = pe.tenant_id AND d.tenant_id = p.tenant_id${docFilter}${floorFilter}${noiseClause}
+            AND p.tenant_id = pe.tenant_id AND d.tenant_id = p.tenant_id${tenantClause}${docFilter}${floorFilter}${noiseClause}
           ORDER BY pe.created_at DESC
           LIMIT ?`,
     args: [
@@ -401,6 +471,8 @@ export async function searchByEmbedding(
       modelId,
       // Plan 024: tenant derived from the authoritative owner row.
       ownerId,
+      // Plan 035: an explicit scope must agree with that derivation.
+      ...(tenantId === undefined ? [] : [tenantId]),
       ...(documentIds && documentIds.length > 0 ? documentIds : []),
       ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
       MAX_EMBEDDING_CANDIDATES,
@@ -468,6 +540,7 @@ export async function hybridSearch(
   documentIds?: string[],
   relevanceFloor?: number,
   noiseFilter?: boolean,
+  tenantId?: string,
 ): Promise<PassageHit[]> {
   const bm25 = await searchPassages(
     client,
@@ -477,6 +550,7 @@ export async function hybridSearch(
     documentIds,
     relevanceFloor,
     noiseFilter,
+    tenantId,
   );
   const queryVector = await embedder.embedQuery(question);
   const vector = await searchByEmbedding(
@@ -488,6 +562,7 @@ export async function hybridSearch(
     documentIds,
     relevanceFloor,
     noiseFilter,
+    tenantId,
   );
   return rrfFuse(bm25, vector, limit);
 }

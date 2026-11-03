@@ -1,0 +1,97 @@
+name: nightly-live
+
+# Scheduled live end-to-end run (issue #123, plan 038 — EXT-05).
+#
+# Owner-approved 2026-11-03. This is the ONLY workflow that uses live
+# credentials, and it runs the engine against real providers:
+#
+#   search (Wikipedia/Marginalia) -> fetch -> evidence stored -> one synthesis
+#   call -> citation validation -> stored answer
+#
+# Rules this workflow encodes:
+#   - It never runs on pull_request. Live credentials must not be reachable
+#     from a fork's code.
+#   - Without the configured secrets and opt-in variables it SKIPS the live
+#     step with a message. A skipped job is visible; a fake green is not.
+#   - It refuses to be a silent success: if the run is attempted and the
+#     gate fails, the job fails.
+#   - It never prints a secret: credentials are passed as env vars only, and
+#     the runner redacts anything echoed.
+
+on:
+  schedule:
+    # 04:17 UTC daily — off the hour to avoid the scheduled-workflow spike.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      question:
+        description: "Question to run through the end-to-end pipeline"
+        required: false
+        default: "how does fts5 ranking work?"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-live
+  cancel-in-progress: false
+
+jobs:
+  live-e2e:
+    name: live end-to-end (search -> evidence -> synthesis -> citations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      # A dry-run of the hermetic wiring first: if the pipeline itself is
+      # broken, do not spend a live call finding out.
+      - name: hermetic wiring preflight
+        run: npm run eval:e2e -- --fixture
+
+      # Secrets are exposed to this step only, and only when configured. The
+      # runner prints a `skipped` outcome when they are absent instead of a
+      # pass — a nightly that cannot run is not evidence of anything.
+      - name: live end-to-end
+        id: live
+        env:
+          DO_SIFT_MODEL_API_KEY: ${{ secrets.DO_SIFT_MODEL_API_KEY }}
+          DO_SIFT_EVAL_LIVE_OPT_IN: "1"
+          DO_SIFT_OWNER_APPROVAL: "1"
+          DO_SIFT_MODEL_BASE_URL: ${{ vars.DO_SIFT_MODEL_BASE_URL }}
+          DO_SIFT_MODEL_ID: ${{ vars.DO_SIFT_MODEL_ID }}
+          DO_SIFT_MODEL_TERMS_ACCEPTED_AT: ${{ vars.DO_SIFT_MODEL_TERMS_ACCEPTED_AT }}
+          DO_SIFT_MODEL_SOURCES_ENTRY: ${{ vars.DO_SIFT_MODEL_SOURCES_ENTRY }}
+          DO_SIFT_E2E_QUESTION: ${{ inputs.question }}
+        run: |
+          if [ -z "${DO_SIFT_MODEL_BASE_URL}" ] || [ -z "${DO_SIFT_MODEL_ID}" ] || [ -z "${DO_SIFT_MODEL_API_KEY}" ]; then
+            echo "::notice title=live-e2e skipped::No live model endpoint/key configured (vars.DO_SIFT_MODEL_BASE_URL / vars.DO_SIFT_MODEL_ID / secrets.DO_SIFT_MODEL_API_KEY). The hermetic preflight above still ran."
+            echo "status=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          npm run eval:e2e -- --opt-in --owner-approval \
+            --provider wikipedia \
+            --model-id "${DO_SIFT_MODEL_ID}" \
+            --base-url "${DO_SIFT_MODEL_BASE_URL}" \
+            --terms-accepted-at "${DO_SIFT_MODEL_TERMS_ACCEPTED_AT}" \
+            --sources-entry "${DO_SIFT_MODEL_SOURCES_ENTRY}"
+          echo "status=ran" >> "$GITHUB_OUTPUT"
+
+      - name: upload live artifact
+        if: always() && steps.live.outputs.status == 'ran'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-e2e-${{ github.run_id }}
+          path: evals/quality/e2e-*.json
+          if-no-files-found: warn
+          retention-days: 30

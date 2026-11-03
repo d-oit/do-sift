@@ -32,6 +32,7 @@ export type {
   AnswerServiceDeps,
   AnswerServiceOptions,
   AnswerTask,
+  SynthesisAuditEvent,
   UsageReconciliation,
 } from "./answer.js";
 export { MetricsRegistry } from "./metrics.js";
@@ -56,3 +57,27 @@ export {
   mergeSearchHits,
   MergedSearchError,
 } from "./search-merge.js";
+
+// MCP (Model Context Protocol) stdio adapter — issue #122, plan 037.
+export {
+  JSON_RPC_ERRORS,
+  SERVER_INFO,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  callTool,
+  createSession,
+  handleLine,
+  handleMessage,
+  listTools,
+  negotiateVersion,
+  validateArguments,
+} from "./mcp.js";
+export type {
+  JsonRpcError,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  McpHost,
+  McpServerOptions,
+  McpToolDefinition,
+  McpToolResult,
+  ProtocolVersion,
+} from "./mcp.js";

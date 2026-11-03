@@ -153,3 +153,43 @@ HTTP error.
 `GET /readyz` probes the libSQL connection with `SELECT 1` under a one-second
 deadline. Concurrent probes share one in-flight check. It does not call search
 or model providers.
+
+## Model Context Protocol (MCP) surface
+
+The engine is also reachable over the Model Context Protocol, so a non-Node
+client (a Python agent or notebook) can run a search without an HTTP deployment.
+It is a **second transport over the same runtime**, not a second API: every
+tool call goes through the same `Runtime` methods the routes above use, so the
+citation check, the terms gates, and the zero-LLM search discipline apply
+unchanged.
+
+Run it as a stdio subprocess:
+
+```
+npx tsx apps/mcp/src/index.ts
+```
+
+Environment: `DO_SIFT_DB_URL` (default `:memory:`), `DO_SIFT_MCP_OWNER`
+(default `mcp-owner`), `DO_SIFT_MCP_TENANT` (default `default`).
+
+Transport: newline-delimited JSON-RPC 2.0 on stdin/stdout, per the MCP
+specification revision `2025-11-25`. stdout carries protocol messages only;
+diagnostics go to stderr. The handshake is `initialize` →
+`notifications/initialized`.
+
+| Tool       | Arguments                                 | Effect                                                                                                        |
+| ---------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `search`   | `question` (1-2000 chars), `limit` (1-20) | Zero-LLM search: query providers, store evidence with provenance. Returns the run summary, not the page text. |
+| `answer`   | `question`                                | One bounded synthesis call over stored evidence, with citation validation. Degrades to evidence-only output.  |
+| `evidence` | `limit` (1-50)                            | The newest stored sources for the caller: id, URL, title, fetch time. No page text, no answer blocks.         |
+
+A host that lacks a capability does not advertise the tool (`tools/list` is
+derived from the composed host). Validation and execution failures come back
+as `isError: true` tool results rather than JSON-RPC errors, which is what the
+specification asks for so a client model can self-correct.
+
+Limits, recorded as R-18/R-19 in `plans/risks.md`: the entrypoint is
+stdio-only and single-owner — it has no principal or tenant authentication,
+which is the stdio transport's threat model (the client owns the process). A
+network transport would have to reuse the HTTP server's authentication and
+role gates before it could exist.

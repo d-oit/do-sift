@@ -43,6 +43,23 @@ export interface OpenAICompatModelEnv {
   /** Dated sources.md gate, mirrored into the plugin activation terms. */
   termsAcceptedAt: string;
   sourcesEntry: string;
+  /**
+   * EXT-02 (issue #123): true when this provider is billable. The router
+   * refuses a paid provider without verified pricing and a dated sources.md
+   * entry, so `paid` is what turns the deployment's price opt-in into a hard
+   * requirement rather than an honour system.
+   */
+  paid: boolean;
+  /**
+   * EXT-02: verified price per 1M tokens, in USD. Required when `paid`; absent
+   * for free/loopback providers (the router treats unpriced as free).
+   */
+  pricing?: { inputPer1M: number; outputPer1M: number } | undefined;
+  /**
+   * EXT-02: per-call worst-case ceiling in micro-USD (0/absent = no ceiling).
+   * Computed by the router from the request's token ceilings × verified price.
+   */
+  maxCostMicroUsd?: number | undefined;
 }
 
 export interface AppConfig {
@@ -60,6 +77,12 @@ export interface AppConfig {
   /** SRC-16: one or more live/fixture search providers, in priority order
    * (primary first). A single value parses as a one-element list. */
   searchProviders: SearchProviderChoice[];
+  /**
+   * EXT-01: NAME of the secret holding a Marginalia API key. Unset = the
+   * verified keyless legacy path (the supported default; Marginalia's
+   * personal-key programme is closed, plans/sources.md).
+   */
+  searchApiKeySecret?: string | undefined;
   /** Unset → the answer surface stays unwired: /api/answer answers 501. */
   modelProvider?: ModelProviderChoice | undefined;
   /** Set iff modelProvider is "openai-compat" (fail-closed parsing below). */
@@ -231,6 +254,47 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
       );
     }
     const apiKeySecretRaw = env.DO_SIFT_MODEL_API_KEY_SECRET ?? "";
+    // EXT-02 (issue #123): price opt-in. `paid` is an explicit operator
+    // assertion, and a paid provider must also carry verified pricing and a
+    // per-call ceiling — otherwise the router's refusal (or an unbounded
+    // bill) is the thing that discovers the omission at runtime. The env var
+    // names are read as numbers, never as free text, and a bad value refuses
+    // startup rather than defaulting to "free".
+    const paid = parseBool("DO_SIFT_MODEL_PAID", env.DO_SIFT_MODEL_PAID);
+    let pricing: { inputPer1M: number; outputPer1M: number } | undefined;
+    let maxCostMicroUsd: number | undefined;
+    if (paid) {
+      const inputRaw = env.DO_SIFT_MODEL_PRICE_INPUT_PER_1M ?? "";
+      const outputRaw = env.DO_SIFT_MODEL_PRICE_OUTPUT_PER_1M ?? "";
+      const inputPer1M = Number(inputRaw);
+      const outputPer1M = Number(outputRaw);
+      if (inputRaw.trim() === "" || outputRaw.trim() === "") {
+        throw new Error(
+          "DO_SIFT_MODEL_PAID=1 requires DO_SIFT_MODEL_PRICE_INPUT_PER_1M and DO_SIFT_MODEL_PRICE_OUTPUT_PER_1M (USD per 1M tokens, from the provider's dated plans/sources.md entry) — a billable provider must never be priced by guess",
+        );
+      }
+      if (
+        !Number.isFinite(inputPer1M) ||
+        !Number.isFinite(outputPer1M) ||
+        inputPer1M < 0 ||
+        outputPer1M < 0
+      ) {
+        throw new Error(
+          "DO_SIFT_MODEL_PRICE_INPUT_PER_1M and DO_SIFT_MODEL_PRICE_OUTPUT_PER_1M must be non-negative numbers (USD per 1M tokens)",
+        );
+      }
+      pricing = { inputPer1M, outputPer1M };
+      const ceilingRaw = env.DO_SIFT_MODEL_MAX_COST_MICRO_USD ?? "";
+      if (ceilingRaw.trim() !== "") {
+        const parsed = Number(ceilingRaw);
+        if (!Number.isInteger(parsed) || parsed < 0) {
+          throw new Error(
+            "DO_SIFT_MODEL_MAX_COST_MICRO_USD must be a non-negative integer (micro-USD per call)",
+          );
+        }
+        maxCostMicroUsd = parsed;
+      }
+    }
     // CodeQL clear-text-logging hygiene: this var's name marks its value
     // as sensitive, so the refusal below must NOT echo the value the way
     // parseBool does for ordinary flags — name the variable, never the value.
@@ -256,6 +320,9 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
           : env.DO_SIFT_MODEL_SCHEMA_NAME.trim(),
       termsAcceptedAt,
       sourcesEntry: sourcesEntry.trim(),
+      paid,
+      ...(pricing === undefined ? {} : { pricing }),
+      ...(maxCostMicroUsd === undefined ? {} : { maxCostMicroUsd }),
     };
     if (apiKeySecretRaw.trim() !== "") init.apiKeySecret = apiKeySecretRaw.trim();
     modelOpenAI = init;
@@ -336,6 +403,10 @@ export function parseEnvConfig(env: Record<string, string | undefined>): AppConf
     devBypass,
     ...(devBypass && devOwner !== undefined && devOwner !== "" ? { devOwner } : {}),
     searchProviders: searchProviders as SearchProviderChoice[],
+    ...(env.DO_SIFT_SEARCH_API_KEY_SECRET !== undefined &&
+    env.DO_SIFT_SEARCH_API_KEY_SECRET.trim() !== ""
+      ? { searchApiKeySecret: env.DO_SIFT_SEARCH_API_KEY_SECRET.trim() }
+      : {}),
     ...(modelRaw === "fixture" ? { modelProvider: "fixture" as const } : {}),
     ...(modelRaw === "openai-compat" && modelOpenAI !== undefined
       ? { modelProvider: "openai-compat" as const, modelOpenAI }

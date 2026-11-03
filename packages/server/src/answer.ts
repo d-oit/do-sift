@@ -17,6 +17,7 @@ import type {
   AnswerServiceOptions,
   AnswerTask,
   DegradationReason,
+  SynthesisAuditEvent,
   UsageReconciliation,
 } from "./answer-contracts.js";
 import {
@@ -28,6 +29,7 @@ import {
 export type { AnswerRevisions } from "./answer-contracts.js";
 export type { AnswerServiceOptions } from "./answer-contracts.js";
 export type { AnswerServiceDeps } from "./answer-contracts.js";
+export type { SynthesisAuditEvent } from "./answer-contracts.js";
 export type { AnswerTask } from "./answer-contracts.js";
 export type { UsageReconciliation } from "./answer-contracts.js";
 export type { SuspectReceipt } from "./answer-contracts.js";
@@ -116,6 +118,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 scopedDocIds,
                 relevanceFloor,
                 noiseFilter,
+                deps.repositories.tenantId,
               )
             : await hybridSearch(
                 deps.client,
@@ -126,6 +129,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 scopedDocIds,
                 relevanceFloor,
                 noiseFilter,
+                deps.repositories.tenantId,
               )
           : deps.embedder === undefined
             ? await searchPassages(
@@ -136,6 +140,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 undefined,
                 relevanceFloor,
                 noiseFilter,
+                deps.repositories.tenantId,
               )
             : await hybridSearch(
                 deps.client,
@@ -146,6 +151,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 undefined,
                 relevanceFloor,
                 noiseFilter,
+                deps.repositories.tenantId,
               );
 
       if (scopedDocIds !== undefined && retrieved.length === 0) {
@@ -162,6 +168,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 scopedDocIds,
                 undefined,
                 noiseFilter,
+                deps.repositories.tenantId,
               )
             : await hybridSearch(
                 deps.client,
@@ -172,6 +179,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
                 scopedDocIds,
                 undefined,
                 noiseFilter,
+                deps.repositories.tenantId,
               );
       }
 
@@ -275,6 +283,7 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
         let degradedReason: DegradationReason | undefined;
         if (signal?.aborted) throw new AnswerCancelledError();
         let draft: DraftAnswer | undefined;
+        let synthesisFailure: string | undefined;
         try {
           draft = await deps.model.complete(request, signal);
         } catch (e) {
@@ -284,6 +293,10 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
           // 500, no cache entry (the next question retries the model).
           degraded = true;
           degradedReason = "model-failed";
+          synthesisFailure =
+            typeof (e as { kind?: unknown }).kind === "string"
+              ? ((e as { kind: string }).kind ?? "unknown")
+              : "unknown";
           answer = evidenceOnlyAnswer(task.ownerId, task.question, packed);
         }
         if (draft !== undefined) {
@@ -352,6 +365,31 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
             deltaInput: settled.deltaInput,
             deltaOutput: settled.deltaOutput,
           };
+        }
+
+        // EXT-03 (issue #123): the synthesis audit record. Written after the
+        // ledger settles so the token counts are the CALL's actuals, and
+        // best-effort so a logging failure never loses a produced answer.
+        if (deps.onSynthesis !== undefined) {
+          const event: SynthesisAuditEvent = {
+            tenantId: deps.repositories.tenantId,
+            ownerId: task.ownerId,
+            requestId,
+            answerId,
+            provider: deps.model.name,
+            model: deps.model.modelId,
+            estimated: answer.usage?.estimated ?? true,
+            inputTokens: answer.usage?.inputTokens ?? 0,
+            outputTokens: answer.usage?.outputTokens ?? 0,
+            outcome: synthesisFailure === undefined ? "completed" : "failed",
+            ...(synthesisFailure === undefined ? {} : { failureKind: synthesisFailure }),
+            at: new Date().toISOString(),
+          };
+          try {
+            await deps.onSynthesis(event);
+          } catch {
+            // Audit is not the answer: swallow (the answer is already stored).
+          }
         }
 
         return {

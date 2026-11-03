@@ -91,6 +91,11 @@ function hitFromRow(row: Row): PassageHit {
  * answer-time exclusion) drops passages flagged at store time with a
  * noise class — advisory in the same shape: NULL (unclassified/legacy)
  * is ALWAYS included, and the filter is byte-identical when omitted.
+ *
+ * `tenantId` (plan 035) is the caller's tenant scope. The tenant is still
+ * derived from the authoritative owners row; supplying a scope adds a
+ * second condition that must agree with it, so a runtime bound to the wrong
+ * tenant retrieves nothing instead of another tenant's rows.
  */
 export async function searchPassages(
   client: Client,
@@ -100,6 +105,7 @@ export async function searchPassages(
   documentIds?: string[],
   relevanceFloor?: number,
   noiseFilter?: boolean,
+  tenantId?: string,
 ): Promise<PassageHit[]> {
   const match = buildMatchQuery(queryText);
   if (match === null) return [];
@@ -112,6 +118,7 @@ export async function searchPassages(
       ? ""
       : " AND (d.relevance_score IS NULL OR d.relevance_score >= ?)";
   const noiseClause = noiseFilter === true ? " AND p.noise_class IS NULL" : "";
+  const tenantClause = tenantId === undefined ? "" : " AND p.tenant_id = ?";
   const res = await client.execute({
     sql: `SELECT f.passage_id, p.document_id, d.content_hash, f.excerpt, bm25(passages_fts) AS score
           FROM passages_fts f
@@ -120,7 +127,7 @@ export async function searchPassages(
           WHERE passages_fts MATCH ?
             AND f.owner_id = ?
             AND p.tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
-            AND d.tenant_id = p.tenant_id${docFilter}${floorFilter}${noiseClause}
+            AND d.tenant_id = p.tenant_id${tenantClause}${docFilter}${floorFilter}${noiseClause}
           ORDER BY score
           LIMIT ?`,
     args: [
@@ -131,6 +138,8 @@ export async function searchPassages(
       // a passage or document whose tenant_id disagrees with its owner can
       // never be ranked for that owner — no caller-supplied tenant to trust.
       ownerId,
+      // Plan 035: an explicit scope must agree with that derivation.
+      ...(tenantId === undefined ? [] : [tenantId]),
       ...(documentIds && documentIds.length > 0 ? documentIds : []),
       ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
       limit,

@@ -35,6 +35,16 @@
       "id": "INV-007",
       "statement": "Site-access default-deny list includes bot-prohibiting sites (linkedin.com)",
       "enforcedBy": "scripts/policy.ts (check defaultDenyList)"
+    },
+    {
+      "id": "INV-008",
+      "statement": "Storage queries, retrieval entry points, and the CLI cannot return one tenant's evidence, answers, budget, or history to another tenant",
+      "enforcedBy": "tests/security/cross-tenant.test.ts + tests/security/cross-tenant-scope.test.ts"
+    },
+    {
+      "id": "INV-009",
+      "statement": "Every relative link and anchor in maintained Markdown resolves to a file or heading that exists",
+      "enforcedBy": "scripts/markdown-links.ts"
     }
   ]
 }

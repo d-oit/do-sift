@@ -70,6 +70,11 @@ export const SENSOR_DEFS: readonly SensorDef[] = [
     sets: ["feedback", "verification", "release"],
   },
   {
+    name: "links",
+    args: [TSX_CLI, "scripts/markdown-links.ts"],
+    sets: ["feedback", "verification", "release"],
+  },
+  {
     name: "tests",
     args: [nodeModulesEntry("vitest", "vitest.mjs"), "run"],
     sets: ["verification", "release"],

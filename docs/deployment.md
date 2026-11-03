@@ -254,6 +254,11 @@ npx tsx apps/server/src/index.ts
 | `DO_SIFT_MODEL_RESPONSE_FORMAT`                                           | `strict` (default, constrained-decoding hosts) / `best-effort` / `json`                                                                                                                                                                               | strict               |
 | `DO_SIFT_MODEL_SCHEMA_NAME`                                               | Schema name sent in `response_format`                                                                                                                                                                                                                 | grounded_answer      |
 | `DO_SIFT_MODEL_TERMS_ACCEPTED_AT` / `DO_SIFT_MODEL_SOURCES_ENTRY`         | Dated terms gate (with `openai-compat` only): checked date + `plans/sources.md` entry, mirrored into plugin activation (paid hosts additionally need router gate + INV-003 grant)                                                                     | —                    |
+| `DO_SIFT_SEARCH_API_KEY_SECRET`                                           | NAME of the env var holding a Marginalia API key (never the key). Unset = the verified keyless legacy endpoint; set = the keyed `api2` endpoint. Startup refuses when the named var is missing or empty (plan 038 / EXT-01)                           | unset                |
+| `DO_SIFT_MODEL_PAID`                                                      | `1`/`true` asserts the model host is billable. Requires both price variables below; the answer path goes through the model router, which refuses a paid provider without verified pricing + a dated sources entry (EXT-02)                            | false                |
+| `DO_SIFT_MODEL_PRICE_INPUT_PER_1M`                                        | Verified input price, USD per 1M tokens, from the provider's dated `plans/sources.md` entry (required when `DO_SIFT_MODEL_PAID`)                                                                                                                      | —                    |
+| `DO_SIFT_MODEL_PRICE_OUTPUT_PER_1M`                                       | Verified output price, USD per 1M tokens, from the same dated entry (required when `DO_SIFT_MODEL_PAID`)                                                                                                                                              | —                    |
+| `DO_SIFT_MODEL_MAX_COST_MICRO_USD`                                        | Per-call worst-case ceiling in micro-USD; the router prices the request's token **ceilings** (never an optimistic guess) and refuses a call that would exceed it                                                                                      | unset (no ceiling)   |
 
 Migrations run automatically at startup; every allowlisted owner is
 seeded into the owners registry. Research mode makes zero LLM calls by
@@ -292,10 +297,20 @@ linked pages carry their own licenses); the evidence store preserves
 attribution. `DO_SIFT_SEARCH_PROVIDER=wikipedia,marginalia` composes the
 merged provider (SRC-16: fan-out, interleave + canonical-URL dedup);
 run summaries carry per-provider `providerHealth` (SRC-17) and the bundled
-UI renders it as a status line (SRC-22). The api2 host
-(`api2.marginalia-search.com`, `API-Key` header) is NOT wired and NOT planned: the shared
-literal key `public` probed 429 on 2026-09-21, and a personal key is closed (owner could
-not obtain one) — the legacy endpoint is the supported path; see `plans/sources.md`.
+UI renders it as a status line (SRC-22).
+
+Marginalia publishes a second, keyed API on `api2.marginalia-search.com`
+(`API-Key` header). It is wired but dormant: setting
+`DO_SIFT_SEARCH_API_KEY_SECRET` to the NAME of an env var holding a key
+switches the adapter to the keyed endpoint (the key is never in config or
+logs; `plugin.json` declares both hosts and the `MARGINALIA_API_KEY`
+secret). Unset — the shipped default — keeps the verified keyless legacy
+path. A named-but-missing or empty key refuses startup rather than quietly
+falling back to the shared `public` key, which probed 429 on 2026-09-21.
+The keyed path is currently **owner-gated**: Marginalia closed its
+personal-key programme as of 2026-09-21, so no key can be obtained today
+(`plans/sources.md`, plan 038 EXT-G1). The adapter, manifest, tests, and
+fail-closed behaviour are in place for when a key becomes available.
 
 ### Runtime defaults (RET-04 seam)
 
@@ -317,9 +332,44 @@ used (`Authorization: Bearer`); keyless when unset (Ollama-local);
 `DO_SIFT_MODEL_USE_API_KEY=0` forces keyless even with a secret named.
 A named-but-missing key refuses startup instead of silently going
 keyless. The startup log reports key posture only (configured / disabled
-/ keyless — never secret names or values). Paid (billable-capable) hosts additionally need the router
-terms gate + INV-003 grant recorded in `plans/sources.md` — the
-entrypoint itself stays key-agnostic by design.
+/ keyless — never secret names or values).
+
+The answer path is composed **through the model router**
+(`packages/plugins/plugin-model-router`), so the two money rules are
+enforced at composition rather than merely available in a plugin:
+
+- **Paid refusal.** `DO_SIFT_MODEL_PAID=1` asserts the host is billable
+  and requires `DO_SIFT_MODEL_PRICE_INPUT_PER_1M` +
+  `DO_SIFT_MODEL_PRICE_OUTPUT_PER_1M` (USD per 1M tokens, from the dated
+  `plans/sources.md` entry) plus that dated sources entry itself. A paid
+  provider without them is refused; a malformed flag or price refuses
+  startup rather than defaulting to "free". Hosted paid plugins
+  additionally face the kernel INV-003 capability grant.
+- **Cost ceiling.** `DO_SIFT_MODEL_MAX_COST_MICRO_USD` bounds one call's
+  worst case, priced from the request's token **ceilings** — never an
+  optimistic guess. A call that would exceed it is refused before the
+  network.
+
+Only an owner may enable a paid provider and spend money: AGENTS.md lists
+"enabling or spending on paid APIs; anything billable" as an approval
+boundary, and plan 038 records that item as owner-gated (EXT-G2).
+
+### Synthesis call log (EXT-03)
+
+Every synthesis attempt leaves one row in the `synthesis_calls` table
+(migration `0013`): tenant, owner, provider, model, estimated-vs-reported
+tokens, the price in integer micro-USD, outcome (`completed` / `failed`),
+failure kind, and the request/answer ids. The row is written after the
+usage ledger settles, from the runtime's own tenant binding, with the
+price the router verified — so the recorded cost is the cost the gate
+enforced, not a second guess. Writing is best-effort: a logging failure
+never loses an answer that was already produced and settled. Free/loopback
+providers record zero cost and are still logged, so the audit trail has no
+silent gaps.
+
+Query it per owner with `SynthesisCallLogService.list(ownerId)`; daily
+spend totals come from `totalCostMicroUsdForDay(ownerId, "YYYY-MM-DD")`.
+Costs round **up** per call so a stored cost never understates the price.
 
 ### Container
 

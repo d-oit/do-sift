@@ -350,7 +350,10 @@ export function createResearchHarness(
               deps.repositories.db,
               task.ownerId,
               deps.embedder,
-              ...(signal !== undefined ? [{ signal }] : []),
+              {
+                tenantId: deps.repositories.tenantId,
+                ...(signal !== undefined ? { signal } : {}),
+              },
             );
             if (backfill.failureClass !== undefined) {
               ctx.events.emit("research.embeddings-failed", {
@@ -375,6 +378,7 @@ export function createResearchHarness(
             deps.repositories.db,
             task.ownerId,
             classifyNoise,
+            deps.repositories.tenantId,
           );
         } catch (error) {
           ctx.events.emit("research.noise-backfill-failed", {

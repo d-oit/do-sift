@@ -43,6 +43,38 @@ export interface AnswerServiceDeps {
    * embeddings (RET-02, ADR 0009); without it, plain bm25 (unchanged).
    */
   embedder?: TextEmbedder | undefined;
+  /**
+   * Synthesis audit hook (issue #123, plan 038 — EXT-03). Called once per
+   * synthesis attempt, after the call settles, with what actually happened.
+   * Best-effort at the call site: a throwing logger is swallowed so a logging
+   * failure can never lose an answer that was already produced and settled.
+   * The caller decides what to persist (e.g. `SynthesisCallLogService`).
+   */
+  onSynthesis?: ((event: SynthesisAuditEvent) => void | Promise<void>) | undefined;
+}
+
+/**
+ * One synthesis attempt, reported to `AnswerServiceDeps.onSynthesis`.
+ * Token counts and cost are the CALL's, not the reservation's: on failure there
+ * is no usage to report and `outcome` says so.
+ */
+export interface SynthesisAuditEvent {
+  /** Tenant the runtime serving this call is bound to (never caller input). */
+  tenantId: string;
+  ownerId: string;
+  requestId: string | undefined;
+  answerId: string | undefined;
+  /** Contract identity of the model path (the router reports its selection). */
+  provider: string;
+  model: string;
+  estimated: boolean;
+  inputTokens: number;
+  outputTokens: number;
+  outcome: "completed" | "failed";
+  /** Failure class name when `outcome` is "failed". */
+  failureKind?: string | undefined;
+  /** True when the call was refused before reaching the provider (budget, abort). */
+  at: string;
 }
 export interface AnswerTask {
   ownerId: string;

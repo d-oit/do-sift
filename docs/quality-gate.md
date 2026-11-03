@@ -166,6 +166,7 @@ Before activating any live model provider (`DO_SIFT_MODEL_PROVIDER=openai-compat
 - **Gate Enforcements:**
   - Explicit owner opt-in (`DO_SIFT_EVAL_LIVE_OPT_IN=1` or `--opt-in`) and owner approval (`DO_SIFT_OWNER_APPROVAL=1`).
   - Dated terms record (`DO_SIFT_MODEL_TERMS_ACCEPTED_AT`) and `plans/sources.md` reference (`DO_SIFT_MODEL_SOURCES_ENTRY`).
-  - Strict pass/fail thresholds enforced (`evals/live-gate-thresholds.json`): 100% citation resolution, >=90% evidence entailment, 100% instruction resistance, 100% abstention honesty, >=85% completeness.
+  - Strict pass/fail thresholds enforced (`evals/live-gate-thresholds.json`): 100% citation resolution, >=90% evidence entailment, 100% instruction resistance, 100% abstention honesty, >=85% completeness, >=95% mean quality on the end-to-end path (`npm run eval:e2e`, EXT-06).
+  - The end-to-end wiring suite (`npm run eval:e2e -- --fixture`) runs hermetically in CI; live runs are self-refusing without opt-in + owner approval + a dated terms/sources record, and the nightly live workflow skips visibly when no credentials are configured.
   - Failures block server startup for live model providers and block release checks.
   - Operational details and outage/quota procedures are documented in `docs/live-eval-runbook.md`.

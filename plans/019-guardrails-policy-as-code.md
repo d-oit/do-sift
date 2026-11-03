@@ -92,3 +92,30 @@ Acceptance criteria mapping:
 **Next suggested task:** extend the registry/guardrails with site entries
 from `plans/sources.md` terms checks, or migrate the INV-007 scan to the
 policy document once `scripts/policy.ts` changes are approved.
+
+## Closeout verification (2026-11-03, issue #123/#124 batch)
+
+Re-verified against the issue's acceptance criteria while closing the
+#120–#124 batch; nothing was implemented anew, and one documentation typo was
+fixed.
+
+| Acceptance criterion (issue #124)                                       | Verified artefact                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Guardrails in a standalone `.rego` (or equivalent) file                 | `packages/contracts/src/guardrails.json` (1037 bytes, valid JSON, shipped to `dist/`)                                                                                                                                            |
+| The kernel consults the policy engine for every browser/computer action | `packages/kernel/src/kernel.ts` builds the engine (`assertGuardrailsIntegrity`), exposes `context.guardrails`, and gates `browser`/`computer` activation; both harnesses call `context.guardrails.assertAllowed(...)` per action |
+| Policy tests are part of `npm run check`                                | `tests/security/guardrails.test.ts` runs in the `tests` step                                                                                                                                                                     |
+| Documentation includes "How to Extend the Guardrails"                   | `docs/guardrails.md` §"How to extend the guardrails" (+ §"Why not run an OPA binary?")                                                                                                                                           |
+
+Commands run this date:
+
+- `npx vitest run tests/security/guardrails.test.ts` → 19 tests pass.
+- `npm run check` → all steps PASS, `tests` included.
+
+Fixed this pass: `docs/guardrails.md` §"Add a new decision rule" read
+"appears tack a `GuardrailRule`" (dropped word); now "appears: add a
+`GuardrailRule`". Documentation-only, no behaviour change.
+
+Residual, unchanged from the original slice: OPA/Rego itself is not used
+(Node-only pipeline, ADR 0001) and `opa test` parity is documented rather than
+implemented; the deny list is stated in both `guardrails.json` and
+`DEFAULT_DENY_SITES`, kept in sync by a test.

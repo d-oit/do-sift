@@ -55,6 +55,7 @@ describe("SENSOR_DEFS", () => {
       "policy",
       "skills",
       "governance",
+      "links",
       "tests",
       "evals",
       "build",
@@ -78,6 +79,7 @@ describe("SENSOR_DEFS", () => {
       nm("tsx", "dist/cli.mjs"),
       "scripts/codeowners-check.ts",
     ]);
+    expect(def("links").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/markdown-links.ts"]);
     expect(def("tests").args).toEqual([nm("vitest", "vitest.mjs"), "run"]);
     expect(def("evals").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/eval.ts"]);
     expect(def("build").args).toEqual([
@@ -90,7 +92,7 @@ describe("SENSOR_DEFS", () => {
 
   it("partitions sensors across the named signal sets", () => {
     const shared: SensorDef["sets"] = ["feedback", "verification", "release"];
-    for (const name of ["format", "lint", "typecheck", "policy", "skills", "governance"]) {
+    for (const name of ["format", "lint", "typecheck", "policy", "skills", "governance", "links"]) {
       expect(def(name).sets).toEqual(shared);
     }
     expect(def("tests").sets).toEqual(["verification", "release"]);
@@ -115,6 +117,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "policy",
       "skills",
       "governance",
+      "links",
     ]);
     expect([...SIGNAL_SETS.verification]).toEqual([
       "format",
@@ -123,6 +126,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "policy",
       "skills",
       "governance",
+      "links",
       "tests",
       "evals",
       "build",
@@ -134,6 +138,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "policy",
       "skills",
       "governance",
+      "links",
       "tests",
       "evals",
       "build",

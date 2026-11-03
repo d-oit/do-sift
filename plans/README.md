@@ -1,6 +1,9 @@
 # plans/ — decision records, task plans, invariants
 
 This folder is the project's memory. Agents and humans update it together.
+The readable outcome of these records lives under [`docs/`](../docs/README.md);
+see the [architecture index](../docs/architecture/README.md) and the
+[decision records](../docs/decisions/README.md) for the short versions.
 
 ## Layout
 
@@ -9,15 +12,19 @@ This folder is the project's memory. Agents and humans update it together.
   this repository's configured sensor names
 - `invariants.json` — machine-checked invariants; each maps to an enforcing
   test or script (CI fails if an invariant has no enforcing check)
-- `risks.md` — living risk register with owners and status
-- `sources.md` — dated records of commercial limits, quotas, and terms
+- [`risks.md`](risks.md) — living risk register with owners and status
+- [`sources.md`](sources.md) — dated records of commercial limits, quotas, and terms
   (Turso tiers, search/model providers). Every provider activation gate
   requires a fresh entry here.
-- `adr/` — architecture decision records (immutable once accepted)
+- [`adr/`](adr/) — architecture decision records (immutable once accepted)
 - `templates/task.md` — task record format
 
 ## Current queue
 
+- `038-owner-gated-integrations.md` — done (2026-11-03, issue #123); Marginalia key management (secret NAME → keyed `api2`, keyless default, fail-closed), the answer path composed through the model router so paid/pricing/ceiling are enforced at composition, an append-only `synthesis_calls` audit table (migration 0013), `npm run eval:e2e` (hermetic `--fixture` + self-refusing live mode), the owner-approved nightly live workflow, and `minMeanQuality: 0.95`. Two rows stay owner-gated by design: a Marginalia api2 key (programme closed 2026-09-21) and any live paid spend (AGENTS.md approval boundary).
+- `037-python-interop-mcp-spike.md` — done (2026-11-03, issue #122); the engine exposes research/answer/evidence over MCP on stdio (`packages/server/src/mcp.ts`, `apps/mcp/src/index.ts`) so a Python process can drive the tool surface with no Python in the engine; the sidecar path was spiked and deferred (ADR 0010), and the throwaway spike artifacts were deleted under INV-001.
+- `036-dev-docs-and-link-gate.md` — done (2026-11-03, issue #121); `docs/README.md` hub, architecture index, contributor guide, and ADR index, plus a `links` sensor checking relative links and heading anchors across the repo (INV-009) wired into `npm run check`, the dev-signal harness, and `do-harness.toml`.
+- `035-tenant-scoping-closeout.md` — done (2026-11-03, issue #120); every remaining storage entry point that could cross a tenant boundary (search, embedding/hybrid retrieval, backfills, dimension probe) takes owner + tenant, the CLI gained `--tenant` on all data commands, `retention prune` is tenant-aware, and `tests/security/cross-tenant-scope.test.ts` pins it (INV-008).
 - `034-degradation-trend-deltas.md` — done (2026-11-02, DEG-07); the trend table highlights rows whose reason buckets moved and lists the per-bucket delta. Renumbered from 024 on 2026-11-03 so it no longer shares a number with `024-multi-tenant-auth.md`, which the code cites as "plan 024"; the task ID is unchanged.
 - `024-multi-tenant-auth.md` — done (2026-11-03, issue #120); pluggable `AuthProvider` contract, OIDC reference plugin with tenant-claim mapping, tenant-scoped storage (migration 0011 + query layer + schema triggers), per-tenant/per-user capability grants, the cross-tenant leakage suite, and the owner-allowlist fallback preserved. MT-07/MT-08 added membership enforcement in the grant path (`tenant_members` → `Kernel.authorizeForPrincipal`) and per-principal runtime resolution, so one `apps/server` process can serve a configured tenant set with `DO_SIFT_TENANTS`; MT-10 adds an owner-readable membership change log and MT-11 its retention and pruning path; MT-12 makes the recorded role policy, so a `viewer` cannot research (`POST /api/research` and `/api/answer` answer `403` before a runtime or budget is touched) while MT-13 gives that role something to read through `GET /api/evidence` and `/api/answers`, scoped to the caller's own corpus. Owner ids remain global and reads stay owner-scoped (documented limits).
 - `033-pr-issue-link.md` — done (2026-11-03); the branch now carries a `Closes #127` commit and a changelog entry for the degradation-honesty contract, so merging the PR links the work to its issue without editing GitHub metadata.

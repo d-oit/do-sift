@@ -1,7 +1,14 @@
 # Contributing to do-sift
 
-Read `AGENTS.md` first: it sets the ground rules (no Python, untrusted content is
+Read [`AGENTS.md`](AGENTS.md) first: it sets the ground rules (no Python, untrusted content is
 data, every task has an ID and evidence) and the approved commands.
+
+New to the codebase? Start with the
+[contributor guide](docs/contributing-guide.md), which walks through building
+and testing a plugin end to end, and the
+[architecture index](docs/architecture/README.md) for how the pieces fit.
+Decisions and their rationale are indexed in
+[docs/decisions/](docs/decisions/README.md).
 
 ## Local setup
 

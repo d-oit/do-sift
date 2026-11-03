@@ -58,6 +58,10 @@ export class ModelRouterError extends Error {
 }
 
 export interface ModelRouterInstance extends PluginInstance {
+  /** Contract identity for provenance: the router itself. */
+  readonly name: string;
+  /** The selected provider's model id (empty before activation). */
+  readonly modelId: string;
   complete(request: SynthesisRequest, signal?: AbortSignal): Promise<DraftAnswer>;
   readonly selectedProvider: string | undefined;
 }
@@ -82,6 +86,8 @@ export function createModelRouter(deps: { providers: RouterProvider[] }): ModelR
   let selected: string | undefined;
 
   return {
+    name: "model-router",
+
     async activate(context) {
       const cfg = context.config as ModelRouterConfig;
       const name = cfg.defaultProvider;
@@ -114,6 +120,16 @@ export function createModelRouter(deps: { providers: RouterProvider[] }): ModelR
 
     get selectedProvider() {
       return selected;
+    },
+
+    /**
+     * The selected provider's model id. Before a call (or when the selected
+     * provider does not expose one) this is the router's own name, so a
+     * provenance record always has a non-empty, honest value.
+     */
+    get modelId() {
+      const entry = deps.providers.find((p) => p.name === (selected ?? defaultProvider));
+      return entry?.provider.modelId ?? "model-router";
     },
 
     async complete(request: SynthesisRequest, signal?: AbortSignal): Promise<DraftAnswer> {

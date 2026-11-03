@@ -10,9 +10,9 @@ pre-commit = []
 pre-push = []
 
 [signal-sets]
-feedback = ["format", "lint", "typecheck", "policy", "skills", "governance"]
-verification = ["format", "lint", "typecheck", "policy", "skills", "governance", "tests", "evals", "build"]
-release = ["format", "lint", "typecheck", "policy", "skills", "governance", "tests", "evals", "build", "release"]
+feedback = ["format", "lint", "typecheck", "policy", "skills", "governance", "links"]
+verification = ["format", "lint", "typecheck", "policy", "skills", "governance", "links", "tests", "evals", "build"]
+release = ["format", "lint", "typecheck", "policy", "skills", "governance", "links", "tests", "evals", "build", "release"]
 
 [[sensors]]
 name = "format"
@@ -37,6 +37,10 @@ argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/skills-check.ts"]
 [[sensors]]
 name = "governance"
 argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/codeowners-check.ts"]
+
+[[sensors]]
+name = "links"
+argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/markdown-links.ts"]
 
 [[sensors]]
 name = "tests"
