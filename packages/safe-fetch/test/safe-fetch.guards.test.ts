@@ -126,6 +126,18 @@ describe("IP classification", () => {
     expect(expandIpv6("gg00::1")).toBeNull();
   });
 
+  it("parses host strings in bounded time on adversarial input", () => {
+    // CodeQL js/polynomial-redos: the embedded-IPv4 tail used to be found with
+    // an anchored /(\d+\.\d+\.\d+\.\d+)$/ regex, which backtracks
+    // polynomially over a long digit run from an attacker-supplied hostname.
+    const start = performance.now();
+    expect(expandIpv6("0".repeat(200_000))).toBeNull();
+    expect(expandIpv6(`${"1.".repeat(50_000)}1`)).toBeNull();
+    expect(expandIpv6(`::ffff:${"1".repeat(70_000)}`)).toBeNull();
+    expect(expandIpv6("::ffff:1.2.3.4")).toEqual([0, 0, 0, 0, 0, 0xffff, 0x102, 0x304]);
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+
   it("fails closed on unparseable resolved addresses", () => {
     expect(() => assertPublicAddress("not-an-ip")).toThrow(SafeFetchError);
     expect(() => assertPublicAddress(":::")).toThrow(SafeFetchError);
