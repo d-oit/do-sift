@@ -52,14 +52,22 @@ export function parseIpv4(host: string): readonly number[] | null {
  * 16-bit groups, or null if it is not a valid IPv6 literal.
  */
 export function expandIpv6(host: string): readonly number[] | null {
+  // The longest legal textual form is 45 characters (::ffff:255.255.255.255),
+  // so a longer string is not an IPv6 literal. Rejecting it up front also keeps
+  // every scan below bounded on attacker-supplied hostnames.
+  if (host.length > 255) return null;
   let s = host.toLowerCase();
-  const v4Match = /(\d+\.\d+\.\d+\.\d+)$/u.exec(s);
-  if (v4Match?.[1]) {
-    const v4 = parseIpv4(v4Match[1]);
-    if (!v4) return null;
+  // Embedded IPv4 tail (::ffff:a.b.c.d) = the text after the last colon. It is
+  // located by indexOf instead of /(\d+\.\d+\.\d+\.\d+)$/: that anchored
+  // pattern is polynomial on a long digit run (CodeQL js/polynomial-redos),
+  // and parseIpv4 already validates the dotted quad without backtracking.
+  const lastColon = s.lastIndexOf(":");
+  const v4Tail = lastColon === -1 ? s : s.slice(lastColon + 1);
+  const v4 = parseIpv4(v4Tail);
+  if (v4) {
     const hi = (((v4[0] ?? 0) << 8) | (v4[1] ?? 0)).toString(16);
     const lo = (((v4[2] ?? 0) << 8) | (v4[3] ?? 0)).toString(16);
-    s = `${s.slice(0, s.length - v4Match[1].length)}${hi}:${lo}`;
+    s = `${s.slice(0, s.length - v4Tail.length)}${hi}:${lo}`;
   }
   const halves = s.split("::");
   if (halves.length > 2) return null;

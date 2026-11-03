@@ -255,6 +255,128 @@ describe("do-sift CLI (#67)", () => {
     });
   });
 
+  describe("retention prune-changes", () => {
+    const fixedNow = new Date("2026-11-01T12:00:00.000Z");
+
+    beforeEach(async () => {
+      for (const [id, name] of [
+        ["acme", "Acme"],
+        ["globex", "Globex"],
+      ] as const) {
+        await client.execute({
+          sql: "INSERT INTO tenants (id, display_name, created_at) VALUES (?, ?, '2026-01-01T00:00:00Z')",
+          args: [id, name],
+        });
+      }
+      const changes = [
+        ["acme", "old", "2026-09-01T00:00:00Z"],
+        ["acme", "new", "2026-10-31T00:00:00Z"],
+        ["globex", "old-other", "2026-09-01T00:00:00Z"],
+      ] as const;
+      for (const [tenant, target, at] of changes) {
+        await client.execute({
+          sql: "INSERT INTO tenant_member_changes (tenant_id, actor_user_id, target_user_id, action, from_role, to_role, created_at) VALUES (?, 'owner-1', ?, 'added', NULL, 'member', ?)",
+          args: [tenant, target, at],
+        });
+      }
+    });
+
+    async function remaining(): Promise<string[]> {
+      const res = await client.execute(
+        "SELECT target_user_id FROM tenant_member_changes ORDER BY id",
+      );
+      return res.rows.map((row) => String(row.target_user_id));
+    }
+
+    it("requires --tenant and a retention window", async () => {
+      expect(await runCli(["retention", "prune-changes", "--retention-days", "30"], deps())).toBe(
+        2,
+      );
+      expect(stderr.join("\n")).toContain("--tenant is required");
+
+      expect(await runCli(["retention", "prune-changes", "--tenant", "acme"], deps())).toBe(2);
+      expect(stderr.join("\n")).toContain("either --retention-days or --cutoff is required");
+    });
+
+    it("defaults to a dry run and reports candidate counts", async () => {
+      expect(
+        await runCli(
+          ["retention", "prune-changes", "--tenant", "acme", "--retention-days", "30"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      const text = stdout.join("\n");
+      expect(text).toContain("tenant_id\tacme");
+      expect(text).toContain("mode\tdry-run");
+      expect(text).toContain("candidate_changes\t1");
+      expect(text).toContain("deleted_changes\t0");
+      expect(text).toContain("notice: dry-run mode completed. To execute deletion, pass --confirm");
+      expect(await remaining()).toEqual(["old", "new", "old-other"]);
+    });
+
+    it("deletes only that tenant's old changes when confirmed", async () => {
+      expect(
+        await runCli(
+          ["retention", "prune-changes", "--tenant", "acme", "--retention-days", "30", "--confirm"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      const text = stdout.join("\n");
+      expect(text).toContain("mode\tprune");
+      expect(text).toContain("deleted_changes\t1");
+      expect(text).not.toContain("notice: dry-run mode completed");
+      expect(await remaining()).toEqual(["new", "old-other"]);
+    });
+
+    it("refuses to shorten the review window below the floor", async () => {
+      expect(
+        await runCli(
+          ["retention", "prune-changes", "--tenant", "acme", "--retention-days", "7"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("at least 30");
+
+      expect(
+        await runCli(
+          ["retention", "prune-changes", "--tenant", "acme", "--cutoff", "2026-10-31"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(1);
+      expect(stderr.join("\n")).toContain("30-day floor");
+      expect(await remaining()).toEqual(["old", "new", "old-other"]);
+    });
+
+    it("exports the prune receipt with --out", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-changes-"));
+      const outPath = join(dir, "receipt.json");
+      expect(
+        await runCli(
+          [
+            "retention",
+            "prune-changes",
+            "--tenant",
+            "acme",
+            "--retention-days",
+            "30",
+            "--out",
+            outPath,
+          ],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      const parsed = JSON.parse(await readFile(outPath, "utf8")) as {
+        tenantId: string;
+        dryRun: boolean;
+        candidates: number;
+        deleted: number;
+        success: boolean;
+      };
+      expect(parsed).toMatchObject({ tenantId: "acme", dryRun: true, candidates: 1, deleted: 0 });
+      expect(parsed.success).toBe(true);
+    });
+  });
+
   describe("research list & research show", () => {
     it("lists research runs for one explicit owner and redacts question by default", async () => {
       expect(await runCli(["research", "list", "--owner", "alice"], deps())).toBe(0);

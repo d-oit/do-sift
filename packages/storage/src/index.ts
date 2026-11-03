@@ -17,18 +17,30 @@ export type {
   PassageRow,
   RequestRow,
 } from "./repositories.js";
+export {
+  SYSTEM_ACTOR,
+  TENANT_MEMBER_CHANGE_LIMIT,
+  TenantMembershipDirectory,
+} from "./membership.js";
+export type { TenantMemberRow } from "./membership.js";
 export { BudgetService, BudgetServiceError } from "./budget.js";
 export type { DailyCaps, HeldUsage, ReserveInput, SettleInput, SettleResult } from "./budget.js";
 export { backfillPassageNoiseClasses } from "./noise.js";
 export {
+  DEFAULT_MEMBER_CHANGE_RETENTION_DAYS,
   DEFAULT_RETENTION_CONFIG,
+  MIN_MEMBER_CHANGE_RETENTION_DAYS,
   calculateSafeCutoff,
   calculateStartOfTodayUtc,
   executeOwnerRetention,
+  pruneMemberChangeLog,
   pruneOwnerHistory,
   validateCutoffIso,
+  validateMemberChangeRetentionDays,
 } from "./retention.js";
 export type {
+  MemberChangeRetentionOptions,
+  MemberChangeRetentionReceipt,
   RetentionConfig,
   RetentionOptions,
   RetentionReceipt,

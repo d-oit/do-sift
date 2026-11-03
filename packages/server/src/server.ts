@@ -6,7 +6,16 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import type { HttpRequestEvent, ResearchServerOptions } from "./server-contracts.js";
+import { DEFAULT_TENANT_ID, roleAllows, type TenantRoleAction } from "@do-sift/contracts";
+import type {
+  AuthenticatedRequestOwner,
+  HttpRequestEvent,
+  ResearchServerOptions,
+  RuntimeHandlers,
+} from "./server-contracts.js";
+import { TenantAccessError } from "./runtime-resolver.js";
+import { handleMembershipAdmin, isMembershipAdminPath } from "./membership-admin.js";
+import { handleReadRoute, isReadPath } from "./read-surface.js";
 import {
   HttpRequestError,
   SSE_HEARTBEAT_MS,
@@ -22,7 +31,7 @@ import {
   startReadinessProbe,
 } from "./server-http.js";
 import type { ReadinessProbe } from "./server-http.js";
-import { admitOwner } from "./owner-limiter.js";
+import { admissionKey, admitOwner } from "./owner-limiter.js";
 import { DEFAULT_PAGE } from "./default-page.js";
 export type { SourceCard } from "./server-contracts.js";
 export type { ResearchRunOutcome } from "./server-contracts.js";
@@ -31,12 +40,79 @@ export type { AnswerSuspectEvent } from "./server-contracts.js";
 export type { AnswerDegradedEvent } from "./server-contracts.js";
 export type { OperationalEvent } from "./server-contracts.js";
 export type { ResearchServerOptions } from "./server-contracts.js";
+export type {
+  AuthenticatedRequestOwner,
+  MembershipAdminHandlers,
+  RuntimeHandlers,
+  TenantMemberChangeView,
+  TenantMemberView,
+} from "./server-contracts.js";
 export type { AnswerHttpResponse } from "./server-contracts.js";
 export type { OwnerLimits } from "./owner-limiter.js";
 export { DEFAULT_REQUEST_DEADLINE_MS } from "./server-http.js";
 export { SSE_HEARTBEAT_MS } from "./server-http.js";
 export { DEFAULT_OWNER_LIMITS } from "./owner-limiter.js";
 export { OwnerLimiter } from "./owner-limiter.js";
+/**
+ * The run surface for this request: `runtimeFor` when the host routes by
+ * tenant, otherwise the single static handler pair.
+ */
+async function selectRuntimeHandlers(
+  options: ResearchServerOptions,
+  owner: AuthenticatedRequestOwner,
+): Promise<RuntimeHandlers> {
+  if (options.runtimeFor !== undefined) {
+    return options.runtimeFor({
+      tenantId: owner.tenantId ?? DEFAULT_TENANT_ID,
+      userId: owner.ownerId,
+    });
+  }
+  if (options.runResearch === undefined) {
+    throw new Error("research server has no runtime configured");
+  }
+  return {
+    runResearch: options.runResearch,
+    ...(options.answer === undefined ? {} : { answer: options.answer }),
+  };
+}
+/**
+ * MT-12: the recorded membership role gates the run surfaces. A viewer is
+ * read-only, so research and answers answer 403 before a runtime is resolved,
+ * any budget is reserved, or any evidence is written. Returns true when the
+ * request was refused (and the response is already sent).
+ */
+async function refuseByRole(
+  options: ResearchServerOptions,
+  owner: AuthenticatedRequestOwner,
+  action: TenantRoleAction,
+  res: ServerResponse,
+  httpRequestId: string,
+  req: IncomingMessage,
+): Promise<boolean> {
+  if (options.roleFor === undefined) return false;
+  const role = await options.roleFor({
+    tenantId: owner.tenantId ?? DEFAULT_TENANT_ID,
+    userId: owner.ownerId,
+  });
+  if (roleAllows(role, action)) return false;
+  jsonError(res, 403, "forbidden", httpRequestId, req);
+  return true;
+}
+
+/** Tenant refusal is 403 and never leaks whether the tenant exists. */
+function respondRuntimeFailure(
+  res: ServerResponse,
+  error: unknown,
+  httpRequestId: string,
+  req: IncomingMessage,
+): void {
+  if (error instanceof TenantAccessError) {
+    jsonError(res, 403, "forbidden", httpRequestId, req);
+    return;
+  }
+  console.error(`[${httpRequestId}] runtime selection failed: ${describeError(error)}`);
+  jsonError(res, 500, "internal error", httpRequestId, req);
+}
 async function handleResearch(
   req: IncomingMessage,
   res: ServerResponse,
@@ -50,13 +126,12 @@ async function handleResearch(
   try {
     const authHeader = req.headers.authorization ?? "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
-    let ownerId: string;
+    let owner: AuthenticatedRequestOwner;
     try {
-      const owner = await options.auth.authenticateOwner({
+      owner = await options.auth.authenticateOwner({
         token,
         clientAddress: req.socket.remoteAddress ?? "",
       });
-      ownerId = owner.ownerId;
     } catch (e) {
       if (!cancellation.signal.aborted) {
         respondAuthFailure(res, e, httpRequestId, req);
@@ -64,8 +139,18 @@ async function handleResearch(
       return;
     }
     if (cancellation.signal.aborted) return;
+    if (await refuseByRole(options, owner, "research", res, httpRequestId, req)) return;
 
-    if (!admitOwner(options, ownerId, res, cancellation, httpRequestId, req)) return;
+    let handlers: RuntimeHandlers;
+    try {
+      handlers = await selectRuntimeHandlers(options, owner);
+    } catch (e) {
+      if (!cancellation.signal.aborted) respondRuntimeFailure(res, e, httpRequestId, req);
+      return;
+    }
+
+    const ownerId = owner.ownerId;
+    if (!admitOwner(options, admissionKey(owner), res, cancellation, httpRequestId, req)) return;
 
     let question: string;
     try {
@@ -92,7 +177,7 @@ async function handleResearch(
     }, SSE_HEARTBEAT_MS);
     heartbeat.unref();
     try {
-      const outcome = await options.runResearch(
+      const outcome = await handlers.runResearch(
         ownerId,
         question,
         (source) => {
@@ -131,13 +216,12 @@ async function handleAnswer(
   try {
     const authHeader = req.headers.authorization ?? "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
-    let ownerId: string;
+    let owner: AuthenticatedRequestOwner;
     try {
-      const owner = await options.auth.authenticateOwner({
+      owner = await options.auth.authenticateOwner({
         token,
         clientAddress: req.socket.remoteAddress ?? "",
       });
-      ownerId = owner.ownerId;
     } catch (e) {
       if (!cancellation.signal.aborted) {
         respondAuthFailure(res, e, httpRequestId, req);
@@ -145,15 +229,25 @@ async function handleAnswer(
       return;
     }
     if (cancellation.signal.aborted) return;
+    if (await refuseByRole(options, owner, "research", res, httpRequestId, req)) return;
 
-    if (options.answer === undefined) {
+    let handlers: RuntimeHandlers;
+    try {
+      handlers = await selectRuntimeHandlers(options, owner);
+    } catch (e) {
+      if (!cancellation.signal.aborted) respondRuntimeFailure(res, e, httpRequestId, req);
+      return;
+    }
+
+    const answer = handlers.answer;
+    if (answer === undefined) {
       // auth passed first: never reveal surface existence to unauthenticated
       // callers, but do tell an authenticated caller the truth.
       jsonError(res, 501, "answer surface not configured", httpRequestId, req);
       return;
     }
 
-    if (!admitOwner(options, ownerId, res, cancellation, httpRequestId, req)) return;
+    if (!admitOwner(options, admissionKey(owner), res, cancellation, httpRequestId, req)) return;
 
     let question: string;
     try {
@@ -171,7 +265,7 @@ async function handleAnswer(
     if (cancellation.signal.aborted) return;
 
     try {
-      const payload = await options.answer(ownerId, question, cancellation.signal);
+      const payload = await answer(owner.ownerId, question, cancellation.signal);
       if (payload.degraded) {
         // Degradation honesty as a receipt. The service names the cause
         // (no evidence / unresolved citations / provider failure); the
@@ -209,6 +303,9 @@ async function handleAnswer(
 }
 
 export function createResearchServer(rawOptions: ResearchServerOptions): Server {
+  if (rawOptions.runResearch === undefined && rawOptions.runtimeFor === undefined) {
+    throw new Error("createResearchServer needs runResearch or runtimeFor");
+  }
   // #67: every operational event feeds the optional metrics registry before
   // the caller's onEvent sink; metrics never alter request behavior.
   const options: ResearchServerOptions =
@@ -345,6 +442,28 @@ export function createResearchServer(rawOptions: ResearchServerOptions): Server 
           return;
         }
         await handleAnswer(req, res, options, maxBodyBytes, httpRequestId);
+        return;
+      }
+      if (isReadPath(path) && options.readFor !== undefined) {
+        await handleReadRoute(req, res, options, path, httpRequestId);
+        return;
+      }
+      if (isMembershipAdminPath(path)) {
+        // Not configured (single-tenant host) → indistinguishable from any
+        // other unknown path.
+        if (options.membershipAdmin === undefined) {
+          jsonError(res, 404, "not found", httpRequestId, req);
+          return;
+        }
+        await handleMembershipAdmin({
+          req,
+          res,
+          options,
+          handlers: options.membershipAdmin,
+          path,
+          maxBodyBytes,
+          httpRequestId,
+        });
         return;
       }
       jsonError(res, 404, "not found", httpRequestId, req);

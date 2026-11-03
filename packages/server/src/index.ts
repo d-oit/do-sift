@@ -13,12 +13,18 @@ export type {
   AnswerDegradedEvent,
   AnswerHttpResponse,
   AnswerSuspectEvent,
+  AuthenticatedRequestOwner,
+  MembershipAdminHandlers,
   HttpRequestEvent,
   OperationalEvent,
   ResearchRunOutcome,
   ResearchServerOptions,
+  RuntimeHandlers,
   SourceCard,
+  TenantMemberChangeView,
+  TenantMemberView,
 } from "./server.js";
+export { MEMBERSHIP_ADMIN_CHANGES_PATH, MEMBERSHIP_ADMIN_PATH } from "./membership-admin.js";
 export { createAnswerService, AnswerCancelledError } from "./answer.js";
 export type {
   AnswerOutcome,
@@ -31,6 +37,19 @@ export type {
 export { MetricsRegistry } from "./metrics.js";
 export { createRuntime } from "./runtime.js";
 export type { Runtime, RuntimeOptions } from "./runtime.js";
+export {
+  DEFAULT_MAX_RESOLVED_TENANTS,
+  TenantAccessError,
+  createRuntimeResolver,
+  resolvePrincipalRuntime,
+} from "./runtime-resolver.js";
+export type {
+  PrincipalRuntimeDeps,
+  PrincipalRuntimeRequest,
+  RuntimeResolver,
+  RuntimeResolverOptions,
+  TenantAccessFailure,
+} from "./runtime-resolver.js";
 export {
   canonicalizeUrl,
   createMergedSearchProvider,

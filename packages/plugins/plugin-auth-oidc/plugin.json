@@ -1,0 +1,17 @@
+{
+  "name": "auth-oidc",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "kind": "auth",
+  "description": "Multi-tenant OIDC auth provider (issue #120, plan 024): verifies a bearer id-token with an injected OIDC verifier, maps the tenant claim and user subject to an AuthPrincipal, and refuses tokens with a missing or unpermitted tenant. Zero capabilities: token verification and JWKS transport stay host-owned.",
+  "capabilities": [],
+  "permissions": {
+    "networkHosts": [],
+    "secrets": []
+  },
+  "config": {
+    "tenantClaim": "tenant",
+    "rolesClaim": "roles"
+  },
+  "entry": "createOidcAuthPlugin"
+}

@@ -63,10 +63,13 @@ npm run hooks:install                     # activate pre-commit/pre-push hooks
 ## Deployment
 
 Single-owner pre-alpha deployment: libSQL storage (local file by default,
-Turso behind env config), owner-allowlist auth, HTTP server intended for
-loopback or a TLS-terminating reverse proxy. See
-[docs/deployment.md](docs/deployment.md) for configuration, auth, backup
-cadence, and known limits.
+Turso behind env config), owner-allowlist auth (the fallback posture) or a
+multi-tenant OIDC provider, HTTP server intended for loopback or a
+TLS-terminating reverse proxy. Storage, budgets, and jobs are tenant-scoped
+from migration 0011; see [docs/multi-tenant-auth.md](docs/multi-tenant-auth.md)
+for the auth provider contract, per-tenant grants, and the process-per-tenant
+limit. See [docs/deployment.md](docs/deployment.md) for configuration, auth,
+backup cadence, and known limits.
 
 ## Quality gate
 

@@ -8,3 +8,4 @@ export * from "./harness.js";
 export * from "./sitepolicy.js";
 export * from "./guardrails.js";
 export * from "./evidence-framing.js";
+export * from "./auth.js";

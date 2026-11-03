@@ -1,6 +1,10 @@
-# 024 — Highlight trend rows whose reason buckets moved (DEG-07)
+# 034 — Highlight trend rows whose reason buckets moved (DEG-07)
 
 Status: done (2026-11-02). Follow-up to plans 022/023 (issue #127).
+Renumbered from 024 on 2026-11-03: `024-multi-tenant-auth.md` (issue #120)
+already held that number and is cited as "plan 024" throughout `packages/`,
+`apps/`, `migrations/` and `docs/`. Only this file's number changed; task ID
+`DEG-07` is stable.
 
 ## Goal
 
@@ -55,6 +59,24 @@ Commands run 2026-11-02 from the repo root:
   `git checkout -- evals/degradation/history.json` then restored the file and
   regeneration showed zero highlighted rows again.
 - `npm run check` → exit 0, 9/9 PASS.
+
+## Renumbering
+
+2026-11-03, from the multi-tenant branch where the collision was noticed. The
+file moved from `024-degradation-trend-deltas.md` to
+`034-degradation-trend-deltas.md` (next free number after `033`); the title
+and the `plans/README.md` queue entry follow it. Task table, evidence and risks
+below are unchanged.
+
+Commands run from the repo root:
+
+- `git mv plans/024-degradation-trend-deltas.md plans/034-degradation-trend-deltas.md`
+  → exit 0; `ls plans | grep 024` now lists only `024-multi-tenant-auth.md`.
+- `rg -n 'plans/024|024-degradation|trend-deltas'` before the move found two
+  references only: this plan's own heading and one `plans/README.md` line. The
+  code-side "plan 024" comments all name the auth plan, so no source file
+  referenced this one.
+- `npm run check:fast` → exit 0 after the edits.
 
 ## Risks
 

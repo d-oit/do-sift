@@ -52,6 +52,32 @@ data. Configure an owner **allowlist** and either:
   (127.0.0.0/8, ::1). Hostnames like `localhost` deliberately never count.
   Keep `devBypass: false` in anything resembling production.
 
+#### Multi-tenant auth (issue #120)
+
+A pluggable `AuthProvider` contract now sits above that door
+(`packages/contracts/src/auth.ts`): a provider resolves a verified
+`AuthPrincipal` — `(tenantId, userId, roles)` — and storage is scoped by
+tenant as well as owner. Two implementations ship:
+
+- `OwnerAllowlistAuthProvider` (`@do-sift/auth`) keeps the single-owner shape
+  above and reports its owners inside one tenant (default `default`), so an
+  existing deployment upgrades with no tenant claim and no data move
+  (migration 0011 backfills every row to `default`).
+- `@do-sift/plugin-auth-oidc` is the multi-tenant door: it verifies the
+  bearer token with an injected OIDC verifier, maps a configurable `tenant`
+  claim (or an explicit default tenant) to the principal, and refuses a
+  missing or unpermitted tenant. Set `tenantAllowlist` to make the
+  deployment's tenant set exhaustive.
+
+`Repositories`, `BudgetService`, and `JobQueue` are bound to one tenant;
+retrieval derives the tenant from the owner row; migration triggers abort any
+write whose `(tenant_id, owner_id)` pair does not match an `owners` row.
+Capability grants additionally evaluate per tenant and per user
+(`Kernel.grantTenant` / `Kernel.grantUser` / `Kernel.authorizeForPrincipal`).
+Read [docs/multi-tenant-auth.md](multi-tenant-auth.md) before exposing a
+shared instance: HTTP composition is still one runtime per process, so a
+sharded deployment runs one process per tenant behind the proxy.
+
 ## Network exposure
 
 The server speaks plain HTTP on whatever interface you bind it to and has
@@ -119,8 +145,9 @@ process restart; scrape them from a single instance or aggregate with
 
 ### Owner and evidence CLI (#67)
 
-`apps/cli` is a read-only operator tool. It reads the same libSQL database as
-the server and never writes, migrates, or deletes. Pass the database with
+`apps/cli` reads the same libSQL database as the server. Every command except
+the two confirmation-gated `retention prune*` maintenance commands is
+read-only; neither migrates or creates schema. Pass the database with
 `--db` or `DO_SIFT_DB_URL`; the CLI does not read any auth token from the
 environment.
 
@@ -132,6 +159,7 @@ npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json -
 npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
 ```
 
 Every data command requires an explicit `--owner`. `evidence export` and `research show --out` write a
@@ -147,6 +175,30 @@ Retention in do-sift is owner-scoped, explicit, observable, and transactionally 
 - **Dry-run and confirmation boundary:** Without `--confirm`, the command defaults to `--dry-run`, reporting eligible candidate counts without deleting data. Deletion requires an explicit `--confirm` flag.
 - **Structured audit receipts:** Emits structured receipts (owner ID, cutoff, candidate counts, deleted counts, duration, and status) without leaking prompts, credentials, or raw text.
 - **Scheduled maintenance runbook:** Maintenance must never run silently during service startup or ordinary reads. Schedule retention via cron or orchestration (e.g. daily or weekly off-peak jobs) invoking the CLI with explicit owner IDs and confirmation flags.
+
+#### Membership change log retention (plan 024, MT-11)
+
+The membership change log (`tenant_member_changes`) is an audit trail, so its
+retention is narrower than operational cleanup:
+
+- **Tenant-scoped, one run per tenant:** `retention prune-changes` requires an
+  explicit `--tenant`; there is no global sweep, so a maintenance run cannot
+  silently shorten every tenant's history at once.
+- **Policy:** keep **365 days** per tenant by default
+  (`DEFAULT_MEMBER_CHANGE_RETENTION_DAYS`), and never prune below a **30-day**
+  floor (`MIN_MEMBER_CHANGE_RETENTION_DAYS`). The floor applies to an explicit
+  `--cutoff` as well as `--retention-days`, so a maintenance run cannot reduce
+  the log to the last few days.
+- **Dry-run and confirmation boundary:** without `--confirm` the command
+  reports the eligible candidate count and deletes nothing. Deletion requires
+  `--confirm`, and the cutoff still cannot cross into the current UTC day.
+- **Receipts:** the run prints `tenant_id`, `cutoff`, mode, candidate and
+  deleted counts, and status — or writes the same receipt with `--out` — so
+  pruning the audit log is itself recorded in the maintenance log.
+- **What is never pruned:** evidence, answers, requests, jobs and usage rows
+  are untouched by this command; it only deletes rows from the membership
+  change log of the named tenant. Take the pre-maintenance backup first, as
+  with any other retention run.
 
 ### Rate-limit ownership
 
@@ -365,8 +417,11 @@ per run — cite `.do-harness/evidence.verification.json` rather than memory.
 
 ## Known limits (pre-alpha)
 
-- Single owner; no multi-user deployment (plan 000 non-goal until
-  OPS/QUAL gates).
+- Single owner by default. Tenant-scoped storage, providers, and grants
+  exist (issue #120, plan 024), but HTTP composition is one runtime per
+  process: a shared instance needs one process per tenant behind the proxy
+  until a per-principal runtime resolver lands. Plan 000's no-public-multiuser
+  non-goal still applies to the shipped entrypoint.
 - No TLS, no rate limiting in the server itself (reverse proxy duty). The
   packaged entrypoint's OIDC verifier is still a stub; remote exposure also
   requires proxy authentication or a real verifier, and the dev bypass is

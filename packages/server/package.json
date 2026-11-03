@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@do-sift/auth": "*",
+    "@do-sift/contracts": "*",
     "@do-sift/fake-providers": "*",
     "@do-sift/kernel": "*",
     "@do-sift/plugin-extract-readability": "*",

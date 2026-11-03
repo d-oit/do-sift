@@ -7,6 +7,7 @@ import {
   type GuardrailDecision,
   type GuardrailRequest,
   type GuardrailsPolicy,
+  type MembershipDirectory,
 } from "@do-sift/contracts";
 import {
   parseManifest,
@@ -15,6 +16,7 @@ import {
   type PluginKind,
   type PluginManifest,
 } from "./manifest.js";
+import { PrincipalGrants, type GrantPrincipal, type PrincipalGrantDecision } from "./grants.js";
 
 /**
  * Services handed to a plugin. Plugins never receive raw `fs`/`net` — the
@@ -95,6 +97,12 @@ export interface KernelOptions {
    * construction (`assertGuardrailsIntegrity`), so this is extension-only.
    */
   guardrails?: unknown;
+  /**
+   * Tenant membership record (issue #120). When present, every per-principal
+   * decision additionally requires the user to be a member of the tenant it
+   * claims — a valid token is not by itself authority to act in a tenant.
+   */
+  membership?: MembershipDirectory | undefined;
 }
 
 interface ActivateOptions {
@@ -113,6 +121,10 @@ export class Kernel {
   private readonly active = new Map<string, PluginInstance>();
   /** Owner grants keyed by plugin name (#60): a grant for plugin A never authorizes plugin B. */
   private readonly grants = new Map<string, Set<Capability>>();
+  /** Per-tenant / per-user grants (issue #120): decisions never cross tenants. */
+  private readonly principalGrants = new PrincipalGrants();
+  /** Membership record consulted before any principal grant (issue #120). */
+  private membership: MembershipDirectory | undefined;
   /** The validated guardrails policy every automation action is judged by. */
   private readonly guardrailsPolicy: GuardrailsPolicy;
 
@@ -121,6 +133,16 @@ export class Kernel {
     private readonly options: KernelOptions = {},
   ) {
     this.guardrailsPolicy = assertGuardrailsIntegrity(options.guardrails ?? SHIPPED_GUARDRAILS);
+    this.membership = options.membership;
+  }
+
+  /**
+   * Start enforcing tenant membership on every per-principal decision. Hosts
+   * call this with the storage-backed directory once the database is ready;
+   * before it is set, grants alone decide (the pre-membership behaviour).
+   */
+  useMembership(directory: MembershipDirectory): void {
+    this.membership = directory;
   }
 
   register(manifestInput: unknown, factory: PluginFactory): RegisteredPlugin {
@@ -149,6 +171,53 @@ export class Kernel {
       this.grants.set(pluginName, set);
     }
     for (const c of capabilities) set.add(c);
+  }
+
+  /**
+   * Record a tenant-wide grant: every user of `tenantId` may exercise these
+   * capabilities for the named plugin. Still requires the plugin itself to be
+   * granted (INV-003) and to declare the capability.
+   */
+  grantTenant(tenantId: string, ...capabilities: readonly Capability[]): void {
+    this.principalGrants.grantTenant(tenantId, ...capabilities);
+  }
+
+  /** Record a grant for exactly one user inside one tenant. */
+  grantUser(tenantId: string, userId: string, ...capabilities: readonly Capability[]): void {
+    this.principalGrants.grantUser(tenantId, userId, ...capabilities);
+  }
+
+  /**
+   * Judge one capability for one authenticated principal (issue #120).
+   *
+   * Three gates must pass: the plugin must declare the capability and hold
+   * its own activation grant (INV-003), the user must be a member of the
+   * tenant it claims (when a membership directory is configured), and the
+   * principal must hold a tenant or user grant for it. Roles are never
+   * consulted — a principal's rbac label cannot substitute for membership or
+   * for a recorded grant.
+   *
+   * Asynchronous because membership is authoritative stored state. Callers
+   * must await: an un-awaited promise has no `allowed` field, so a forgotten
+   * await denies rather than authorizes.
+   */
+  async authorizeForPrincipal(
+    pluginName: string,
+    principal: GrantPrincipal,
+    capability: Capability,
+  ): Promise<PrincipalGrantDecision> {
+    const plugin = this.plugins.get(pluginName);
+    if (plugin === undefined) return { allowed: false, reason: "not-granted" };
+    if (!plugin.manifest.capabilities.includes(capability)) {
+      return { allowed: false, reason: "not-granted" };
+    }
+    const pluginGranted = this.grants.get(pluginName)?.has(capability) ?? false;
+    if (!pluginGranted) return { allowed: false, reason: "not-granted" };
+    if (this.membership !== undefined) {
+      const role = await this.membership.roleOf(principal.tenantId, principal.userId ?? "");
+      if (role === undefined) return { allowed: false, reason: "not-a-member" };
+    }
+    return this.principalGrants.check(principal, capability);
   }
 
   async activate(name: string, options: ActivateOptions = {}): Promise<void> {

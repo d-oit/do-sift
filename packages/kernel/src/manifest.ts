@@ -11,6 +11,7 @@ export const PluginKind = z.enum([
   "extractor",
   "storage",
   "policy",
+  "auth",
   "ui",
 ]);
 export type PluginKind = z.infer<typeof PluginKind>;

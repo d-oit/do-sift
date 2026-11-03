@@ -116,14 +116,20 @@ export async function searchPassages(
     sql: `SELECT f.passage_id, p.document_id, d.content_hash, f.excerpt, bm25(passages_fts) AS score
           FROM passages_fts f
           JOIN passages p ON p.id = f.passage_id AND p.owner_id = ?
-          JOIN documents d ON d.id = p.document_id
+          JOIN documents d ON d.id = p.document_id AND d.owner_id = p.owner_id
           WHERE passages_fts MATCH ?
-            AND f.owner_id = ?${docFilter}${floorFilter}${noiseClause}
+            AND f.owner_id = ?
+            AND p.tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
+            AND d.tenant_id = p.tenant_id${docFilter}${floorFilter}${noiseClause}
           ORDER BY score
           LIMIT ?`,
     args: [
       ownerId,
       match,
+      ownerId,
+      // Plan 024: the tenant is derived from the authoritative owner row, so
+      // a passage or document whose tenant_id disagrees with its owner can
+      // never be ranked for that owner — no caller-supplied tenant to trust.
       ownerId,
       ...(documentIds && documentIds.length > 0 ? documentIds : []),
       ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
