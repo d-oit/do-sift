@@ -24,6 +24,7 @@ import {
 } from "@do-sift/plugin-harness-research";
 import { BudgetService, Repositories, type DailyCaps, type TextEmbedder } from "@do-sift/storage";
 import { createAnswerService, DEFAULT_RELEVANCE_FLOOR, type AnswerOutcome } from "./answer.js";
+import type { SynthesisAuditEvent } from "./answer-contracts.js";
 import type { AnswerHttpResponse } from "./server.js";
 
 export interface RuntimeOptions {
@@ -72,6 +73,11 @@ export interface RuntimeOptions {
    * no env wiring (the packaged entrypoint runs the designed default).
    */
   noiseFilter?: boolean;
+  /**
+   * Synthesis audit hook (issue #123, plan 038 — EXT-03). Forwarded to the
+   * answer service: one call per synthesis attempt, after it settles.
+   */
+  onSynthesis?: ((event: SynthesisAuditEvent) => void | Promise<void>) | undefined;
 }
 
 export interface Runtime {
@@ -142,6 +148,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
             model: options.model,
             budget: budgets,
             ...(options.embedder === undefined ? {} : { embedder: options.embedder }),
+            ...(options.onSynthesis === undefined ? {} : { onSynthesis: options.onSynthesis }),
           },
           {
             ...(options.maxPassages === undefined ? {} : { maxPassages: options.maxPassages }),

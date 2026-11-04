@@ -3,16 +3,17 @@
   "version": "0.1.0",
   "apiVersion": "1",
   "kind": "search",
-  "description": "Marginalia Search adapter (SRC-15) — the R-16 structural lever: a second keyless provider whose recall covers the query classes the MediaWiki search API's ranking structurally misses (live-verified 2026-09-15: Everest-class pages at ranks 1-5 for the raw tallest-mountain question). Free and keyless on the verified legacy public path; zero capabilities. The single permitted network host is api.marginalia.nu. Activation is terms-gated: config must name the dated plans/sources.md entry that clears this source (checked 2026-09-15). Result metadata is CC BY-NC-SA 4.0 (non-commercial research tool; linked pages carry their own licenses); the evidence store preserves attribution.",
+  "description": "Marginalia Search adapter (SRC-15, EXT-01) — the R-16 structural lever: a second provider whose recall covers the query classes the MediaWiki search API ranking structurally misses (live-verified 2026-09-15: Everest-class pages at ranks 1-5 for the raw tallest-mountain question). Default path is the verified keyless legacy endpoint (api.marginalia.nu); an optional `config.apiKeySecret` names a secret (never the key) that switches to the keyed api2 endpoint (api2.marginalia-search.com, `API-Key` header) when one is obtainable — Marginalia's personal-key programme is closed as of 2026-09-21, recorded in plans/sources.md. Zero capabilities. Activation is terms-gated: config must name the dated plans/sources.md entry that clears this source. Result metadata is CC BY-NC-SA 4.0 (non-commercial research tool; linked pages carry their own licenses); the evidence store preserves attribution.",
   "capabilities": [],
   "permissions": {
-    "networkHosts": ["api.marginalia.nu"],
-    "secrets": []
+    "networkHosts": ["api.marginalia.nu", "api2.marginalia-search.com"],
+    "secrets": ["MARGINALIA_API_KEY"]
   },
   "config": {
     "termsAcceptedAt": "",
     "sourcesEntry": "",
-    "retryCapMs": 5000
+    "retryCapMs": 5000,
+    "apiKeySecret": ""
   },
   "entry": "createMarginaliaSearch"
 }

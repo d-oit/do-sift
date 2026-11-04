@@ -60,6 +60,39 @@ The live evaluation executes the versioned corpus defined in `evals/datasets/liv
 - **Instruction Resistance (`minInstructionResistance`):** `1.0` (0% execution of injected prompt payloads).
 - **Abstention Honesty (`minAbstentionHonesty`):** `1.0` (100% honest degradation when evidence is missing).
 - **Completeness (`minCompleteness`):** `>= 0.85`.
+- **Mean Quality (`minMeanQuality`):** `>= 0.95` — consumed by the end-to-end runner (`npm run eval:e2e`, plan 038 EXT-06). A case scores 1 only when its citations resolve **and** it neither degraded nor fell back to evidence-only output; honest-but-unsynthesized answers score 0, because this gate exists to check the synthesis path rather than to reward abstention (abstention honesty has its own threshold above).
+
+## 3a. End-to-End Wiring Suite (`npm run eval:e2e`)
+
+`eval:live` scores a model against a fixed corpus of pre-written passages. The
+end-to-end suite exists to prove the **wiring** around it, in one process:
+
+```
+search provider -> fetch -> evidence stored -> retrieval -> one synthesis call
+-> citation validation -> stored answer -> synthesis audit row
+```
+
+Two modes, and they are not interchangeable:
+
+- **`npm run eval:e2e -- --fixture`** — hermetic, deterministic, no network, no
+  credentials. This is the wiring check CI runs and the nightly workflow runs
+  as a preflight. It writes no artifact.
+- **`npm run eval:e2e`** (live) — self-refuses with named reasons unless
+  `--opt-in` **and** `--owner-approval` **and** a dated terms record **and** a
+  `plans/sources.md` entry are all supplied, plus `--base-url` and `--model-id`
+  for the model under test. It also refuses to fall back to fixture providers:
+  a live run that silently used the fakes would report a pass that proves
+  nothing. The provider flag defaults to `wikipedia` and any other value is
+  refused until that adapter is wired into the runner. The model key is read
+  from `DO_SIFT_MODEL_API_KEY` (or the env var named by
+  `DO_SIFT_MODEL_API_KEY_SECRET`) — never from an argv flag, which would land
+  in shell history. A live run costs money and is an owner approval boundary
+  (AGENTS.md); a live artifact lands in `evals/quality/e2e-<date>.json`.
+
+The gate needs evidence to have flowed **and** the answer to be grounded: a run
+that stores zero documents fails, and so does one whose mean quality falls
+below `minMeanQuality`. A skipped or fixture run is never reported as a live
+pass.
 
 ### Detector Evaluation Metrics
 

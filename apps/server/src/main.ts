@@ -13,6 +13,7 @@ import { createOidcAuthPlugin } from "@do-sift/plugin-auth-oidc";
 import { createReadabilityExtractor } from "@do-sift/plugin-extract-readability";
 import type { PageContent } from "@do-sift/plugin-harness-research";
 import { createOpenAICompatModel } from "@do-sift/plugin-model-openai-compat";
+import { createModelRouter } from "@do-sift/plugin-model-router";
 import { createMarginaliaSearch, pageHtmlToText } from "@do-sift/plugin-search-marginalia";
 import { createSiteAccessPolicy } from "@do-sift/plugin-policy-siteaccess";
 import { USER_AGENT } from "@do-sift/contracts";
@@ -28,13 +29,17 @@ import {
   resolvePrincipalRuntime,
   type ResearchRunOutcome,
   type ResearchServerOptions,
+  type SynthesisAuditEvent,
 } from "@do-sift/server";
 import {
   applyMigrations,
   createFastEmbedEmbedder,
   loadMigrations,
   Repositories,
+  SYNTHESIS_FAILURE_KINDS,
+  SynthesisCallLogService,
   TenantMembershipDirectory,
+  type SynthesisFailureKind,
   type TextEmbedder,
 } from "@do-sift/storage";
 import { parseEnvConfig, type AppConfig } from "./config.js";
@@ -49,6 +54,23 @@ import {
 } from "./fixtures.js";
 export type { ComposeDeps } from "./compose-contracts.js";
 export type { ComposedApp } from "./compose-contracts.js";
+
+/**
+ * USD per 1M tokens → integer micro-USD per 1M tokens (money never a float in
+ * the database). Rounded, not truncated: a stored price must never understate
+ * the price the router enforced.
+ */
+export function usdPer1MToMicroUsd(usdPer1M: number): number {
+  return Math.round(usdPer1M * 1_000_000);
+}
+
+/** Map a provider/router failure kind onto the log's closed enum. */
+export function toSynthesisFailureKind(kind: string): SynthesisFailureKind {
+  return (SYNTHESIS_FAILURE_KINDS as readonly string[]).includes(kind)
+    ? (kind as SynthesisFailureKind)
+    : "unknown";
+}
+
 export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Promise<ComposedApp> {
   if (config.devBypass && !isLoopbackAddress(config.host)) {
     throw new Error("dev bypass requires a loopback host; refusing a remotely reachable bypass");
@@ -114,13 +136,46 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     const liveAdapters: SearchProvider[] = [];
     for (const choice of config.searchProviders) {
       if (choice === "marginalia") {
-        // SRC-15: the second keyless provider (R-16 structural lever).
-        const marginalia = createMarginaliaSearch({ fetchImpl: adapterFetch });
+        // SRC-15 + EXT-01: the second provider. Keyless legacy path by
+        // default; a configured secret NAME switches to the keyed api2
+        // endpoint. The value comes from the process environment (production)
+        // or the injected test seam — never from config, never logged.
+        let apiKeySecret: string | undefined;
+        let resolvedKey: string | undefined;
+        if (config.searchApiKeySecret !== undefined) {
+          apiKeySecret = config.searchApiKeySecret;
+          resolvedKey = deps.searchApiKey ?? process.env[config.searchApiKeySecret];
+          if (resolvedKey === undefined || resolvedKey === "") {
+            throw new Error(
+              "DO_SIFT_SEARCH_API_KEY_SECRET is set but its env var holds no value (set it or inject the test seam) — refusing to start half-configured instead of silently falling back to the shared public path",
+            );
+          }
+        }
+        const marginalia = createMarginaliaSearch({
+          fetchImpl: adapterFetch,
+          ...(deps.retryCapMs === undefined ? {} : { retryCapMs: deps.retryCapMs }),
+        });
         await marginalia.activate({
           events: { emit: () => {} },
           pluginName: "search-marginalia",
-          config: { ...MARGINALIA_TERMS },
+          config: {
+            ...MARGINALIA_TERMS,
+            ...(apiKeySecret === undefined ? {} : { apiKeySecret }),
+          },
           network: { assertHostAllowed: (host: string) => siteAccess.assertAllowed(host) },
+          // Host-direct composition: the only secret name this activation may
+          // read is the one config named (kernel parity, CORE-02).
+          secrets: {
+            assertNameAllowed: (name: string) => {
+              if (name !== apiKeySecret) throw new Error(`secret "${name}" is not configured`);
+            },
+            resolve: async (name: string) => {
+              if (name !== apiKeySecret || resolvedKey === undefined) {
+                throw new Error(`secret "${name}" is not configured`);
+              }
+              return resolvedKey;
+            },
+          },
         } as unknown as Parameters<typeof marginalia.activate>[0]);
         liveAdapters.push(marginalia);
       } else if (choice === "wikipedia") {
@@ -242,10 +297,13 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
   }
 
   let model: ModelProvider | undefined;
+  /** EXT-02: verified price metadata of the composed model, if any. */
+  let modelPricing: { inputPer1M: number; outputPer1M: number } | undefined;
   if (config.modelProvider === "fixture") {
     model = new FakeModelProvider();
   } else if (config.modelProvider === "openai-compat" && config.modelOpenAI !== undefined) {
     const oc = config.modelOpenAI;
+    modelPricing = oc.pricing;
     // Key discipline: the secret NAME comes from config; the VALUE comes
     // from the process environment (production) or the injected test seam —
     // never a config file, never logged. useApiKey=false forces keyless
@@ -289,7 +347,35 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         sourcesEntry: oc.sourcesEntry,
       },
     } as unknown as Parameters<typeof compat.activate>[0]);
-    model = compat;
+
+    // EXT-02 (issue #123): the answer-path model goes through the router, so
+    // the two money rules are enforced at COMPOSITION and not merely available
+    // inside a plugin nobody wired up. A paid provider without a dated
+    // sources.md entry + verified pricing cannot reach a billable call, and a
+    // per-call ceiling (when configured) bounds the worst case from the
+    // request's token ceilings — never from an optimistic guess.
+    const router = createModelRouter({
+      providers: [
+        {
+          name: "openai-compat",
+          provider: compat,
+          paid: oc.paid,
+          ...(oc.pricing === undefined ? {} : { pricing: oc.pricing }),
+          ...(oc.paid
+            ? { sourcesEntry: oc.sourcesEntry, termsAcceptedAt: oc.termsAcceptedAt }
+            : {}),
+        },
+      ],
+    });
+    await router.activate({
+      events: { emit: () => {} },
+      pluginName: "model-router",
+      config: {
+        defaultProvider: "openai-compat",
+        ...(oc.maxCostMicroUsd === undefined ? {} : { maxCostMicroUsd: oc.maxCostMicroUsd }),
+      },
+    } as unknown as Parameters<typeof router.activate>[0]);
+    model = router as unknown as ModelProvider;
   }
 
   const runtimeOptions = {
@@ -299,6 +385,39 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     ...(extract === undefined ? {} : { extract }),
     ...(model === undefined ? {} : { model }),
     ...(embedder === undefined ? {} : { embedder }),
+    // EXT-03 (issue #123): every synthesis call leaves an audit row. The
+    // service is tenant-bound at write time from the runtime's own binding,
+    // and the price comes from the config the router verified — so the logged
+    // cost is the price the gate enforced, not a second guess. A free/loopback
+    // provider has no pricing; its rows record zero cost and `estimated` usage
+    // rather than omitting the call from the audit trail.
+    ...(model === undefined
+      ? {}
+      : {
+          onSynthesis: async (event: SynthesisAuditEvent) => {
+            const log = new SynthesisCallLogService(client, event.tenantId);
+            await log.record({
+              tenantId: event.tenantId,
+              ownerId: event.ownerId,
+              provider: event.provider,
+              model: event.model,
+              estimated: event.estimated,
+              inputTokens: event.inputTokens,
+              outputTokens: event.outputTokens,
+              priceInputPer1mMicroUsd:
+                modelPricing === undefined ? 0 : usdPer1MToMicroUsd(modelPricing.inputPer1M),
+              priceOutputPer1mMicroUsd:
+                modelPricing === undefined ? 0 : usdPer1MToMicroUsd(modelPricing.outputPer1M),
+              outcome: event.outcome,
+              ...(event.failureKind === undefined
+                ? {}
+                : { failureKind: toSynthesisFailureKind(event.failureKind) }),
+              ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
+              ...(event.answerId === undefined ? {} : { answerId: event.answerId }),
+              at: event.at,
+            });
+          },
+        }),
   };
   const runtime = await createRuntime(runtimeOptions);
   // Issue #120 (MT-07): in multi-tenant mode this process holds one runtime

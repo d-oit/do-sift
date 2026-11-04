@@ -146,6 +146,9 @@ describe("parseEnvConfig", () => {
       schemaName: "grounded_answer",
       termsAcceptedAt: "2026-09-21",
       sourcesEntry: "Model providers — candidate, checked 2026-09-21",
+      // EXT-02: composing the router requires the money posture to be explicit;
+      // a provider that was never opted into being billable is `paid: false`.
+      paid: false,
     });
   });
 

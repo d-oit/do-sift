@@ -87,7 +87,7 @@ first; otherwise it is denied by `action-not-permitted`. Never catch a
 
 ### Add a new decision rule
 
-Only needed when a new _kind_ of decision appears tack a `GuardrailRule` and a
+Only needed when a new _kind_ of decision appears: add a `GuardrailRule` and a
 branch in `evaluateGuardrails`, then add cases to
 `tests/security/guardrails.test.ts`. Keep the order above: prohibitions and
 site denials must stay ahead of grants, and grants ahead of consent.

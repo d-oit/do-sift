@@ -24,6 +24,13 @@ export interface ComposeDeps {
    * never lives in config).
    */
   modelApiKey?: string | undefined;
+  /**
+   * Test seam: the resolved Marginalia API key value (production reads the env
+   * var NAMED by DO_SIFT_SEARCH_API_KEY_SECRET). Plan 038, EXT-01.
+   */
+  searchApiKey?: string | undefined;
+  /** Test seam: shrinks the Marginalia retry/gateway backoff for fast tests. */
+  retryCapMs?: number | undefined;
 }
 export interface ComposedApp {
   config: AppConfig;

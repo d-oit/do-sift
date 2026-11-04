@@ -1,5 +1,6 @@
 export { MigrationError, applyMigrations, hashMigrationSql, loadMigrations } from "./migrate.js";
 export type { AppliedMigration, Migration } from "./migrate.js";
+export { DEFAULT_TENANT_ID } from "@do-sift/contracts";
 export { Repositories } from "./repositories.js";
 export type {
   AnswerBlocks,
@@ -77,3 +78,9 @@ export {
   openRestore,
   verifyRestore,
 } from "./backup.js";
+export {
+  SYNTHESIS_FAILURE_KINDS,
+  SynthesisCallLogService,
+  synthesisCostMicroUsd,
+} from "./synthesis-log.js";
+export type { SynthesisCallLog, SynthesisCallRow, SynthesisFailureKind } from "./synthesis-log.js";

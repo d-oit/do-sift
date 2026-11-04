@@ -18,18 +18,30 @@ export async function backfillPassageNoiseClasses(
   client: Client,
   ownerId: string,
   classify: (text: string) => PassageNoiseClass | undefined,
+  tenantId?: string,
 ): Promise<number> {
   const pending = await client.execute({
-    sql: "SELECT id, excerpt FROM passages WHERE owner_id = ? AND noise_class IS NULL",
-    args: [ownerId],
+    sql: `SELECT id, excerpt FROM passages
+          WHERE owner_id = ? AND noise_class IS NULL
+            AND tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
+            ${tenantId === undefined ? "" : "AND tenant_id = ?"}`,
+    args: [ownerId, ownerId, ...(tenantId === undefined ? [] : [tenantId])],
   });
   const updates: InStatement[] = [];
   for (const row of pending.rows) {
     const noiseClass = classify(String(row.excerpt));
     if (noiseClass !== undefined) {
       updates.push({
-        sql: "UPDATE passages SET noise_class = ? WHERE id = ? AND owner_id = ?",
-        args: [noiseClass, String(row.id), ownerId],
+        sql: `UPDATE passages SET noise_class = ? WHERE id = ? AND owner_id = ?
+              AND tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
+              ${tenantId === undefined ? "" : "AND tenant_id = ?"}`,
+        args: [
+          noiseClass,
+          String(row.id),
+          ownerId,
+          ownerId,
+          ...(tenantId === undefined ? [] : [tenantId]),
+        ],
       });
     }
   }

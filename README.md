@@ -32,11 +32,17 @@ See `plans/000-product-and-decisions.md` for the full decision log and
 
 ```bash
 npm install
-npm run check:fast   # format, lint, types, policy, skills validation
+npm run check:fast   # format, lint, types, policy, skills, governance, links
 npm run check        # fast checks + tests + evals + build
 npm run build        # explicit tsconfig.build.json production build
 npm run eval:offline # deterministic retrieval/citation/budget fixtures
 ```
+
+New to the codebase? [docs/README.md](docs/README.md) indexes every guide;
+the [contributor guide](docs/contributing-guide.md) walks through adding a
+plugin end to end, the [architecture index](docs/architecture/README.md)
+explains how the pieces fit, and [docs/decisions/](docs/decisions/README.md)
+records why they are shaped that way.
 
 Requires Node >= 22 (see [docs/upgrading.md](docs/upgrading.md) for version justification, manager setup, and upgrade instructions).
 

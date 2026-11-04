@@ -37,6 +37,14 @@ export interface MarginaliaSearchConfig {
   termsAcceptedAt?: unknown;
   sourcesEntry?: unknown;
   retryCapMs?: unknown;
+  /**
+   * NAME of the secret holding an API key (issue #123, plan 038). Never the
+   * key itself — the value is resolved through `context.secrets.resolve`, so
+   * the kernel's manifest allowlist gates which name may be read. Absent/empty
+   * means the verified keyless legacy path, which is the supported default:
+   * Marginalia's key programme is closed as of 2026-09-21 (plans/sources.md).
+   */
+  apiKeySecret?: unknown;
 }
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -80,6 +88,9 @@ export interface MarginaliaSearchInstance extends PluginInstance {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/u;
 const HOST = "api.marginalia.nu";
 const SEARCH_URL = `https://${HOST}/public/search/`;
+/** Keyed api2 endpoint (docs updated 2025-12-08): `API-Key` header, no path key. */
+const KEYED_HOST = "api2.marginalia-search.com";
+const KEYED_SEARCH_URL = `https://${KEYED_HOST}/search`;
 /** Descriptive UA (same posture as the wikipedia adapter; sources.md). */
 export const USER_AGENT = CONTRACT_USER_AGENT;
 /** Fixed wait before the single 502/503/504 gateway retry. */
@@ -183,6 +194,8 @@ export function createMarginaliaSearch(deps: MarginaliaSearchDeps = {}): Margina
   const fetchImpl: FetchLike = deps.fetchImpl ?? fetch;
   const retryCapMs = deps.retryCapMs ?? 5000;
   let activated = false;
+  /** Resolved key, when a secret name was configured and resolvable. */
+  let apiKey: string | undefined;
 
   return {
     name: "marginalia",
@@ -201,18 +214,41 @@ export function createMarginaliaSearch(deps: MarginaliaSearchDeps = {}): Margina
           "activation refused: config.sourcesEntry must name the plans/sources.md entry that clears this source",
         );
       }
-      // Manifest-declared host, kernel-checked in kernel runs; host-direct
-      // composition routes the same assertion through the site-access policy.
-      context.network.assertHostAllowed(HOST);
+
+      // Keyed path (issue #123, EXT-01): a configured secret NAME must be a
+      // non-empty string and resolve through the kernel service. A named but
+      // missing secret refuses activation rather than silently falling back —
+      // an operator who asked for the keyed endpoint must not be unknowingly
+      // rate-limited on the shared public path. No name = keyless legacy path.
+      const secretName = cfg.apiKeySecret;
+      if (secretName !== undefined && secretName !== "") {
+        if (typeof secretName !== "string") {
+          throw new TermsGateError("config.apiKeySecret must be the NAME of a secret (a string)");
+        }
+        context.network.assertHostAllowed(KEYED_HOST);
+        const resolved = await context.secrets.resolve(secretName);
+        if (resolved.trim() === "") {
+          throw new TermsGateError(
+            `config.apiKeySecret "${secretName}" resolved to an empty value; refusing to start half-configured`,
+          );
+        }
+        apiKey = resolved;
+      } else {
+        // Manifest-declared host, kernel-checked in kernel runs; host-direct
+        // composition routes the same assertion through the site-access policy.
+        context.network.assertHostAllowed(HOST);
+      }
       activated = true;
       context.events.emit("search-marginalia.activated", {
         sourcesEntry: entry,
         termsAcceptedAt: acceptedAt,
+        endpoint: apiKey === undefined ? "legacy-keyless" : "api2-keyed",
       });
     },
 
     async deactivate() {
       activated = false;
+      apiKey = undefined;
     },
 
     async search(query, limits, signal): Promise<SearchHitT[]> {
@@ -220,7 +256,18 @@ export function createMarginaliaSearch(deps: MarginaliaSearchDeps = {}): Margina
       const q = SearchQuery.parse(query);
       SearchLimits.parse(limits);
 
-      const url = SEARCH_URL + encodeURIComponent(q.text);
+      // Keyed endpoint puts the query in a `query` param and the key in a
+      // header; the legacy path encodes the query in the URL path and carries
+      // no credential.
+      const url =
+        apiKey === undefined
+          ? SEARCH_URL + encodeURIComponent(q.text)
+          : `${KEYED_SEARCH_URL}?query=${encodeURIComponent(q.text)}&count=${limits.maxHits}`;
+      const headers: Record<string, string> =
+        apiKey === undefined
+          ? { "user-agent": USER_AGENT, accept: "application/json" }
+          : { "user-agent": USER_AGENT, accept: "application/json", "API-Key": apiKey };
+
       const effectiveSignal =
         signal === undefined
           ? AbortSignal.timeout(limits.timeoutMs)
@@ -228,7 +275,7 @@ export function createMarginaliaSearch(deps: MarginaliaSearchDeps = {}): Margina
 
       const doFetch = (): Promise<Response> =>
         fetchImpl(url, {
-          headers: { "user-agent": USER_AGENT, accept: "application/json" },
+          headers,
           signal: effectiveSignal,
         });
       const transportError = (e: unknown): SearchProviderError => {

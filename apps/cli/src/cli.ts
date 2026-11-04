@@ -7,6 +7,7 @@
 import type { Client } from "@libsql/client";
 import { writeFile } from "node:fs/promises";
 import {
+  DEFAULT_TENANT_ID,
   MIN_MEMBER_CHANGE_RETENTION_DAYS,
   executeOwnerRetention,
   pruneMemberChangeLog,
@@ -24,14 +25,18 @@ export interface CliDeps {
 
 const USAGE = `usage: do-sift-cli <command> [options]
 
-  owners list
-  usage show --owner <id> --day <YYYY-MM-DD>
-  evidence list --owner <id> [--limit <n>]
-  evidence export --owner <id> --out <new-file.json>
-  research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question]
-  research show --owner <id> --request <id> [--show-question] [--out <new-file.json>]
-  retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
+  owners list [--tenant <id>]
+  usage show --owner <id> --day <YYYY-MM-DD> [--tenant <id>]
+  evidence list --owner <id> [--limit <n>] [--tenant <id>]
+  evidence export --owner <id> --out <new-file.json> [--tenant <id>]
+  research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question] [--tenant <id>]
+  research show --owner <id> --request <id> [--show-question] [--out <new-file.json>] [--tenant <id>]
+  retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
+
+Every data command takes --tenant (default: "${DEFAULT_TENANT_ID}") and scopes
+its queries by tenant_id as well as owner_id, so one tenant's owner id never
+reaches another tenant's rows (plan 035).
 `;
 
 const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm"]);
@@ -66,6 +71,17 @@ function requireOwner(flags: Map<string, string>): string {
   const owner = flags.get("owner");
   if (owner === undefined || owner === "") throw new CliUsageError("--owner is required");
   return owner;
+}
+
+/**
+ * Tenant scope for every data command (plan 035). Defaults to `default` so
+ * single-owner usage is unchanged, but the predicate is always present: a
+ * defaulted command cannot see a non-default tenant's rows.
+ */
+function tenantScope(flags: Map<string, string>): string {
+  const tenant = flags.get("tenant") ?? DEFAULT_TENANT_ID;
+  if (tenant.trim() === "") throw new CliUsageError("--tenant must be a non-empty tenant id");
+  return tenant;
 }
 
 function parseLimit(flags: Map<string, string>): number {
@@ -112,9 +128,11 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     const [group, action, ...rest] = argv;
     const { flags } = parseFlags(rest);
     if (group === "owners" && action === "list") {
-      const result = await deps.client.execute(
-        "SELECT id, display_name, created_at FROM owners ORDER BY id",
-      );
+      const tenant = tenantScope(flags);
+      const result = await deps.client.execute({
+        sql: "SELECT id, display_name, created_at FROM owners WHERE tenant_id = ? ORDER BY id",
+        args: [tenant],
+      });
       emitTable(deps.out, result.rows as unknown as Array<Record<string, unknown>>, [
         "id",
         "display_name",
@@ -124,6 +142,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     }
     if (group === "usage" && action === "show") {
       const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
       const day = flags.get("day");
       if (day === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
         throw new CliUsageError("--day must be YYYY-MM-DD");
@@ -134,9 +153,9 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
                      COALESCE(SUM(output_tokens), 0) AS output_tokens,
                      COALESCE(SUM(search_calls), 0) AS search_calls,
                      COALESCE(SUM(fetches), 0) AS fetches
-              FROM usage_ledger WHERE owner_id = ? AND day = ?
+              FROM usage_ledger WHERE owner_id = ? AND day = ? AND tenant_id = ?
               GROUP BY kind, state ORDER BY kind, state`,
-        args: [owner, day],
+        args: [owner, day, tenant],
       });
       emitTable(deps.out, result.rows as unknown as Array<Record<string, unknown>>, [
         "kind",
@@ -151,11 +170,12 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     }
     if (group === "evidence" && action === "list") {
       const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
       const limit = parseLimit(flags);
       const result = await deps.client.execute({
         sql: `SELECT id, canonical_url, fetched_at, title FROM documents
-              WHERE owner_id = ? ORDER BY fetched_at DESC LIMIT ?`,
-        args: [owner, limit],
+              WHERE owner_id = ? AND tenant_id = ? ORDER BY fetched_at DESC LIMIT ?`,
+        args: [owner, tenant, limit],
       });
       emitTable(deps.out, result.rows as unknown as Array<Record<string, unknown>>, [
         "id",
@@ -167,20 +187,22 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     }
     if (group === "evidence" && action === "export") {
       const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
       const out = flags.get("out");
       if (out === undefined || out === "") throw new CliUsageError("--out is required");
       const documents = await deps.client.execute({
         sql: `SELECT id, canonical_url, original_url, content_hash, fetched_at, published_at, title
-              FROM documents WHERE owner_id = ? ORDER BY fetched_at, id`,
-        args: [owner],
+              FROM documents WHERE owner_id = ? AND tenant_id = ? ORDER BY fetched_at, id`,
+        args: [owner, tenant],
       });
       const passages = await deps.client.execute({
         sql: `SELECT id, document_id, heading, excerpt, extraction_status
-              FROM passages WHERE owner_id = ? ORDER BY document_id, id`,
-        args: [owner],
+              FROM passages WHERE owner_id = ? AND tenant_id = ? ORDER BY document_id, id`,
+        args: [owner, tenant],
       });
       const payload = {
         owner,
+        tenant,
         exportedAt: new Date().toISOString(),
         documents: documents.rows,
         passages: passages.rows,
@@ -194,6 +216,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     }
     if (group === "research" && action === "list") {
       const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
       const limit = parseLimit(flags);
       const rawSince = flags.get("since");
       const rawUntil = flags.get("until");
@@ -202,8 +225,8 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       const statusFilter = parseStatus(flags.get("status"));
       const showQuestion = flags.get("show-question") === "true";
 
-      const conditions: string[] = ["r.owner_id = ?", "r.mode = 'search'"];
-      const sqlArgs: Array<string | number> = [owner];
+      const conditions: string[] = ["r.owner_id = ?", "r.tenant_id = ?", "r.mode = 'search'"];
+      const sqlArgs: Array<string | number> = [owner, tenant];
 
       if (since !== undefined) {
         conditions.push("r.created_at >= ?");
@@ -222,7 +245,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
           conditions.push("r.status = 'pending'");
         } else if (statusFilter === "degraded") {
           conditions.push(
-            "(r.status = 'failed' OR (r.status = 'completed' AND (SELECT COUNT(*) FROM documents d WHERE d.owner_id = r.owner_id AND d.request_id = r.id) = 0))",
+            "(r.status = 'failed' OR (r.status = 'completed' AND (SELECT COUNT(*) FROM documents d WHERE d.owner_id = r.owner_id AND d.tenant_id = r.tenant_id AND d.request_id = r.id) = 0))",
           );
         }
       }
@@ -236,10 +259,10 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
           r.created_at,
           r.completed_at,
           r.question,
-          (SELECT COUNT(*) FROM documents d WHERE d.owner_id = r.owner_id AND d.request_id = r.id) AS documents_stored,
-          (SELECT COUNT(*) FROM passages p WHERE p.owner_id = r.owner_id AND p.document_id IN (SELECT id FROM documents d WHERE d.owner_id = r.owner_id AND d.request_id = r.id)) AS passages_stored,
-          (SELECT COALESCE(SUM(u.fetches), 0) FROM usage_ledger u WHERE u.owner_id = r.owner_id AND u.request_id = r.id AND u.kind = 'settlement') AS fetches,
-          (SELECT COALESCE(SUM(u.search_calls), 0) FROM usage_ledger u WHERE u.owner_id = r.owner_id AND u.request_id = r.id AND u.kind = 'settlement') AS search_calls
+          (SELECT COUNT(*) FROM documents d WHERE d.owner_id = r.owner_id AND d.tenant_id = r.tenant_id AND d.request_id = r.id) AS documents_stored,
+          (SELECT COUNT(*) FROM passages p WHERE p.owner_id = r.owner_id AND p.tenant_id = r.tenant_id AND p.document_id IN (SELECT id FROM documents d WHERE d.owner_id = r.owner_id AND d.tenant_id = r.tenant_id AND d.request_id = r.id)) AS passages_stored,
+          (SELECT COALESCE(SUM(u.fetches), 0) FROM usage_ledger u WHERE u.owner_id = r.owner_id AND u.tenant_id = r.tenant_id AND u.request_id = r.id AND u.kind = 'settlement') AS fetches,
+          (SELECT COALESCE(SUM(u.search_calls), 0) FROM usage_ledger u WHERE u.owner_id = r.owner_id AND u.tenant_id = r.tenant_id AND u.request_id = r.id AND u.kind = 'settlement') AS search_calls
         FROM requests r
         WHERE ${conditions.join(" AND ")}
         ORDER BY r.created_at DESC
@@ -283,6 +306,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     }
     if (group === "research" && action === "show") {
       const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
       const requestId = flags.get("request");
       if (requestId === undefined || requestId === "") {
         throw new CliUsageError("--request is required");
@@ -291,34 +315,36 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       const out = flags.get("out");
 
       const reqRes = await deps.client.execute({
-        sql: "SELECT id, owner_id, mode, question, status, created_at, completed_at FROM requests WHERE owner_id = ? AND id = ? AND mode = 'search'",
-        args: [owner, requestId],
+        sql: "SELECT id, owner_id, mode, question, status, created_at, completed_at FROM requests WHERE owner_id = ? AND tenant_id = ? AND id = ? AND mode = 'search'",
+        args: [owner, tenant, requestId],
       });
 
       const reqRow = reqRes.rows[0];
       if (!reqRow) {
-        deps.err(`error: research request ${requestId} not found for owner ${owner}`);
+        deps.err(
+          `error: research request ${requestId} not found for owner ${owner} in tenant ${tenant}`,
+        );
         return 1;
       }
 
       const docsRes = await deps.client.execute({
-        sql: "SELECT id, canonical_url, original_url, content_hash, title, fetched_at, relevance_score FROM documents WHERE owner_id = ? AND request_id = ? ORDER BY fetched_at, id",
-        args: [owner, requestId],
+        sql: "SELECT id, canonical_url, original_url, content_hash, title, fetched_at, relevance_score FROM documents WHERE owner_id = ? AND tenant_id = ? AND request_id = ? ORDER BY fetched_at, id",
+        args: [owner, tenant, requestId],
       });
 
       const passagesRes = await deps.client.execute({
-        sql: "SELECT p.id, p.document_id, p.heading, p.extraction_status, p.noise_class, p.created_at FROM passages p JOIN documents d ON p.document_id = d.id AND p.owner_id = d.owner_id WHERE p.owner_id = ? AND d.request_id = ? ORDER BY p.document_id, p.id",
-        args: [owner, requestId],
+        sql: "SELECT p.id, p.document_id, p.heading, p.extraction_status, p.noise_class, p.created_at FROM passages p JOIN documents d ON p.document_id = d.id AND p.owner_id = d.owner_id AND p.tenant_id = d.tenant_id WHERE p.owner_id = ? AND p.tenant_id = ? AND d.request_id = ? ORDER BY p.document_id, p.id",
+        args: [owner, tenant, requestId],
       });
 
       const embeddedRes = await deps.client.execute({
-        sql: "SELECT COUNT(DISTINCT pe.passage_id) AS embedded_count FROM passage_embeddings pe JOIN passages p ON pe.passage_id = p.id AND pe.owner_id = p.owner_id JOIN documents d ON p.document_id = d.id AND p.owner_id = d.owner_id WHERE pe.owner_id = ? AND d.request_id = ?",
-        args: [owner, requestId],
+        sql: "SELECT COUNT(DISTINCT pe.passage_id) AS embedded_count FROM passage_embeddings pe JOIN passages p ON pe.passage_id = p.id AND pe.owner_id = p.owner_id AND pe.tenant_id = p.tenant_id JOIN documents d ON p.document_id = d.id AND p.owner_id = d.owner_id AND p.tenant_id = d.tenant_id WHERE pe.owner_id = ? AND pe.tenant_id = ? AND d.request_id = ?",
+        args: [owner, tenant, requestId],
       });
 
       const usageRes = await deps.client.execute({
-        sql: "SELECT kind, state, COALESCE(SUM(input_tokens), 0) AS input_tokens, COALESCE(SUM(output_tokens), 0) AS output_tokens, COALESCE(SUM(search_calls), 0) AS search_calls, COALESCE(SUM(fetches), 0) AS fetches FROM usage_ledger WHERE owner_id = ? AND request_id = ? GROUP BY kind, state",
-        args: [owner, requestId],
+        sql: "SELECT kind, state, COALESCE(SUM(input_tokens), 0) AS input_tokens, COALESCE(SUM(output_tokens), 0) AS output_tokens, COALESCE(SUM(search_calls), 0) AS search_calls, COALESCE(SUM(fetches), 0) AS fetches FROM usage_ledger WHERE owner_id = ? AND tenant_id = ? AND request_id = ? GROUP BY kind, state",
+        args: [owner, tenant, requestId],
       });
 
       let totalSearchCalls = 0;
@@ -350,6 +376,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         request: {
           id: String(reqRow.id),
           ownerId: String(reqRow.owner_id),
+          tenant,
           mode: String(reqRow.mode),
           status: effectiveStatus,
           rawStatus: rawStatus,
@@ -395,6 +422,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
       deps.out(`request_id\t${receipt.request.id}`);
       deps.out(`owner_id\t${receipt.request.ownerId}`);
+      deps.out(`tenant_id\t${receipt.request.tenant}`);
       deps.out(`status\t${receipt.request.status}`);
       deps.out(`created_at\t${receipt.request.createdAt}`);
       deps.out(`completed_at\t${receipt.request.completedAt ?? ""}`);
@@ -422,6 +450,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     }
     if (group === "retention" && action === "prune") {
       const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
       const rawRetentionDays = flags.get("retention-days");
       const rawCutoff = flags.get("cutoff");
 
@@ -454,6 +483,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
       const receipt = await executeOwnerRetention(deps.client, {
         ownerId: owner,
+        tenantId: tenant,
         retentionDays,
         beforeIso,
         dryRun,

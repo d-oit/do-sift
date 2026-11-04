@@ -17,7 +17,10 @@
   `invariants.json` (machine-checked), `risks.md`, `sources.md` (dated
   commercial facts), `adr/` (immutable once accepted), `methods.json`
   (do-harness task-gate catalog).
-- **docs/** — deployment, quality gate, release, security-review notes.
+- **docs/** — deployment, quality gate, release, security-review notes, plus
+  the [doc index](docs/README.md), [architecture index](docs/architecture/README.md),
+  [contributor guide](docs/contributing-guide.md), and
+  [decision records](docs/decisions/README.md).
 - **CHANGELOG.md** — Keep-a-Changelog record for the unreleased 0.1.0.
 
 ## Architecture
@@ -64,7 +67,7 @@ do-sift/
 ## Commands
 
 ```bash
-npm run check:fast     # fast gate (format, lint, typecheck, policy, skills)
+npm run check:fast     # fast gate (format, lint, typecheck, policy, skills, governance, links)
 npm run check          # full gate incl. tests, evals, build
 npm run build          # canonical production build
 npm run signals -- status   # receipt freshness (green|stale|red|missing)

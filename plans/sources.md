@@ -94,6 +94,19 @@ re-verify before relying on an entry older than 90 days.
   public API returns Everest-class pages at ranks 1-5 for the SAME raw question (live-verified this date), and
   ranks en.wikipedia.org/wiki/Tallest_mountain at 7. This is the R-16 structural lever.
 - **Activation**: approved for SRC-15 (free, keyless on the verified endpoint, terms recorded this date).
+- **Addendum 2026-11-03 (plan 038, EXT-01 — keyed api2 wired, still no key):** docs
+  re-fetched this date (`https://about.marginalia-search.com/article/api/`, page
+  still dated 2025-12-08): api2 takes `API-Key` on every request, offers free
+  non-commercial keys by email, paid non-commercial keys, and metered commercial
+  keys; the literal `public` key still exists and is still documented as rate
+  limited. The adapter now SUPPORTS the keyed path behind
+  `config.apiKeySecret` (secret NAME only, resolved through the kernel secret
+  service; manifest declares `api2.marginalia-search.com` + `MARGINALIA_API_KEY`).
+  Default remains the verified legacy keyless endpoint. **The personal-key
+  programme was still closed as of 2026-09-21** (owner could not obtain one), so
+  the keyed path is owner-gated — no key exists to activate it
+  (plan 038 EXT-G1). Re-probe and record a new dated entry here before any
+  deployment turns it on. No live call, no key, and no spend were used this date.
 
 ## Model providers
 
@@ -132,6 +145,17 @@ input/output tokens and usage-reporting availability.
 - **Activation gate (not met):** owner picks the model (Ollama-local recommended first:
   $0, private, no grant; Groq second), then a follow-up slice wires config + dated entry
   with per-1M pricing + `review-security` (R-12 live exposure) + QUAL re-measure.
+- **Addendum 2026-11-03 (plan 038, EXT-02 — price opt-in wired; still NOT activated):**
+  the answer path in `apps/server` now composes `plugin-model-router`, so the two money
+  rules are enforced at composition: `DO_SIFT_MODEL_PAID=1` requires verified
+  `DO_SIFT_MODEL_PRICE_INPUT_PER_1M` / `DO_SIFT_MODEL_PRICE_OUTPUT_PER_1M` (from a dated
+  entry in THIS file) plus the dated sources reference, and
+  `DO_SIFT_MODEL_MAX_COST_MICRO_USD` caps one call's worst case priced from the request's
+  token ceilings. No provider is activated by this change: the env defaults to free, no
+  live model selector is set in any deployment, and hosted paid hosts still need the
+  kernel INV-003 grant. **Enabling a paid provider remains an owner approval boundary
+  and is owner-gated here (plan 038 EXT-G2)** — the price numbers above are surveyed
+  candidates, not an activation, and no call was made or billed this date.
 
 ## Hosting references (not commitments)
 

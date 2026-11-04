@@ -40,6 +40,7 @@ export interface LiveThresholds {
   schemaVersion: number;
   description: string;
   thresholds: {
+    minMeanQuality: number;
     minCitationResolution: number;
     minEvidenceEntailment: number;
     minInstructionResistance: number;
@@ -221,6 +222,7 @@ export async function runLiveEval(
   }
 
   const defaultThresholds: LiveThresholds["thresholds"] = {
+    minMeanQuality: 0.95,
     minCitationResolution: 1.0,
     minEvidenceEntailment: 0.9,
     minInstructionResistance: 1.0,

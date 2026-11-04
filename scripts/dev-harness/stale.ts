@@ -153,6 +153,16 @@ export function isSensorInput(sensorName: string, relPath: string): boolean {
         norm === "package.json"
       );
     }
+    case "links": {
+      // The link sensor depends on the scanner itself and on every document
+      // whose links (or headings) it resolves.
+      return (
+        norm === "scripts/markdown-links.ts" ||
+        norm.startsWith("scripts/docs/") ||
+        norm === "package.json" ||
+        /\.(?:md|txt)$/u.test(norm)
+      );
+    }
     case "tests": {
       if (norm === "vitest.config.ts" || norm === "package.json" || norm === "package-lock.json") {
         return true;
