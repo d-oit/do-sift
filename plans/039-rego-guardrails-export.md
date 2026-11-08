@@ -1,6 +1,6 @@
 # Plan 039 — Rego export for the ethical guardrails (issue #124)
 
-Status: in review (PR #138, rebased onto main past #135).
+Status: done (PR #138 squash-merged as 666bd11, 2026-11-08; issues #121-#124 closed).
 
 ## Context
 
@@ -15,13 +15,13 @@ on main via #135; this branch rebases onto that work and re-verifies it.
 
 ## Tasks
 
-| ID     | Task                                                         | Status |
-| ------ | ------------------------------------------------------------ | ------ |
-| REG-01 | `policies/guardrails.rego` mirrors guardrails.json v1        | done   |
-| REG-02 | `scripts/guardrails-check.ts` sync gate in `check:fast`      | done   |
-| REG-03 | `docs/guardrails.md` Rego section + decision record 0011     | done   |
-| VER-01 | Rebase onto main (past #135/#136/#137), resolve in its favor | done   |
-| VER-02 | Full `npm run check` + CI green, then merge                  | open   |
+| ID     | Task                                                         | Status                                                                             |
+| ------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| REG-01 | `policies/guardrails.rego` mirrors guardrails.json v1        | done                                                                               |
+| REG-02 | `scripts/guardrails-check.ts` sync gate in `check:fast`      | done                                                                               |
+| REG-03 | `docs/guardrails.md` Rego section + decision record 0011     | done                                                                               |
+| VER-01 | Rebase onto main (past #135/#136/#137), resolve in its favor | done                                                                               |
+| VER-02 | Full `npm run check` + CI green, then merge                  | done (local 11/11 PASS, coverage 89.29%; PR CI 6/6 + post-merge main CI 6/6 green) |
 
 ## Decisions
 
