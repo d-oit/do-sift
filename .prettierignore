@@ -7,3 +7,6 @@ playwright-report/
 *.tsbuildinfo
 plans/templates/
 evals/dashboard/
+# Rego is not a prettier language; policies/guardrails.rego is
+# canonical as written and checked by scripts/guardrails-check.ts.
+*.rego

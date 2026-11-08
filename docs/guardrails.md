@@ -103,6 +103,22 @@ default-deny, test-covered policy — with no new runtime. If OPA is adopted
 later, `guardrails.json` maps directly onto a Rego `data` document and
 `tests/security/guardrails.test.ts` becomes the `opa test` parity suite.
 
+## Rego export
+
+`policies/guardrails.rego` is an OPA-readable mirror of the JSON document:
+the same default-deny decision, the same prohibited stealth/captcha/
+credential-entry classes, the same `linkedin.com` deny list with sub-domain
+semantics, and the same per-capability allowed actions plus grant/consent/
+site-access gates. It is an export, not a second enforcer — the kernel
+still executes the TypeScript evaluator.
+
+`scripts/guardrails-check.ts` (the `guardrails` step in `npm run
+check:fast`) fails when any site, action, or gate in `guardrails.json` is
+missing from the Rego, so the two cannot drift. Extending the policy means:
+edit the JSON first, mirror the literal in the Rego, then run the gate. See
+[0011-rego-guardrails-export.md](decisions/0011-rego-guardrails-export.md)
+for the decision.
+
 ## Verifying a change
 
 ```bash

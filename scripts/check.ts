@@ -39,6 +39,7 @@ const steps: Step[] = [
     fast: true,
   },
   { name: "policy", args: [tsxCli, "scripts/policy.ts"], fast: true },
+  { name: "guardrails", args: [tsxCli, "scripts/guardrails-check.ts"], fast: true },
   { name: "skills", args: [tsxCli, "scripts/skills-check.ts"], fast: true },
   { name: "governance", args: [tsxCli, "scripts/codeowners-check.ts"], fast: true },
   { name: "links", args: [tsxCli, "scripts/markdown-links.ts"], fast: true },
