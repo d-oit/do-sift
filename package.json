@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "workspaces": [
     "packages/*",
@@ -31,10 +31,10 @@
     "test:coverage": "vitest run --coverage"
   },
   "volta": {
-    "node": "22.14.0"
+    "node": "24.22.2"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.19.2",
     "@vitest/coverage-v8": "5.1.0",
     "eslint": "^10.14.0",
     "prettier": "^3.9.10",

@@ -18,6 +18,7 @@ two differ, `plans/adr/` is authoritative and this index is out of date.
 | [0009](0009-plugin-lifecycle.md)            | Plugins have an explicit activate/deactivate lifecycle      | `plans/adr/0004-own-kernel-vs-dsh.md`          |
 | [0010](0010-dev-signal-harness.md)          | Checks run as receipt-producing sensors                     | `plans/adr/0007-dev-signal-harness.md`         |
 | [0011](0011-rego-guardrails-export.md)      | Guardrails ship an OPA-readable Rego export                 | `plans/039-rego-guardrails-export.md`          |
+| [0012](0012-node-24-floor.md)               | Ship and type on Node 24 LTS                                | `plans/adr/0011-node-24-floor.md`              |
 
 ## Status vocabulary
 

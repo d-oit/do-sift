@@ -14,7 +14,7 @@
 #
 # Debian-slim (glibc), not alpine: native deps (@libsql, onnxruntime-node)
 # ship glibc prebuilds.
-FROM node:22-slim
+FROM node:24-slim
 
 WORKDIR /app
 
