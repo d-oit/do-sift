@@ -93,8 +93,10 @@ describe("checkGuardrailsSync", () => {
     policy.capabilities.browser.allowedActions.push("download");
     expectFinding(checkGuardrailsSync(policy, REGO), 'allowed_actions["browser"]', '"download"');
 
-    const browserLine = '"browser": {"navigate", "scroll", "type", "click"}';
-    const rego = regoWith([browserLine, browserLine.replace("}", ', "key"}')]);
+    const rego = regoWith([
+      '"browser": {"navigate", "scroll", "type", "click"}',
+      '"browser": {"navigate", "scroll", "type", "click", "key"}',
+    ]);
     expectFinding(checkGuardrailsSync(loadPolicy(), rego), 'allowed_actions["browser"]', '"key"');
   });
 
