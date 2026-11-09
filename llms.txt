@@ -67,7 +67,7 @@ do-sift/
 ## Commands
 
 ```bash
-npm run check:fast     # fast gate (format, lint, typecheck, policy, skills, governance, links)
+npm run check:fast     # fast gate (format, lint, typecheck, policy, guardrails, skills, governance, links)
 npm run check          # full gate incl. tests, evals, build
 npm run build          # canonical production build
 npm run signals -- status   # receipt freshness (green|stale|red|missing)

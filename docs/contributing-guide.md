@@ -11,7 +11,7 @@ If you only read one other document, read the
 
 ```bash
 npm install
-npm run check:fast    # format, lint, typecheck, policy, skills, governance, links, docs
+npm run check:fast    # format, lint, typecheck, policy, guardrails, skills, governance, links, docs
 npm run check         # the above + tests + evals + build
 ```
 

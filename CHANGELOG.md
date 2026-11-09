@@ -78,6 +78,15 @@ with an explicit 0.x compatibility policy (minor = breaking, patch = safe).
   default-deny, grants, and computer consent are policy decisions covered by
   `tests/security/guardrails.test.ts`. Guides for extension live in
   `docs/guardrails.md`.
+- Guardrails Rego export and sync gate (issue #124 follow-up; plans 039–041,
+  ADR 0011; PRs #138, #140): `policies/guardrails.rego` ships an OPA-readable
+  mirror of `guardrails.json` (execution stays in the TypeScript evaluator; no
+  OPA binary). `scripts/guardrails-check.ts` parses the Rego data sets and
+  compares each with the JSON in both directions, so a missing, misplaced,
+  comment-only, or stale value fails the gate. It runs in `npm run check:fast`
+  and as the `guardrails` dev-signal sensor in `npm run signals` and
+  `do-harness.toml`; a parity test keeps every `scripts/check.ts` step
+  registered as a sensor.
 - FND milestone: plugin kernel (`packages/kernel`) with manifest validation,
   capability grants, and lifecycle; shared contracts (`packages/contracts`);
   sample plugin; verification harness (`scripts/`); agent foundation

@@ -1,6 +1,6 @@
 # Plan 041 — Harden the guardrails Rego sync gate and cover it with tests
 
-Status: done locally (2026-11-09; follow-up from plan 040). Not committed.
+Status: done (2026-11-09, PR #140 squash-merged as 33f50b8); follow-up from plan 040.
 
 ## Context
 
