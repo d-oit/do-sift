@@ -274,13 +274,12 @@ The test now distinguishes the two cases:
 
 Risks / open questions:
 
-- CI never runs `npx playwright install` (a search for `playwright install`
-  finds nothing in `.github/workflows`). With this change the launch test will
-  therefore **fail the CI test step** rather than pass silently. That is
-  the intended trade — a permanently-skipping browser e2e is worse than a
-  red one — but CI needs either a chromium-install step or
-  `DO_SIFT_ALLOW_BROWSER_SKIP=1` on the job. Installing the browser is the
-  honest choice; it adds ~330 MiB and a download step to the job.
+- CI now installs chromium before the test step
+  (`npx playwright install --with-deps chromium` in `.github/workflows/ci.yml`,
+  Linux job), so the BRW-04 launch test genuinely executes in CI. Both legs
+  went from ~1m20s to ~1m55s for the download. Windows stays on
+  `check:fast`, which runs no tests, so it is unaffected. The workflow edit
+  was made on explicit owner approval (AGENTS.md stop-and-ask boundary).
 - `npx playwright install` also pruned the stale 1243 build from the local
   cache, so any other checkout expecting that revision must re-install.
 
