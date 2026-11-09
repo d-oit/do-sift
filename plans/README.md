@@ -21,6 +21,7 @@ see the [architecture index](../docs/architecture/README.md) and the
 
 ## Current queue
 
+- `043-minimatch-ghsa-g3hv.md` — done (2026-11-09); fixes Dependabot alert #18 (`minimatch` GHSA-g3hv-75wg-m249) with an `overrides` entry to `^11.0.5`, since no `eslint`/`typescript-eslint` release accepts 11 yet; lint file set unchanged; removal tracked as R-20.
 - `042-guardrails-docs-closeout.md` — done (2026-11-09); docs closeout for plans 039–041: CHANGELOG entry for the Rego export and sync gate, the missing plan 039 index row, and `guardrails` in the `check:fast` comment lines.
 - `041-guardrails-sync-hardening.md` — done (2026-11-09, PR #140 squash-merged as 33f50b8); the guardrails sync gate parses the Rego data sets and compares them with `guardrails.json` in both directions (pure `scripts/guardrails/sync.ts`, 13 tests). Verification set green in clean clones on Windows (base and changed) and the feedback set green on WSL2.
 - `040-guardrails-sensor-registration.md` — done (2026-11-09, PR #140 squash-merged as 33f50b8); the `guardrails` Rego sync gate from plan 039 is registered as a dev-signal sensor in `scripts/dev-harness/sensors.ts` and `do-harness.toml`, with a parity test pinning every `scripts/check.ts` step to a sensor; verified on Windows and WSL2.
