@@ -140,6 +140,16 @@ export function isSensorInput(sensorName: string, relPath: string): boolean {
         norm === "package-lock.json"
       );
     }
+    case "guardrails": {
+      // The Rego sync gate: its CLI + pure comparison, the policy JSON, and the export.
+      return (
+        norm === "scripts/guardrails-check.ts" ||
+        norm.startsWith("scripts/guardrails/") ||
+        norm === "packages/contracts/src/guardrails.json" ||
+        norm === "policies/guardrails.rego" ||
+        norm === "package.json"
+      );
+    }
     case "skills": {
       return norm === "scripts/skills-check.ts" || norm.startsWith(".agents/skills/");
     }
