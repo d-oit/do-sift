@@ -4,7 +4,7 @@
  * entrypoint guard, and runSensor mapping — using synthetic defs executed as
  * spawnSync(process.execPath, …) so no real prettier/eslint/vitest runs here.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -53,6 +53,7 @@ describe("SENSOR_DEFS", () => {
       "lint",
       "typecheck",
       "policy",
+      "guardrails",
       "skills",
       "governance",
       "links",
@@ -74,6 +75,10 @@ describe("SENSOR_DEFS", () => {
       "--noEmit",
     ]);
     expect(def("policy").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/policy.ts"]);
+    expect(def("guardrails").args).toEqual([
+      nm("tsx", "dist/cli.mjs"),
+      "scripts/guardrails-check.ts",
+    ]);
     expect(def("skills").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/skills-check.ts"]);
     expect(def("governance").args).toEqual([
       nm("tsx", "dist/cli.mjs"),
@@ -92,7 +97,16 @@ describe("SENSOR_DEFS", () => {
 
   it("partitions sensors across the named signal sets", () => {
     const shared: SensorDef["sets"] = ["feedback", "verification", "release"];
-    for (const name of ["format", "lint", "typecheck", "policy", "skills", "governance", "links"]) {
+    for (const name of [
+      "format",
+      "lint",
+      "typecheck",
+      "policy",
+      "guardrails",
+      "skills",
+      "governance",
+      "links",
+    ]) {
       expect(def(name).sets).toEqual(shared);
     }
     expect(def("tests").sets).toEqual(["verification", "release"]);
@@ -106,6 +120,19 @@ describe("SENSOR_DEFS", () => {
       expect(existsSync(resolveEntry(d))).toBe(true);
     }
   });
+
+  it("registers every scripts/*.ts step of scripts/check.ts as a sensor", () => {
+    // Parity guard (plan 040): a check.ts step with no sensor lets the signal
+    // sets report green while npm run check fails. Paths are POSIX literals in
+    // both files, so the comparison is identical on Windows, Linux, and macOS.
+    const checkSource = readFileSync(join(ROOT, "scripts", "check.ts"), "utf8");
+    const steps = [...checkSource.matchAll(/"(scripts\/[\w./-]+\.ts)"/gu)].map((m) => m[1] ?? "");
+    expect(steps.length).toBeGreaterThan(0);
+    const sensorArgs = new Set(SENSOR_DEFS.flatMap((d) => d.args));
+    for (const step of steps) {
+      expect(sensorArgs.has(step), "check.ts step without a sensor: " + step).toBe(true);
+    }
+  });
 });
 
 describe("SIGNAL_SETS + sensorNamesForSet", () => {
@@ -115,6 +142,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "lint",
       "typecheck",
       "policy",
+      "guardrails",
       "skills",
       "governance",
       "links",
@@ -124,6 +152,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "lint",
       "typecheck",
       "policy",
+      "guardrails",
       "skills",
       "governance",
       "links",
@@ -136,6 +165,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "lint",
       "typecheck",
       "policy",
+      "guardrails",
       "skills",
       "governance",
       "links",

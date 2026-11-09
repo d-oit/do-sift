@@ -10,9 +10,9 @@ pre-commit = []
 pre-push = []
 
 [signal-sets]
-feedback = ["format", "lint", "typecheck", "policy", "skills", "governance", "links"]
-verification = ["format", "lint", "typecheck", "policy", "skills", "governance", "links", "tests", "evals", "build"]
-release = ["format", "lint", "typecheck", "policy", "skills", "governance", "links", "tests", "evals", "build", "release"]
+feedback = ["format", "lint", "typecheck", "policy", "guardrails", "skills", "governance", "links"]
+verification = ["format", "lint", "typecheck", "policy", "guardrails", "skills", "governance", "links", "tests", "evals", "build"]
+release = ["format", "lint", "typecheck", "policy", "guardrails", "skills", "governance", "links", "tests", "evals", "build", "release"]
 
 [[sensors]]
 name = "format"
@@ -29,6 +29,10 @@ argv = ["node", "node_modules/typescript/bin/tsc", "-p", "tsconfig.json", "--noE
 [[sensors]]
 name = "policy"
 argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/policy.ts"]
+
+[[sensors]]
+name = "guardrails"
+argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/guardrails-check.ts"]
 
 [[sensors]]
 name = "skills"

@@ -93,6 +93,14 @@ describe("isSensorInput filtering", () => {
 
     expect(isSensorInput("release", "migrations/0001_init.sql")).toBe(true);
     expect(isSensorInput("release", "src/index.ts")).toBe(false);
+
+    expect(isSensorInput("guardrails", "scripts/guardrails-check.ts")).toBe(true);
+    expect(isSensorInput("guardrails", "scripts/guardrails/sync.ts")).toBe(true);
+    expect(isSensorInput("guardrails", "packages/contracts/src/guardrails.json")).toBe(true);
+    expect(isSensorInput("guardrails", "policies/guardrails.rego")).toBe(true);
+    expect(isSensorInput("guardrails", "policies\\guardrails.rego")).toBe(true); // Windows separators
+    expect(isSensorInput("guardrails", "src/index.ts")).toBe(false);
+    expect(isSensorInput("guardrails", "docs/guardrails.md")).toBe(false);
   });
 });
 

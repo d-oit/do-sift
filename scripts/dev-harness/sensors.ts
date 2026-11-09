@@ -60,6 +60,11 @@ export const SENSOR_DEFS: readonly SensorDef[] = [
     sets: ["feedback", "verification", "release"],
   },
   {
+    name: "guardrails",
+    args: [TSX_CLI, "scripts/guardrails-check.ts"],
+    sets: ["feedback", "verification", "release"],
+  },
+  {
     name: "skills",
     args: [TSX_CLI, "scripts/skills-check.ts"],
     sets: ["feedback", "verification", "release"],

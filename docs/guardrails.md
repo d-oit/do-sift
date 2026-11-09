@@ -113,9 +113,13 @@ site-access gates. It is an export, not a second enforcer — the kernel
 still executes the TypeScript evaluator.
 
 `scripts/guardrails-check.ts` (the `guardrails` step in `npm run
-check:fast`) fails when any site, action, or gate in `guardrails.json` is
-missing from the Rego, so the two cannot drift. Extending the policy means:
-edit the JSON first, mirror the literal in the Rego, then run the gate. See
+check:fast` and the dev-signal `guardrails` sensor) parses the Rego data sets
+and compares each with `guardrails.json` in both directions: a site, action,
+or gate that is missing from the Rego, listed under the wrong set, present
+only in a comment, or left behind after the JSON dropped it is a finding, so
+the two cannot drift. The comparison lives in `scripts/guardrails/sync.ts`.
+Extending the policy means: edit the JSON first, mirror the value in the
+matching Rego set, then run the gate. See
 [0011-rego-guardrails-export.md](decisions/0011-rego-guardrails-export.md)
 for the decision.
 
@@ -123,6 +127,7 @@ for the decision.
 
 ```bash
 npx vitest run tests/security/guardrails.test.ts   # policy + wiring tests
+npx vitest run scripts/guardrails/test/sync.test.ts # Rego export sync gate
 npm run check                                       # full pipeline (tests included)
 npm run policy                                      # INV-004 / INV-007 scanners
 ```

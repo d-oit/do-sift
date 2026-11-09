@@ -12,10 +12,10 @@ status, not unverified memory.
 ## Procedure
 
 1. After edits, run `npm run signals -- verify --set feedback` for the fast
-   edit/fix loop (format, lint, typecheck, policy, skills, governance, links).
-   Before claiming a task done or handing off, run the `verification` set (all
-   10 check pipeline sensors through build). The `release` set adds the release
-   sensor for release gating only. If the `format` sensor fails, run
+   edit/fix loop (format, lint, typecheck, policy, guardrails, skills,
+   governance, links). Before claiming a task done or handing off, run the
+   `verification` set (all 11 check pipeline sensors through build). The
+   `release` set adds the release sensor for release gating only. If the `format` sensor fails, run
    `npx prettier --write` on the files you changed and re-verify — fix
    forward, never hand off red. When using upstream `do-harness`, scope
    `--record` to the numeric task ID returned by `do-harness task add`; the
