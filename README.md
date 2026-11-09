@@ -32,7 +32,7 @@ See `plans/000-product-and-decisions.md` for the full decision log and
 
 ```bash
 npm install
-npm run check:fast   # format, lint, types, policy, skills, governance, links
+npm run check:fast   # format, lint, types, policy, guardrails, skills, governance, links
 npm run check        # fast checks + tests + evals + build
 npm run build        # explicit tsconfig.build.json production build
 npm run eval:offline # deterministic retrieval/citation/budget fixtures

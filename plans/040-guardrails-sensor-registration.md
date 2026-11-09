@@ -1,7 +1,7 @@
 # Plan 040 — Register the guardrails sync gate as a dev-signal sensor
 
-Status: done locally (2026-11-09; opened from the weekly maintenance review).
-Not yet committed or opened as a PR.
+Status: done (2026-11-09, PR #140 squash-merged as 33f50b8); opened from the 2026-11-09
+weekly maintenance review.
 
 ## Context
 
@@ -50,9 +50,9 @@ sensor (plan 036) is the precedent for the wiring.
 - Unit tests for `scripts/guardrails-check.ts` itself (taken up in plan 041: drift, comment-only
   match, stale extra Rego entries).
 - `CHANGELOG.md` entry for the Rego export (#138); `plans/README.md` row
-  for plan 039.
+  for plan 039 (taken up in plan 042).
 - `check:fast` comment lines in `README.md`, `llms.txt`, and
-  `docs/contributing-guide.md` omit `guardrails`.
+  `docs/contributing-guide.md` omit `guardrails` (taken up in plan 042).
 
 ## Evidence (2026-11-09, base 375c12a = origin/main)
 
