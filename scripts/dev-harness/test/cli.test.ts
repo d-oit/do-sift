@@ -101,7 +101,7 @@ describe("dev-harness CLI (DSH-05)", () => {
     const res = runCli(["init", "--state-dir", dir]);
     expect(res.status).toBe(0);
     expect(res.stdout).toContain("init: state dir ready at");
-    expect(res.stdout).toContain("sensors (12)");
+    expect(res.stdout).toContain("sensors (13)");
     expect(res.stdout).toContain("signal sets (3)");
     const events = await readEvents(dir); // re-validates schema + chain
     expect(events).toHaveLength(1);

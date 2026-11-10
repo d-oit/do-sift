@@ -57,6 +57,7 @@ describe("SENSOR_DEFS", () => {
       "skills",
       "governance",
       "links",
+      "deps",
       "tests",
       "evals",
       "build",
@@ -85,6 +86,7 @@ describe("SENSOR_DEFS", () => {
       "scripts/codeowners-check.ts",
     ]);
     expect(def("links").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/markdown-links.ts"]);
+    expect(def("deps").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/deps-check.ts"]);
     expect(def("tests").args).toEqual([nm("vitest", "vitest.mjs"), "run"]);
     expect(def("evals").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/eval.ts"]);
     expect(def("build").args).toEqual([
@@ -106,6 +108,7 @@ describe("SENSOR_DEFS", () => {
       "skills",
       "governance",
       "links",
+      "deps",
     ]) {
       expect(def(name).sets).toEqual(shared);
     }
@@ -146,6 +149,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "skills",
       "governance",
       "links",
+      "deps",
     ]);
     expect([...SIGNAL_SETS.verification]).toEqual([
       "format",
@@ -156,6 +160,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "skills",
       "governance",
       "links",
+      "deps",
       "tests",
       "evals",
       "build",
@@ -169,6 +174,7 @@ describe("SIGNAL_SETS + sensorNamesForSet", () => {
       "skills",
       "governance",
       "links",
+      "deps",
       "tests",
       "evals",
       "build",

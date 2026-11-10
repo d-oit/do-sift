@@ -29,6 +29,10 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      # The BRW-04 browser e2e drives a real chromium; without it the launch
+      # test fails rather than reporting a green pass in 0 ms (see
+      # plans/044, DRV-05). --with-deps pulls the Linux shared libraries too.
+      - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run check
       - run: npm run evals:dashboard
