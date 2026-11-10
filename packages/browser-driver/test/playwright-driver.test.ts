@@ -103,16 +103,20 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await harness?.deactivate();
-  // The browser test leaves a keep-alive connection to this server, so a bare
-  // close() waits forever for it. Drop the live sockets first.
-  if (
-    typeof (server as unknown as { closeAllConnections?: () => void }).closeAllConnections ===
-    "function"
-  ) {
-    (server as unknown as { closeAllConnections: () => void }).closeAllConnections();
+  // Teardown must be unconditional: if deactivate() throws, chromium is never
+  // closed and the vitest worker cannot exit — which surfaces as "Hook timed
+  // out" plus "failed to terminate worker", not as a test failure.
+  try {
+    await harness?.deactivate();
+  } catch (error) {
+    console.warn(`harness deactivate failed during teardown: ${String(error)}`);
+  } finally {
+    // The now genuinely-running browser leaves a keep-alive connection to this
+    // server, and close() waits for open sockets. Drop them first.
+    const closable = server as unknown as { closeAllConnections?: () => void };
+    if (typeof closable.closeAllConnections === "function") closable.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
-  server.close();
 });
 
 describe("own-app e2e (BRW-04)", () => {
