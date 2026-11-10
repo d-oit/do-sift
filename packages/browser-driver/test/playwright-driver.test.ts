@@ -104,6 +104,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await harness?.deactivate();
+  // The browser test leaves a keep-alive connection to this server, so a bare
+  // close() waits forever for it. Drop the live sockets first.
+  if (
+    typeof (server as unknown as { closeAllConnections?: () => void }).closeAllConnections ===
+    "function"
+  ) {
+    (server as unknown as { closeAllConnections: () => void }).closeAllConnections();
+  }
   server.close();
 });
 
