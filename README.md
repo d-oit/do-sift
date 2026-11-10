@@ -44,7 +44,7 @@ plugin end to end, the [architecture index](docs/architecture/README.md)
 explains how the pieces fit, and [docs/decisions/](docs/decisions/README.md)
 records why they are shaped that way.
 
-Requires Node >= 22 (see [docs/upgrading.md](docs/upgrading.md) for version justification, manager setup, and upgrade instructions).
+Requires Node >= 24 (see [docs/upgrading.md](docs/upgrading.md) for version justification, manager setup, and upgrade instructions).
 
 ### Dev signal harness
 

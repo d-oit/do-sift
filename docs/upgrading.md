@@ -8,19 +8,20 @@ This guide documents the Node.js runtime floor for **do-sift**, the technical ju
 
 do-sift adheres to the [Node.js Long-Term Support (LTS) release schedule](https://nodejs.org/en/about/previous-releases):
 
-| Node Release | Status                                   | Role in do-sift                                                                        |
-| ------------ | ---------------------------------------- | -------------------------------------------------------------------------------------- |
-| **Node 20**  | Maintenance LTS (end-of-life April 2026) | **Unsupported**: missing key built-in modules and runtime features required by do-sift |
-| **Node 22**  | Active LTS                               | **Minimum Supported Version**: all packages and tools must run without polyfills       |
-| **Node 24**  | Active LTS                               | **Latest LTS Supported**: CI validates the test suite against this version             |
+| Node Release | Status                                     | Role in do-sift                                                                         |
+| ------------ | ------------------------------------------ | --------------------------------------------------------------------------------------- |
+| **Node 20**  | End-of-life (April 2026)                   | **Unsupported**: missing key built-in modules and runtime features required by do-sift  |
+| **Node 22**  | Maintenance LTS (end-of-life April 2027)   | **Compatible**: the test suite still passes here, but it is no longer the shipped floor |
+| **Node 24**  | Active LTS (maintenance from October 2026) | **Minimum Supported Version**: all packages and tools must run without polyfills        |
+| **Node 26**  | Active LTS                                 | **Latest LTS Supported**: CI validates the test suite against this version              |
 
-All first-party packages, apps, tests, and scripts declare `"engines": { "node": ">=22" }` in `package.json`.
+All first-party packages, apps, tests, and scripts declare `"engines": { "node": ">=24" }` in `package.json`.
 
 ---
 
-## 2. Technical Justification: Why Node >= 22?
+## 2. Technical Justification: Why Node >= 24?
 
-Node 22 introduced major stable capabilities and standards alignments that eliminate external dependencies, polyfills, and runtime workarounds across do-sift's architecture:
+Node 22 introduced major stable capabilities and standards alignments that eliminate external dependencies, polyfills, and runtime workarounds across do-sift's architecture; Node 24 builds on that same baseline, so the floor moved without any polyfill work returning:
 
 ### 2.1 Built-in `node:sqlite`
 
@@ -80,12 +81,12 @@ Verify your active version:
 
 ```bash
 node -v
-# Output should be >= v22.0.0
+# Output should be >= v24.0.0
 ```
 
 ### 3.2 Using `volta`
 
-The repository configures Volta pinning in `package.json` (`"volta": { "node": "22.14.0" }`).
+The repository configures Volta pinning in `package.json` (`"volta": { "node": "24.22.2" }`).
 
 If you use Volta:
 
@@ -94,8 +95,6 @@ If you use Volta:
 node -v
 
 # To manually pin or switch versions:
-volta pin node@22
-# Or for Node 24:
 volta pin node@24
 ```
 
@@ -110,13 +109,11 @@ fnm use
 
 ### 3.4 Docker & Container Environments
 
-Update base images in Dockerfiles and CI container configs to use Node 22 or Node 24 slim images:
+Update base images in Dockerfiles and CI container configs to use Node 24 slim images:
 
 ```dockerfile
 # Example
-FROM node:22-slim
-# Or:
-# FROM node:24-slim
+FROM node:24-slim
 ```
 
 ---
@@ -136,7 +133,7 @@ After switching your Node version:
 
    ```bash
    node -v
-   # Must report v22.x or higher
+   # Must report v24.x or higher
    ```
 
 3. **Run repository checks:**
