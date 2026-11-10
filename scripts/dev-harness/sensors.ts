@@ -80,6 +80,11 @@ export const SENSOR_DEFS: readonly SensorDef[] = [
     sets: ["feedback", "verification", "release"],
   },
   {
+    name: "deps",
+    args: [TSX_CLI, "scripts/deps-check.ts"],
+    sets: ["feedback", "verification", "release"],
+  },
+  {
     name: "tests",
     args: [nodeModulesEntry("vitest", "vitest.mjs"), "run"],
     sets: ["verification", "release"],

@@ -11,7 +11,7 @@ skipped. Development discipline decays when it depends on self-reporting.
 ## Decision
 
 The check pipeline is a **registry of named sensors** — format, lint,
-typecheck, policy, skills, governance, links, tests, evals, build — grouped
+typecheck, policy, skills, governance, links, deps, tests, evals, build — grouped
 into signal sets:
 
 - `feedback` — the edit loop.

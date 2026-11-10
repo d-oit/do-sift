@@ -11,7 +11,7 @@ If you only read one other document, read the
 
 ```bash
 npm install
-npm run check:fast    # format, lint, typecheck, policy, guardrails, skills, governance, links, docs
+npm run check:fast    # format, lint, typecheck, policy, guardrails, skills, governance, links, deps, docs
 npm run check         # the above + tests + evals + build
 ```
 
@@ -113,6 +113,7 @@ something is wrong.
 | `typecheck`  | The manifest's config shape and the exported instance type agree with the contracts. |
 | `policy`     | No `node:fs`/`node:net` import in plugin source; no Python; no stealth patterns.     |
 | `links`      | Any documentation you added links to real files and headings.                        |
+| `deps`       | No deprecated package or dead `overrides` entry entered the lockfile.                |
 | `tests`      | Your plugin's round-trip test actually ran.                                          |
 | `governance` | If you touched a sensitive path, `.github/CODEOWNERS` covers it.                     |
 
@@ -182,10 +183,11 @@ zero-capability mock there is no network assertion to make.
 
 ## Common failures
 
-| Symptom                                         | Cause                                                                                    |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `pluginImports` finding                         | Plugin source imports `node:fs`/`node:net`; use context services.                        |
-| Activation refused with an ungranted capability | The manifest declares `paid`/`computer`; that is intended in CI.                         |
-| `links` finding                                 | A relative link or `#anchor` does not resolve; the checker names `file:line`.            |
-| `governance` finding                            | A sensitive path has no CODEOWNERS rule; see [github-hardening.md](github-hardening.md). |
-| Type error on an optional config field          | `exactOptionalPropertyTypes` is on; build the object then assign.                        |
+| Symptom                                         | Cause                                                                                                                                 |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `pluginImports` finding                         | Plugin source imports `node:fs`/`node:net`; use context services.                                                                     |
+| Activation refused with an ungranted capability | The manifest declares `paid`/`computer`; that is intended in CI.                                                                      |
+| `links` finding                                 | A relative link or `#anchor` does not resolve; the checker names `file:line`.                                                         |
+| `governance` finding                            | A sensitive path has no CODEOWNERS rule; see [github-hardening.md](github-hardening.md).                                              |
+| `deps` finding                                  | A deprecated package entered the tree, or an `overrides` entry went inert; see [PLAN 044](../plans/044-dependency-review-2026-11.md). |
+| Type error on an optional config field          | `exactOptionalPropertyTypes` is on; build the object then assign.                                                                     |

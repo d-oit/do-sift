@@ -34,7 +34,7 @@ risk.
 | DRV-04 | Pin `vitest` and `@vitest/coverage-v8` identically (caret vs exact while coverage peer-requires an exact match)                                                                                       | done                  |
 | DRV-05 | Bump Playwright `1.64.1` → `1.65.0` and re-run `npx playwright install`, proving the BRW-04 e2e did not silently skip                                                                                 | done                  |
 | DRV-06 | Track fastembed's deprecated transitives (`boolean` via the exact `onnxruntime-node@1.21.0` pin; archived `@anush008/tokenizers`) and the arm64 prebuild gap                                          | blocked               |
-| DRV-07 | Candidate: a `deps` dev-signal sensor (no moderate+ audit, no deprecated resolutions) so freshness is a computational receipt rather than a weekly manual pass                                        | proposed              |
+| DRV-07 | A `deps` gate sensor: fails on a deprecated resolution, an unresolved workspace, or an inert `overrides` entry; runs offline so freshness is a receipt, not a manual pass                             | done                  |
 
 ## Findings and sources
 
@@ -282,6 +282,60 @@ Risks / open questions:
   was made on explicit owner approval (AGENTS.md stop-and-ask boundary).
 - `npx playwright install` also pruned the stale 1243 build from the local
   cache, so any other checkout expecting that revision must re-install.
+
+## Evidence — DRV-07 (2026-11-09, branch `chore/dep-07-deps-sensor`)
+
+Files: `scripts/deps-check.ts` (new), `scripts/test/deps-check.test.ts` (new,
+13 tests), `scripts/check.ts`, `scripts/dev-harness/sensors.ts`,
+`do-harness.toml`, `docs/contributing-guide.md`,
+`docs/decisions/0010-dev-signal-harness.md`, this plan, `plans/README.md`.
+
+**Scope decision.** DRV-07 as filed proposed failing on a moderate+ `audit`
+result. That check needs the npm registry, and INV-006 makes the pipeline
+deterministic and network-free — a gate that goes red when a registry is
+slow would be turned off within a week. Worse, an `audit` gate grades the
+advisory advisory state, not this repo: **#142's `minimatch` override now
+resolves `minimatch@11.0.5`, but `npm audit` still reports 9 moderate
+entries** because it maps advisories onto the declared dependency ranges,
+not the overridden resolution. A sensor that fails on a fixed problem is
+worse than no sensor.
+
+So the sensor gates what is decidable offline and rots silently:
+
+1. every workspace manifest resolves in the lockfile;
+2. no resolved package is flagged `deprecated`, except two documented
+   upstream blocks (`boolean`, `@anush008/tokenizers`) — and the sensor
+   fails if one of those disappears, so the note cannot outlive the problem;
+3. every `overrides` entry still matches exactly one resolved version, so a
+   dead override (R-20's removal condition) cannot linger.
+
+Zero manifests or zero resolved packages is a failure (INV-006).
+
+Commands (Windows 11, Node v24.9.0):
+
+- `npx tsx scripts/deps-check.ts` → `deps: PASS (307 resolved packages,
+22 workspace manifests, 2 documented upstream blocks, 1 override(s))`.
+- `npx vitest run scripts/test/deps-check.test.ts` → 13/13 passed, including
+  a deprecated package, a stale documented block, an unresolved workspace,
+  an inert override, a double-resolution override, and both vacuous-scan
+  cases.
+- `npm run check` → PASS all 12 steps (prettier, eslint, typecheck,
+  policy, guardrails, skills, governance, links, **deps**, tests, evals,
+  build), 1003/1003 tests. `deps` itself: 548 ms.
+- Wiring the sensor caught a real gap in `stale.ts`: `isSensorInput` has a
+  `default: return true`, so the new `deps` sensor initially claimed **every
+  file** as an input, and the feedback set started invalidating on unrelated
+  edits (the `stale.test.ts` set-isolation case failed). Fixed by giving
+  `deps` its own case (lockfile, manifests, its own script).
+
+Risks / open questions:
+
+- The registry-facing half of the review (is a newer version published?)
+  stays manual; this sensor cannot see it without network. DRV-07's title
+  now says so rather than implying full coverage.
+- `KNOWN_DEPRECATED` is a hard-coded allowlist. That is deliberate — it
+  makes each tolerated deprecation a visible, dated decision — but it means
+  a new transitive deprecation fails the gate until someone records it.
 
 ## Risks
 

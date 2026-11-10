@@ -186,6 +186,16 @@ export function isSensorInput(sensorName: string, relPath: string): boolean {
     case "evals": {
       return norm === "scripts/eval.ts" || norm.startsWith("evals/");
     }
+    case "deps": {
+      // The dependency gate reads the lockfile and the manifests, nothing
+      // else. Without this case the default below would claim every file and
+      // make the feedback set invalidate on unrelated edits.
+      return (
+        norm === "package-lock.json" ||
+        norm === "scripts/deps-check.ts" ||
+        /(^|\/)package\.json$/u.test(norm)
+      );
+    }
     case "release": {
       return (
         norm === "scripts/release-check.ts" ||
