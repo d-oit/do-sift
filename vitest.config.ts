@@ -1,4 +1,17 @@
+import { availableParallelism } from "node:os";
 import { defineConfig } from "vitest/config";
+
+/**
+ * Worker-pool size, derived rather than pinned.
+ *
+ * Vitest's default is availableParallelism(), which forks one worker per test
+ * file (94 here). The real-browser e2e then starves next to them: 34s for a
+ * file that takes 3.5s alone, and its hook hits the ceiling. Half the cores
+ * keeps the browser test honest on a big machine; the floor keeps small CI
+ * runners from serialising the suite one file at a time.
+ */
+const CPU_COUNT = Math.max(1, availableParallelism());
+const MAX_WORKERS = CPU_COUNT <= 4 ? CPU_COUNT : Math.min(8, Math.ceil(CPU_COUNT / 2));
 
 export default defineConfig({
   test: {
@@ -15,11 +28,9 @@ export default defineConfig({
     // the budget must cover a browser start/stop, not a no-op.
     testTimeout: 30_000,
     hookTimeout: 30_000,
-    // Vitest defaults maxWorkers to availableParallelism(); on a 22-core box
-    // that means 94 forked workers, and the real-browser test starves next to
-    // them (34s for a file that takes 3.5s alone). Bounding the pool keeps the
-    // browser test honest instead of timing out on contention.
-    maxWorkers: 8,
+    // Vitest defaults maxWorkers to availableParallelism(), which on a 22-core
+    // box means 94 forked workers; see MAX_WORKERS above for the derivation.
+    maxWorkers: MAX_WORKERS,
     coverage: {
       // #67: runtime source only. Measured 92.5% lines at introduction; the
       // 85% floor catches regressions without failing on today's suite.
