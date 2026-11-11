@@ -86,7 +86,9 @@ export const SENSOR_DEFS: readonly SensorDef[] = [
   },
   {
     name: "tests",
-    args: [nodeModulesEntry("vitest", "vitest.mjs"), "run"],
+    // One command runs both pools: the workspace config, then tests/ with
+    // isolate: false. See scripts/run-tests.ts.
+    args: [TSX_CLI, "scripts/run-tests.ts"],
     sets: ["verification", "release"],
   },
   {
