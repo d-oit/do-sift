@@ -26,9 +26,9 @@
     "release:check": "tsx scripts/release-check.ts",
     "signals": "tsx scripts/dev-harness/cli.ts",
     "hooks:install": "tsx scripts/dev-harness/cli.ts hook install",
-    "test": "vitest run",
+    "test": "vitest run && vitest run -c vitest.unit.config.ts",
     "build": "tsc -b tsconfig.build.json",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage && vitest run -c vitest.unit.config.ts"
   },
   "volta": {
     "node": "24.22.2"

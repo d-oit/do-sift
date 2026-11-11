@@ -87,7 +87,8 @@ describe("SENSOR_DEFS", () => {
     ]);
     expect(def("links").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/markdown-links.ts"]);
     expect(def("deps").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/deps-check.ts"]);
-    expect(def("tests").args).toEqual([nm("vitest", "vitest.mjs"), "run"]);
+    // Both test pools run from one runner so the sensor covers tests/ too.
+    expect(def("tests").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/run-tests.ts"]);
     expect(def("evals").args).toEqual([nm("tsx", "dist/cli.mjs"), "scripts/eval.ts"]);
     expect(def("build").args).toEqual([
       nm("typescript", "bin/tsc"),

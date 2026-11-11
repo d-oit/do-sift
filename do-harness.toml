@@ -52,7 +52,7 @@ argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/deps-check.ts"]
 
 [[sensors]]
 name = "tests"
-argv = ["node", "node_modules/vitest/vitest.mjs", "run"]
+argv = ["node", "node_modules/tsx/dist/cli.mjs", "scripts/run-tests.ts"]
 
 [[sensors]]
 name = "evals"
