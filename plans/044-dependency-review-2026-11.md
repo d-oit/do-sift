@@ -1,9 +1,10 @@
 ﻿# Plan 044 — Dependency review (2026-11-09): advisories, runtime pin, majors
 
-Status: review complete (2026-11-09); DRV-02 implemented on
-`chore/DRV-02-node-24-floor`. DRV-04 and DRV-05 are ready to schedule;
-DRV-03 and DRV-06 are blocked upstream. DRV-01 was fixed on `main` as
-`plans/043-minimatch-ghsa-g3hv.md` (#142).
+Status: review complete (2026-11-09). DRV-01 landed as
+`plans/043-minimatch-ghsa-g3hv.md` (#142); DRV-02 (Node 24 floor) as #143;
+DRV-04, DRV-05 and DRV-07 as #145. DRV-03 is done: `typescript` moves to
+`~6.0.3` on top of #149's `types: ["node"]`, with TypeScript 7 deferred.
+DRV-06 remains blocked upstream.
 
 Task IDs here are `DRV-*` because plan 043 already used `DEP-0N` for the
 minimatch override.
@@ -26,15 +27,15 @@ risk.
 
 ## Tasks
 
-| ID     | Task                                                                                                                                                                                                  | Status                |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| DRV-01 | Resolve the `minimatch` advisory cluster (9 moderate) without downgrading eslint: decide on an `overrides` entry for `minimatch ^11.0.1`, then verify with `npm run check` and `npm run eval:offline` | done (plan 043, #142) |
-| DRV-02 | Align `@types/node` with the shipped runtime and refresh the Node pins to Node 24 LTS (ADR 0011)                                                                                                      | done                  |
-| DRV-03 | Decide the TypeScript major: migrate to `6.0.3` (top of the `typescript-eslint` peer window) or hold at 5.9.3 until it supports 7.x, and record the choice                                            | blocked               |
-| DRV-04 | Pin `vitest` and `@vitest/coverage-v8` identically (caret vs exact while coverage peer-requires an exact match)                                                                                       | done                  |
-| DRV-05 | Bump Playwright `1.64.1` → `1.65.0` and re-run `npx playwright install`, proving the BRW-04 e2e did not silently skip                                                                                 | done                  |
-| DRV-06 | Track fastembed's deprecated transitives (`boolean` via the exact `onnxruntime-node@1.21.0` pin; archived `@anush008/tokenizers`) and the arm64 prebuild gap                                          | blocked               |
-| DRV-07 | A `deps` gate sensor: fails on a deprecated resolution, an unresolved workspace, or an inert `overrides` entry; runs offline so freshness is a receipt, not a manual pass                             | done                  |
+| ID     | Task                                                                                                                                                                                                  | Status                        |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| DRV-01 | Resolve the `minimatch` advisory cluster (9 moderate) without downgrading eslint: decide on an `overrides` entry for `minimatch ^11.0.1`, then verify with `npm run check` and `npm run eval:offline` | done (plan 043, #142)         |
+| DRV-02 | Align `@types/node` with the shipped runtime and refresh the Node pins to Node 24 LTS (ADR 0011)                                                                                                      | done                          |
+| DRV-03 | Decide the TypeScript major: migrate to `6.0.3` (top of the `typescript-eslint` peer window) or hold at 5.9.3 until it supports 7.x, and record the choice                                            | done: `~6.0.3`; TS 7 deferred |
+| DRV-04 | Pin `vitest` and `@vitest/coverage-v8` identically (caret vs exact while coverage peer-requires an exact match)                                                                                       | done                          |
+| DRV-05 | Bump Playwright `1.64.1` → `1.65.0` and re-run `npx playwright install`, proving the BRW-04 e2e did not silently skip                                                                                 | done                          |
+| DRV-06 | Track fastembed's deprecated transitives (`boolean` via the exact `onnxruntime-node@1.21.0` pin; archived `@anush008/tokenizers`) and the arm64 prebuild gap                                          | blocked                       |
+| DRV-07 | A `deps` gate sensor: fails on a deprecated resolution, an unresolved workspace, or an inert `overrides` entry; runs offline so freshness is a receipt, not a manual pass                             | done                          |
 
 ## Findings and sources
 
@@ -112,6 +113,19 @@ Blocker and next decision: absorb the TS 6 migration now (bump to `~6.0.3`,
 expect `exactOptionalPropertyTypes` and `verbatimModuleSyntax` fallout across
 23 manifests) or hold at 5.9.3 and pin `typescript-eslint` until it widens the
 peer range. Resolve before any Dependabot bump tries 7.x.
+
+**Update (2026-11-11): the premise above was wrong.** typescript-eslint will not
+widen its `typescript` peer range to admit 7. Upstream closed "TypeScript 7.0.2
+Support" ([typescript-eslint#12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518))
+as not planned: TS 7.0 ships no JS API, and the TypeScript team expects 7.1 to ship
+a new, different one. Support is instead being built as a separate optional peer,
+`@typescript/native` (an alias for `typescript@>=7.1.0-beta`), behind
+`projectService.EXPERIMENTAL_backend`. That merged in
+[typescript-eslint#12803](https://github.com/typescript-eslint/typescript-eslint/pull/12803)
+on 2026-11-10 and is in canary `8.72.3-alpha.7`, not in stable `8.72.2`. The
+`typescript` peer stays `>=4.8.4 <6.1.0` throughout, and the backend only affects
+type-aware linting, which this repo does not use (`tseslint.configs.recommended`
+only). TS 6 was therefore never blocked; it was a decision.
 
 ### DRV-04 — latent spec mismatch in the Vitest pair
 
@@ -337,12 +351,54 @@ Risks / open questions:
   makes each tolerated deprecation a visible, dated decision — but it means
   a new transitive deprecation fails the gate until someone records it.
 
+## Evidence — DRV-03 (2026-11-11)
+
+Registry and upstream, read-only: `typescript-eslint@8.72.2` and canary
+`8.72.3-alpha.7` both declare `typescript: ">=4.8.4 <6.1.0"`. I downloaded both
+`typescript-estree` tarballs: `8.72.2` has no tsgo code; `8.72.3-alpha.7` has 17
+files of it, with `@typescript/native` as an optional peer.
+
+Dry-run in a throwaway `git archive` copy of `main` (`956b398`), same commands each
+time (`tsc -p tsconfig.json --noEmit`, `tsc -b tsconfig.build.json --force`,
+`eslint .`):
+
+| Setup                        | typecheck | build                | lint |
+| ---------------------------- | --------- | -------------------- | ---- |
+| TS 5.9.3 (baseline)          | pass      | pass                 | pass |
+| TS 6.0.3, no change          | pass      | **fail, 111 errors** | pass |
+| TS 6.0.3 + `types: ["node"]` | pass      | pass                 | pass |
+| TS 5.9.3 + `types: ["node"]` | pass      | pass                 | pass |
+
+In the repo, `npm run check` is 12/12 on TS 6.0.3 (1003 tests, evals and build
+included), with no TypeScript diagnostic or deprecation line in the log. The
+lockfile diff is the `typescript` entry only. npm resolved 6.0.3 against
+typescript-eslint 8.72.1 with no peer conflict and without `--force`.
+
+Findings:
+
+- TS 6 does not auto-include `@types/*`. Without `types: ["node"]` the per-package
+  build fails: `safe-fetch` 74, `contracts` 16, `auth` 14, `kernel` 4,
+  `fake-providers` 3. This is inferred from the behaviour and the TS2591 text, not
+  from the release notes. It landed first as #149 because it is a no-op on 5.9.3.
+- The root typecheck masks it: `--explainFiles` shows `@types/node` reaching that
+  program only through third-party references (`fastembed`, `undici-types`).
+  `check:fast` has no build step, so it would stay green on TS 6 while the build is
+  red, and the Windows CI leg runs only `check:fast`.
+- The spec is `~6.0.3`, not `^6`, because typescript-eslint caps `typescript` below
+  6.1.0.
+
+Deferred: TypeScript 7. It cannot be the `typescript` package typescript-eslint
+resolves; the only route today is side by side with TS 6. The gain here is small
+(typecheck and build take seconds). Revisit when typescript-eslint stable ships the
+7.1 backend and TS 7.1 is stable.
+
 ## Risks
 
 - The `minimatch` override (DRV-01) is the one fix that can plausibly break
   the lint/typecheck sensors; it is dev-only, so runtime is unaffected.
-- DRV-03 has no in-repo fix today; it is gated on `typescript-eslint` widening
-  its TypeScript peer range.
+- DRV-03 is done, but Dependabot will likely keep proposing `typescript` 7.x
+  majors that fail the typescript-eslint peer check. An `ignore` entry for major
+  updates in `.github/dependabot.yml` is the follow-up; it is not made here.
 - DRV-06 is entirely upstream. Both deprecations are latent, not exploitable,
   but the arm64 tokenizer gap is a hard blocker for the deploy candidate named
   in ADR 0001.
