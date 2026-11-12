@@ -396,9 +396,13 @@ resolves; the only route today is side by side with TS 6. The gain here is small
 
 - The `minimatch` override (DRV-01) is the one fix that can plausibly break
   the lint/typecheck sensors; it is dev-only, so runtime is unaffected.
-- DRV-03 is done, but Dependabot will likely keep proposing `typescript` 7.x
-  majors that fail the typescript-eslint peer check. An `ignore` entry for major
-  updates in `.github/dependabot.yml` is the follow-up; it is not made here.
+- DRV-03 is done. Dependabot had already proposed the jump once (#2, "Bump
+  typescript from 5.9.3 to 7.0.2", closed unmerged 2026-09-21); closing a PR only
+  snoozes that one release, so `.github/dependabot.yml` now ignores
+  `version-update:semver-major` for `typescript`. It covers majors only: a future
+  6.1.0 would arrive as a minor in the `minor-and-patch` group and hit the same
+  `<6.1.0` peer cap unless typescript-eslint has widened it by then. Remove the
+  ignore when typescript-eslint stable supports TS 7.1.
 - DRV-06 is entirely upstream. Both deprecations are latent, not exploitable,
   but the arm64 tokenizer gap is a hard blocker for the deploy candidate named
   in ADR 0001.

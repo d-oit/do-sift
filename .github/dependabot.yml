@@ -10,6 +10,14 @@ updates:
     ignore:
       # Node types must track the pinned Node runtime; reviewed separately.
       - dependency-name: "@types/node"
+      # typescript-eslint caps its `typescript` peer below 6.1.0 and will not widen
+      # it to admit 7: TS 7.0 ships no JS API, and support is being built as a
+      # separate optional peer behind an experimental backend (plan 044, DRV-03).
+      # A 7.x bump therefore fails the peer check; closing the PR only snoozes one
+      # release. Minor and patch updates of 6.0.x still flow through the group
+      # above. Remove this when typescript-eslint stable supports TS 7.1.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
