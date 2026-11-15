@@ -35,6 +35,29 @@ export type AuthMode = z.infer<typeof AuthMode>;
  */
 export const DEFAULT_TENANT_ID = "default";
 
+/**
+ * Explicit tenant scope for tenant-aware storage entry points (issue #159).
+ * Every low-level function that reads or writes tenant-owned rows takes a
+ * `tenantId` from this scope — never an optional string that can be omitted.
+ * Production callers pass the bound runtime's tenant (`repositories.tenantId`
+ * or the authenticated `AuthPrincipal.tenantId`); the `default` value is
+ * reserved for the explicitly documented single-tenant/CLI/migration boundary.
+ */
+export type TenantScope = Pick<AuthPrincipal, "tenantId">;
+
+/**
+ * Fail closed on a missing or empty tenant scope. Free storage functions call
+ * this first so a JS caller that omits the required `tenantId` gets an
+ * exception instead of an unscoped query.
+ */
+export function assertTenantScope(scope: TenantScope): string {
+  const tenantId = scope?.tenantId;
+  if (typeof tenantId !== "string" || tenantId.trim() === "") {
+    throw new Error("tenant scope is required: pass an explicit tenantId");
+  }
+  return tenantId;
+}
+
 /** Upper bounds mirror the ones used by `packages/kernel` manifests. */
 export const AUTH_PRINCIPAL_MAX_ROLES = 32;
 export const AUTH_ROLE_MAX_LENGTH = 64;

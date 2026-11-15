@@ -68,11 +68,29 @@ const QUERY = "highest mountain earth elevation";
 describe("noise-class exclusion in retrieval (SRC-12)", () => {
   it("searchPassages excludes flagged passages only when the filter is passed", async () => {
     const { noiseId, cleanId } = await seedMixedPassages();
-    const filtered = await searchPassages(client, "owner-a", QUERY, 10, undefined, undefined, true);
+    const filtered = await searchPassages(
+      client,
+      "owner-a",
+      QUERY,
+      10,
+      undefined,
+      undefined,
+      true,
+      "default",
+    );
     expect(filtered.map((h) => h.passageId)).toContain(cleanId);
     expect(filtered.map((h) => h.passageId)).not.toContain(noiseId);
     // byte-identical legacy shape: no filter → both passages surface
-    const unfiltered = await searchPassages(client, "owner-a", QUERY, 10);
+    const unfiltered = await searchPassages(
+      client,
+      "owner-a",
+      QUERY,
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(unfiltered.map((h) => h.passageId)).toEqual(expect.arrayContaining([noiseId, cleanId]));
   });
 
@@ -87,7 +105,7 @@ describe("noise-class exclusion in retrieval (SRC-12)", () => {
         return [1, 0];
       },
     };
-    await backfillPassageEmbeddings(client, "owner-a", embedder);
+    await backfillPassageEmbeddings(client, "owner-a", embedder, { tenantId: "default" });
     const filtered = await searchByEmbedding(
       client,
       "owner-a",
@@ -97,10 +115,21 @@ describe("noise-class exclusion in retrieval (SRC-12)", () => {
       undefined,
       undefined,
       true,
+      "default",
     );
     expect(filtered.map((h) => h.passageId)).toContain(cleanId);
     expect(filtered.map((h) => h.passageId)).not.toContain(noiseId);
-    const unfiltered = await searchByEmbedding(client, "owner-a", embedder.modelId, [1, 0], 10);
+    const unfiltered = await searchByEmbedding(
+      client,
+      "owner-a",
+      embedder.modelId,
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(unfiltered.map((h) => h.passageId)).toEqual(expect.arrayContaining([noiseId, cleanId]));
   });
 
@@ -115,7 +144,7 @@ describe("noise-class exclusion in retrieval (SRC-12)", () => {
         return [1, 0];
       },
     };
-    await backfillPassageEmbeddings(client, "owner-a", embedder);
+    await backfillPassageEmbeddings(client, "owner-a", embedder, { tenantId: "default" });
     const filtered = await hybridSearch(
       client,
       "owner-a",
@@ -125,6 +154,7 @@ describe("noise-class exclusion in retrieval (SRC-12)", () => {
       undefined,
       undefined,
       true,
+      "default",
     );
     expect(filtered.map((h) => h.passageId)).toContain(cleanId);
     expect(filtered.map((h) => h.passageId)).not.toContain(noiseId);
@@ -145,7 +175,16 @@ describe("noise-class exclusion in retrieval (SRC-12)", () => {
       excerpt: "Highest mountain earth legacy passage with plenty of query overlap terms.",
       extractionStatus: "ok",
     });
-    const hits = await searchPassages(client, "owner-a", QUERY, 10, undefined, undefined, true);
+    const hits = await searchPassages(
+      client,
+      "owner-a",
+      QUERY,
+      10,
+      undefined,
+      undefined,
+      true,
+      "default",
+    );
     expect(hits).toHaveLength(1);
   });
 });
@@ -187,12 +226,12 @@ describe("legacy noise-class backfill (SRC-13)", () => {
       excerpt: "Mount Everest is the highest mountain above sea level, at 8,848 metres.",
       extractionStatus: "ok",
     });
-    const updated = await backfillPassageNoiseClasses(client, "owner-a", classify);
+    const updated = await backfillPassageNoiseClasses(client, "owner-a", classify, "default");
     expect(updated).toBe(1); // only the flagged row changes; clean stays NULL
     expect((await repos.passages.get("owner-a", nav))?.noiseClass).toBe("nav-list");
     expect((await repos.passages.get("owner-a", clean))?.noiseClass).toBeUndefined();
     // idempotent: the second pass finds nothing left to classify
-    expect(await backfillPassageNoiseClasses(client, "owner-a", classify)).toBe(0);
+    expect(await backfillPassageNoiseClasses(client, "owner-a", classify, "default")).toBe(0);
   });
 
   it("is owner-scoped — another owner's legacy rows are untouched", async () => {
@@ -220,7 +259,7 @@ describe("legacy noise-class backfill (SRC-13)", () => {
       excerpt: "The main tenets of the Peace of Westphalia were:",
       extractionStatus: "ok",
     });
-    const updated = await backfillPassageNoiseClasses(client, "owner-a", classify);
+    const updated = await backfillPassageNoiseClasses(client, "owner-a", classify, "default");
     expect(updated).toBe(0); // owner-a's row is clean; owner-b's stub untouched
     expect((await repos.passages.get("owner-b", stubB))?.noiseClass).toBeUndefined();
   });

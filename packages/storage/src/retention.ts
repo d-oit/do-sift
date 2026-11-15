@@ -7,7 +7,7 @@
  * daily cap accounting for today is never lost.
  */
 import type { Client } from "@libsql/client";
-import { DEFAULT_TENANT_ID } from "@do-sift/contracts";
+import { assertTenantScope } from "@do-sift/contracts";
 
 export interface RetentionConfig {
   /**
@@ -50,11 +50,11 @@ export interface RetentionReceipt {
 export interface RetentionOptions {
   ownerId: string;
   /**
-   * Tenant the owner belongs to (plan 024). Pruning is scoped by both, so a
+   * REQUIRED tenant scope (issue #159). Pruning is scoped by both, so a
    * maintenance run can never touch another tenant's history even with a
-   * colliding owner id. Defaults to the migration-0011 backfill tenant.
+   * colliding owner id. The single-tenant CLI passes the explicit default.
    */
-  tenantId?: string | undefined;
+  tenantId: string;
   /** Explicit cutoff ISO timestamp. */
   beforeIso?: string | undefined;
   /** Number of days of history to retain relative to current UTC day start. */
@@ -99,7 +99,7 @@ export async function executeOwnerRetention(
 ): Promise<RetentionReceipt> {
   const startTime = Date.now();
   const { ownerId, dryRun = false, now = new Date() } = options;
-  const tenantId = options.tenantId ?? DEFAULT_TENANT_ID;
+  const tenantId = assertTenantScope({ tenantId: options.tenantId });
 
   if (!ownerId || ownerId.trim() === "") {
     throw new Error("executeOwnerRetention: ownerId is required");
@@ -342,7 +342,7 @@ export async function pruneOwnerHistory(
   client: Client,
   ownerId: string,
   beforeIso: string,
-  tenantId: string = DEFAULT_TENANT_ID,
+  tenantId: string,
 ): Promise<RetentionResult> {
   const receipt = await executeOwnerRetention(client, {
     ownerId,

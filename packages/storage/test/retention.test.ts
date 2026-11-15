@@ -248,6 +248,7 @@ describe("executeOwnerRetention (#64)", () => {
     await insertEvidence("doc-2", "ret-other", OLD);
 
     const receipt = await executeOwnerRetention(client, {
+      tenantId: "default",
       ownerId: "ret-owner",
       beforeIso: CUTOFF,
       dryRun: false,
@@ -275,6 +276,7 @@ describe("executeOwnerRetention (#64)", () => {
     await insertUsage("u-old-settled", "ret-owner", "settled", OLD);
 
     const receipt = await executeOwnerRetention(client, {
+      tenantId: "default",
       ownerId: "ret-owner",
       retentionDays: 30,
       dryRun: true,
@@ -297,6 +299,7 @@ describe("executeOwnerRetention (#64)", () => {
 
     // Run 1
     const receipt1 = await executeOwnerRetention(client, {
+      tenantId: "default",
       ownerId: "ret-owner",
       beforeIso: CUTOFF,
       dryRun: false,
@@ -306,6 +309,7 @@ describe("executeOwnerRetention (#64)", () => {
 
     // Run 2
     const receipt2 = await executeOwnerRetention(client, {
+      tenantId: "default",
       ownerId: "ret-owner",
       beforeIso: CUTOFF,
       dryRun: false,
@@ -320,6 +324,7 @@ describe("executeOwnerRetention (#64)", () => {
     await insertUsage("u-other-settled", "ret-other", "settled", OLD);
 
     const receipt = await executeOwnerRetention(client, {
+      tenantId: "default",
       ownerId: "ret-owner",
       beforeIso: CUTOFF,
       dryRun: false,
@@ -336,7 +341,7 @@ describe("executeOwnerRetention (#64)", () => {
     await insertJob("j-old-done", "ret-owner", "done", OLD);
     await insertUsage("u-old-settled", "ret-owner", "settled", OLD);
 
-    const result = await pruneOwnerHistory(client, "ret-owner", CUTOFF);
+    const result = await pruneOwnerHistory(client, "ret-owner", CUTOFF, "default");
     expect(result).toEqual({ jobsDeleted: 1, usageDeleted: 1 });
     expect(await ids("jobs")).toEqual([]);
     expect(await ids("usage_ledger")).toEqual([]);

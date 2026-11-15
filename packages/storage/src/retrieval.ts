@@ -10,6 +10,7 @@
  * never widen the search or crash the query.
  */
 import type { Client, Row } from "@libsql/client";
+import { assertTenantScope } from "@do-sift/contracts";
 
 export interface PassageHit {
   passageId: string;
@@ -52,7 +53,7 @@ const STOPWORDS = new Set([
   "with",
 ]);
 
-/** Plain-word tokens, length ≥ 2, capped — nothing that could be MATCH syntax. */
+/** Plain-word tokens, length >= 2, capped — nothing that could be MATCH syntax. */
 export function extractQueryTokens(text: string): string[] {
   const tokens = (text.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/gu) ?? []).filter(
     (t) => t.length >= 2 && !STOPWORDS.has(t),
@@ -92,21 +93,23 @@ function hitFromRow(row: Row): PassageHit {
  * noise class — advisory in the same shape: NULL (unclassified/legacy)
  * is ALWAYS included, and the filter is byte-identical when omitted.
  *
- * `tenantId` (plan 035) is the caller's tenant scope. The tenant is still
- * derived from the authoritative owners row; supplying a scope adds a
- * second condition that must agree with it, so a runtime bound to the wrong
- * tenant retrieves nothing instead of another tenant's rows.
+ * `tenantId` (issue #159) is the caller's REQUIRED tenant scope. The tenant is
+ * still derived from the authoritative owners row; the scope adds a second
+ * condition that must agree with it, so a runtime bound to the wrong tenant
+ * retrieves nothing instead of another tenant's rows. There is no unscoped
+ * fallback: omitting or emptying the scope throws.
  */
 export async function searchPassages(
   client: Client,
   ownerId: string,
   queryText: string,
-  limit = 10,
-  documentIds?: string[],
-  relevanceFloor?: number,
-  noiseFilter?: boolean,
-  tenantId?: string,
+  limit: number,
+  documentIds: string[] | undefined,
+  relevanceFloor: number | undefined,
+  noiseFilter: boolean | undefined,
+  tenantId: string,
 ): Promise<PassageHit[]> {
+  const scope = assertTenantScope({ tenantId });
   const match = buildMatchQuery(queryText);
   if (match === null) return [];
   const docFilter =
@@ -118,7 +121,6 @@ export async function searchPassages(
       ? ""
       : " AND (d.relevance_score IS NULL OR d.relevance_score >= ?)";
   const noiseClause = noiseFilter === true ? " AND p.noise_class IS NULL" : "";
-  const tenantClause = tenantId === undefined ? "" : " AND p.tenant_id = ?";
   const res = await client.execute({
     sql: `SELECT f.passage_id, p.document_id, d.content_hash, f.excerpt, bm25(passages_fts) AS score
           FROM passages_fts f
@@ -127,19 +129,15 @@ export async function searchPassages(
           WHERE passages_fts MATCH ?
             AND f.owner_id = ?
             AND p.tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
-            AND d.tenant_id = p.tenant_id${tenantClause}${docFilter}${floorFilter}${noiseClause}
+            AND d.tenant_id = p.tenant_id AND p.tenant_id = ?${docFilter}${floorFilter}${noiseClause}
           ORDER BY score
           LIMIT ?`,
     args: [
       ownerId,
       match,
       ownerId,
-      // Plan 024: the tenant is derived from the authoritative owner row, so
-      // a passage or document whose tenant_id disagrees with its owner can
-      // never be ranked for that owner — no caller-supplied tenant to trust.
       ownerId,
-      // Plan 035: an explicit scope must agree with that derivation.
-      ...(tenantId === undefined ? [] : [tenantId]),
+      scope,
       ...(documentIds && documentIds.length > 0 ? documentIds : []),
       ...(relevanceFloor === undefined ? [] : [relevanceFloor]),
       limit,

@@ -227,27 +227,36 @@ exceeding the bound is refused rather than silently evicting live runtimes.
   with `retention prune-changes --tenant <id>` (one tenant per run, dry-run
   unless `--confirm`, 365-day default, 30-day floor — see
   `docs/deployment.md`).
-- **Every retrieval entry point takes the caller's tenant** (plan 035).
+- **Every retrieval entry point requires the caller's tenant** (issue #159).
   `searchPassages`, `searchByEmbedding`, `hybridSearch`,
-  `backfillPassageEmbeddings`, `backfillPassageNoiseClasses`, and
-  `getExistingModelDimension` all accept a tenant scope **in addition to**
-  deriving the tenant from the authoritative `owners` row; the two must agree,
-  so a runtime bound to the wrong tenant finds nothing rather than another
-  tenant's rows. `docs/deployment.md` records the one-argument forms that
-  remain valid for single-tenant tooling.
+  `backfillPassageEmbeddings`, `backfillPassageNoiseClasses`,
+  `getExistingModelDimension`, `storePassageEmbeddings` (via
+  `EmbeddingRowInput.tenantId`), and `executeOwnerRetention`/`pruneOwnerHistory`
+  (via `RetentionOptions.tenantId`) all take a REQUIRED `TenantScope`
+  (`{ tenantId: string }`) **in addition to** deriving the tenant from the
+  authoritative `owners` row; the two must agree, so a runtime bound to the
+  wrong tenant finds nothing (reads) or fails closed (writes) rather than
+  touching another tenant's rows. There is no unscoped fallback: omitting the
+  scope throws. Production callers pass `repositories.tenantId` (answer,
+  harness, eval). Single-tenant tooling passes the explicit `"default"`
+  binding; the `default` value lives only at the documented migration/CLI
+  boundary.
 - **The CLI is tenant-scoped too.** Every data command takes
   `--tenant <id>` (default `default`), filters on `tenant_id`, and
   `retention prune` prunes the tenant it was told about instead of silently
   defaulting to `default`.
 - **Global surfaces, on purpose.** `tenants.ensure`/`tenants.get` address the
-  tenant registry itself, `applyMigrations`/`backupToFile`/`verifyRestore`
-  operate on the whole database, and the `/metrics` registry is
+  tenant registry itself, `applyMigrations`/`backupToFile`/`verifyRestore`/`loadMigrations`
+  operate on the whole database, pure helpers (`extractQueryTokens`,
+  `buildMatchQuery`, vector validation, `cosineSimilarity`, `rrfFuse`,
+  retention cutoff math) touch no rows, and the `/metrics` registry is
   deployment-global (route/method/status counters, no rows). None of them
-  returns or writes tenant data on behalf of a principal. `INV-008` records
-  the isolation boundary that the enforcing suite proves.
+  takes a tenant scope and none returns or writes tenant data on behalf of a
+  principal. `INV-008` records the isolation boundary that the enforcing suite proves.
 - **`plans/invariants.json` records `INV-008`** (cross-tenant isolation),
-  enforced by `tests/security/cross-tenant.test.ts` and
-  `tests/security/cross-tenant-scope.test.ts`, plus
+  enforced by `tests/security/cross-tenant.test.ts`,
+  `tests/security/cross-tenant-scope.test.ts` and
+  `tests/security/tenant-scope-required.test.ts`, plus
   `packages/server/test/tenant-routing.test.ts` and
   `packages/storage/test/membership.test.ts`. Deleting the suites now fails
   `npm run policy`.

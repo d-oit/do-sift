@@ -59,7 +59,16 @@ describe("searchPassages (FTS5 baseline)", () => {
       "owner-a",
       "FTS5 powers the retrieval baseline; FTS5 ranking uses bm25; FTS5 is deterministic.",
     );
-    const hits = await searchPassages(client, "owner-a", "fts5 retrieval", 10);
+    const hits = await searchPassages(
+      client,
+      "owner-a",
+      "fts5 retrieval",
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits.length).toBe(2);
     // the passage repeating the term more often ranks first (bm25)
     expect(hits[0]?.excerpt).toContain("deterministic");
@@ -76,11 +85,42 @@ describe("searchPassages (FTS5 baseline)", () => {
       "owner-b",
       "Vector search arrives only after beating this keyword baseline.",
     );
-    const a = await searchPassages(client, "owner-a", "vector keyword baseline", 10);
+    const a = await searchPassages(
+      client,
+      "owner-a",
+      "vector keyword baseline",
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(a).toHaveLength(1);
     expect((await repos.passages.get("owner-a", a[0]?.passageId ?? ""))?.ownerId).toBe("owner-a");
-    expect(await searchPassages(client, "owner-b", "vector keyword baseline", 10)).toHaveLength(1);
-    expect(await searchPassages(client, "owner-c", "vector keyword baseline", 10)).toHaveLength(0);
+    expect(
+      await searchPassages(
+        client,
+        "owner-b",
+        "vector keyword baseline",
+        10,
+        undefined,
+        undefined,
+        undefined,
+        "default",
+      ),
+    ).toHaveLength(1);
+    expect(
+      await searchPassages(
+        client,
+        "owner-c",
+        "vector keyword baseline",
+        10,
+        undefined,
+        undefined,
+        undefined,
+        "default",
+      ),
+    ).toHaveLength(0);
   });
 
   it("treats hostile queries as plain words, never MATCH syntax", async () => {
@@ -91,7 +131,16 @@ describe("searchPassages (FTS5 baseline)", () => {
       "retrieval* AND (passages)",
       "x: y; z",
     ]) {
-      const hits = await searchPassages(client, "owner-a", hostile, 10);
+      const hits = await searchPassages(
+        client,
+        "owner-a",
+        hostile,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        "default",
+      );
       // every returned hit must genuinely contain one of the query words
       for (const hit of hits) {
         expect(hit.excerpt.toLowerCase()).toMatch(/fts|passages|near|evidence|retrieval|and/u);
@@ -106,8 +155,30 @@ describe("searchPassages (FTS5 baseline)", () => {
         `Retrieval baseline fixture number ${i} with shared keywords.`,
       );
     }
-    expect(await searchPassages(client, "owner-a", "retrieval baseline", 3)).toHaveLength(3);
-    expect(await searchPassages(client, "owner-a", "?? -- **", 3)).toEqual([]);
+    expect(
+      await searchPassages(
+        client,
+        "owner-a",
+        "retrieval baseline",
+        3,
+        undefined,
+        undefined,
+        undefined,
+        "default",
+      ),
+    ).toHaveLength(3);
+    expect(
+      await searchPassages(
+        client,
+        "owner-a",
+        "?? -- **",
+        3,
+        undefined,
+        undefined,
+        undefined,
+        "default",
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -148,7 +219,16 @@ describe("evidence relevance floor (SRC-11)", () => {
       undefined,
     );
 
-    const hits = await searchPassages(client, "owner-a", "fts5 baseline", 10, undefined, 0.7);
+    const hits = await searchPassages(
+      client,
+      "owner-a",
+      "fts5 baseline",
+      10,
+      undefined,
+      0.7,
+      undefined,
+      "default",
+    );
     const surfaced = hits.map((h) => h.passageId);
     expect(surfaced).not.toContain(low); // 0.5 < floor 0.70 — advisory-excluded
     expect(surfaced).toContain(high); // 0.9 >= floor
@@ -166,11 +246,29 @@ describe("evidence relevance floor (SRC-11)", () => {
       "FTS5 powers the retrieval baseline; FTS5 ranking uses bm25; FTS5 is deterministic.",
       0.9,
     );
-    const a = await searchPassages(client, "owner-a", "fts5 baseline", 10, undefined, 0.7);
+    const a = await searchPassages(
+      client,
+      "owner-a",
+      "fts5 baseline",
+      10,
+      undefined,
+      0.7,
+      undefined,
+      "default",
+    );
     expect(a).toHaveLength(1);
     expect((await repos.passages.get("owner-a", a[0]?.passageId ?? ""))?.ownerId).toBe("owner-a");
     expect(
-      await searchPassages(client, "owner-b", "fts5 baseline", 10, undefined, 0.7),
+      await searchPassages(
+        client,
+        "owner-b",
+        "fts5 baseline",
+        10,
+        undefined,
+        0.7,
+        undefined,
+        "default",
+      ),
     ).toHaveLength(1);
   });
 
@@ -180,7 +278,16 @@ describe("evidence relevance floor (SRC-11)", () => {
       "libSQL supports FTS5 virtual tables for keyword retrieval over stored passages.",
       0.5,
     );
-    const hits = await searchPassages(client, "owner-a", "fts5 retrieval", 10);
+    const hits = await searchPassages(
+      client,
+      "owner-a",
+      "fts5 retrieval",
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits.map((h) => h.passageId)).toContain(low); // no floor → no filtering
   });
 });
