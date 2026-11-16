@@ -210,7 +210,17 @@ describe("embedding indexing (RET-03)", () => {
     expect(summary.embedded).toBe(3); // all new passages indexed
 
     // the stored passages are retrievable through the vector path, best-match first
-    const hits = await searchByEmbedding(client, "owner-emb", "fake-embed-1", [1, 0, 0.5], 10);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-emb",
+      "fake-embed-1",
+      [1, 0, 0.5],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits).toHaveLength(3);
     expect(hits[0]?.excerpt).toContain("Alpha");
   });

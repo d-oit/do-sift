@@ -12,20 +12,28 @@
  * what makes annotating legacy receipts post-hoc honest.
  */
 import type { Client, InStatement } from "@libsql/client";
+import { assertTenantScope } from "@do-sift/contracts";
 import type { PassageNoiseClass } from "./repositories.js";
 
+/**
+ * Backfill noise classes for one owner's passages (issue #159).
+ * `tenantId` is REQUIRED: the owners-row derivation and the explicit scope
+ * must agree, so a wrong-tenant caller updates nothing. There is no
+ * unscoped fallback.
+ */
 export async function backfillPassageNoiseClasses(
   client: Client,
   ownerId: string,
   classify: (text: string) => PassageNoiseClass | undefined,
-  tenantId?: string,
+  tenantId: string,
 ): Promise<number> {
+  const scope = assertTenantScope({ tenantId });
   const pending = await client.execute({
     sql: `SELECT id, excerpt FROM passages
           WHERE owner_id = ? AND noise_class IS NULL
             AND tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
-            ${tenantId === undefined ? "" : "AND tenant_id = ?"}`,
-    args: [ownerId, ownerId, ...(tenantId === undefined ? [] : [tenantId])],
+            AND tenant_id = ?`,
+    args: [ownerId, ownerId, scope],
   });
   const updates: InStatement[] = [];
   for (const row of pending.rows) {
@@ -34,14 +42,8 @@ export async function backfillPassageNoiseClasses(
       updates.push({
         sql: `UPDATE passages SET noise_class = ? WHERE id = ? AND owner_id = ?
               AND tenant_id = (SELECT tenant_id FROM owners WHERE id = ?)
-              ${tenantId === undefined ? "" : "AND tenant_id = ?"}`,
-        args: [
-          noiseClass,
-          String(row.id),
-          ownerId,
-          ownerId,
-          ...(tenantId === undefined ? [] : [tenantId]),
-        ],
+              AND tenant_id = ?`,
+        args: [noiseClass, String(row.id), ownerId, ownerId, scope],
       });
     }
   }

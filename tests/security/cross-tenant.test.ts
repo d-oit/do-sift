@@ -133,17 +133,44 @@ describe("evidence and answer isolation", () => {
     await seedEvidence(acme, ACME_OWNER, "acme-doc");
     await seedEvidence(globex, GLOBEX_OWNER, "globex-doc");
 
-    const acmeHits = await searchPassages(client, ACME_OWNER, QUESTION);
+    const acmeHits = await searchPassages(
+      client,
+      ACME_OWNER,
+      QUESTION,
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "acme",
+    );
     expect(acmeHits).toHaveLength(1);
     expect(acmeHits[0]?.contentHash).toBe("hash-acme-acme-doc");
 
-    const globexHits = await searchPassages(client, GLOBEX_OWNER, QUESTION);
+    const globexHits = await searchPassages(
+      client,
+      GLOBEX_OWNER,
+      QUESTION,
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "globex",
+    );
     expect(globexHits).toHaveLength(1);
     expect(globexHits[0]?.contentHash).toBe("hash-globex-globex-doc");
 
     // No tenant can retrieve the other tenant's owner at all.
     expect(
-      await searchPassages(client, GLOBEX_OWNER === ACME_OWNER ? "" : ACME_OWNER, QUESTION),
+      await searchPassages(
+        client,
+        GLOBEX_OWNER === ACME_OWNER ? "" : ACME_OWNER,
+        QUESTION,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        "acme",
+      ),
     ).toHaveLength(1);
   });
 

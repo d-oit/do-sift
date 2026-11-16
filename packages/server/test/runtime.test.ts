@@ -96,7 +96,17 @@ describe("createRuntime (RET-04)", () => {
     expect(outcome.degraded).toBe(false);
     expect(outcome.usage?.model).toBe("fake-model-1");
 
-    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-1", [1, 0], 10);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "fake-embed-1",
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits).toHaveLength(2);
     expect(hits[0]?.excerpt).toBe(KEYWORD_A);
   });
@@ -109,7 +119,17 @@ describe("createRuntime (RET-04)", () => {
 
     const outcome = await runtime.answer({ ownerId: "owner-a", question: QUESTION });
     expect(outcome.evidenceOnly).toBe(false);
-    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-1", [1, 0], 10);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "fake-embed-1",
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits).toHaveLength(0); // nothing was embedded
   });
 

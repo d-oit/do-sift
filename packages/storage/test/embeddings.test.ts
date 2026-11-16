@@ -117,7 +117,17 @@ describe("store + searchByEmbedding", () => {
             SELECT 'cap-' || n, 'owner-a', 'm1', x'0000803F00000000', printf('2026-09-13T00:00:00.%06dZ', n) FROM seq`,
       args: [total - 1],
     });
-    const hits = await searchByEmbedding(client, "owner-a", "m1", [1, 0], total);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "m1",
+      [1, 0],
+      total,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits).toHaveLength(MAX_EMBEDDING_CANDIDATES);
     expect(hits.map((h) => h.passageId)).not.toContain("cap-0"); // oldest dropped
     expect(hits.map((h) => h.passageId)).toContain(`cap-${total - 1}`); // newest kept
@@ -127,10 +137,20 @@ describe("store + searchByEmbedding", () => {
     const pClose = await seedPassage("owner-a", "close passage");
     const pFar = await seedPassage("owner-a", "far passage");
     await storePassageEmbeddings(client, "m1", [
-      { passageId: pClose, ownerId: "owner-a", vector: [1, 0] },
-      { passageId: pFar, ownerId: "owner-a", vector: [0, 1] },
+      { passageId: pClose, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
+      { passageId: pFar, ownerId: "owner-a", vector: [0, 1], tenantId: "default" },
     ]);
-    const hits = await searchByEmbedding(client, "owner-a", "m1", [1, 0], 2);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "m1",
+      [1, 0],
+      2,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits[0]?.passageId).toBe(pClose);
     expect(hits[0]?.score).toBeCloseTo(1);
     expect(hits).toHaveLength(2);
@@ -140,19 +160,43 @@ describe("store + searchByEmbedding", () => {
     const pA = await seedPassage("owner-a", "shared text");
     const pB = await seedPassage("owner-b", "shared text");
     await storePassageEmbeddings(client, "m1", [
-      { passageId: pA, ownerId: "owner-a", vector: [1, 0] },
-      { passageId: pB, ownerId: "owner-b", vector: [1, 0] },
+      { passageId: pA, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
     ]);
-    const hitsA = await searchByEmbedding(client, "owner-a", "m1", [1, 0], 10);
+    await storePassageEmbeddings(client, "m1", [
+      { passageId: pB, ownerId: "owner-b", vector: [1, 0], tenantId: "default" },
+    ]);
+    const hitsA = await searchByEmbedding(
+      client,
+      "owner-a",
+      "m1",
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hitsA.map((h) => h.passageId)).toEqual([pA]);
   });
 
   it("is model-scoped: another model's embeddings are invisible", async () => {
     const p = await seedPassage("owner-a", "some text");
     await storePassageEmbeddings(client, "m1", [
-      { passageId: p, ownerId: "owner-a", vector: [1, 0] },
+      { passageId: p, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
     ]);
-    expect(await searchByEmbedding(client, "owner-a", "m2", [1, 0], 10)).toEqual([]);
+    expect(
+      await searchByEmbedding(
+        client,
+        "owner-a",
+        "m2",
+        [1, 0],
+        10,
+        undefined,
+        undefined,
+        undefined,
+        "default",
+      ),
+    ).toEqual([]);
   });
 
   it("honors the limit", async () => {
@@ -164,9 +208,26 @@ describe("store + searchByEmbedding", () => {
     await storePassageEmbeddings(
       client,
       "m1",
-      ids.map((passageId, i) => ({ passageId, ownerId: "owner-a", vector: [1 - i * 0.1, 1] })),
+      ids.map((passageId, i) => ({
+        passageId,
+        ownerId: "owner-a",
+        vector: [1 - i * 0.1, 1],
+        tenantId: "default" as const,
+      })),
     );
-    expect(await searchByEmbedding(client, "owner-a", "m1", [1, 1], 2)).toHaveLength(2);
+    expect(
+      await searchByEmbedding(
+        client,
+        "owner-a",
+        "m1",
+        [1, 1],
+        2,
+        undefined,
+        undefined,
+        undefined,
+        "default",
+      ),
+    ).toHaveLength(2);
   });
 });
 
@@ -218,11 +279,31 @@ describe("migration 0009 upgrade", () => {
     await applyMigrations(rawClient, from0009);
 
     await storePassageEmbeddings(rawClient, "m2", [
-      { passageId: "pas-1", ownerId: "owner-mig", vector: [0, 1] },
+      { passageId: "pas-1", ownerId: "owner-mig", vector: [0, 1], tenantId: "default" },
     ]);
 
-    const hitsM1 = await searchByEmbedding(rawClient, "owner-mig", "m1", [1, 0], 10);
-    const hitsM2 = await searchByEmbedding(rawClient, "owner-mig", "m2", [0, 1], 10);
+    const hitsM1 = await searchByEmbedding(
+      rawClient,
+      "owner-mig",
+      "m1",
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
+    const hitsM2 = await searchByEmbedding(
+      rawClient,
+      "owner-mig",
+      "m2",
+      [0, 1],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hitsM1).toHaveLength(1);
     expect(hitsM1[0]?.passageId).toBe("pas-1");
     expect(hitsM2).toHaveLength(1);
@@ -234,13 +315,33 @@ describe("per-model embeddings coexist (#55)", () => {
   it("storing a second model keeps the first model's vector", async () => {
     const p = await seedPassage("owner-a", "multi-model text");
     await storePassageEmbeddings(client, "m1", [
-      { passageId: p, ownerId: "owner-a", vector: [1, 0] },
+      { passageId: p, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
     ]);
     await storePassageEmbeddings(client, "m2", [
-      { passageId: p, ownerId: "owner-a", vector: [0, 1] },
+      { passageId: p, ownerId: "owner-a", vector: [0, 1], tenantId: "default" },
     ]);
-    const m1 = await searchByEmbedding(client, "owner-a", "m1", [1, 0], 10);
-    const m2 = await searchByEmbedding(client, "owner-a", "m2", [0, 1], 10);
+    const m1 = await searchByEmbedding(
+      client,
+      "owner-a",
+      "m1",
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
+    const m2 = await searchByEmbedding(
+      client,
+      "owner-a",
+      "m2",
+      [0, 1],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(m1.map((h) => h.passageId)).toEqual([p]);
     expect(m1[0]?.score).toBeCloseTo(1);
     expect(m2.map((h) => h.passageId)).toEqual([p]);
@@ -250,13 +351,13 @@ describe("per-model embeddings coexist (#55)", () => {
   it("re-storing the same (passage, model) replaces only that row", async () => {
     const p = await seedPassage("owner-a", "replace text");
     await storePassageEmbeddings(client, "m1", [
-      { passageId: p, ownerId: "owner-a", vector: [1, 0] },
+      { passageId: p, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
     ]);
     await storePassageEmbeddings(client, "m2", [
-      { passageId: p, ownerId: "owner-a", vector: [0, 1] },
+      { passageId: p, ownerId: "owner-a", vector: [0, 1], tenantId: "default" },
     ]);
     await storePassageEmbeddings(client, "m1", [
-      { passageId: p, ownerId: "owner-a", vector: [0, -1] },
+      { passageId: p, ownerId: "owner-a", vector: [0, -1], tenantId: "default" },
     ]);
     const rows = await client.execute("SELECT model_id FROM passage_embeddings ORDER BY model_id");
     expect(rows.rows.map((r) => String(r.model_id))).toEqual(["m1", "m2"]);
@@ -271,22 +372,38 @@ describe("backfillPassageEmbeddings & validation", () => {
       "first passage text": [1, 0],
       "second passage text": [0, 1],
     });
-    const res1 = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    const res1 = await backfillPassageEmbeddings(client, "owner-a", embedder, {
+      tenantId: "default",
+    });
     expect(res1.passagesCompleted).toBe(2);
     expect(res1.batchCount).toBe(1);
 
-    const res2 = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    const res2 = await backfillPassageEmbeddings(client, "owner-a", embedder, {
+      tenantId: "default",
+    });
     expect(res2.passagesCompleted).toBe(0);
     expect(res2.batchCount).toBe(0);
 
-    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-1", [1, 0], 10);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "fake-embed-1",
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits[0]?.passageId).toBe(p1); // cosine 1.0 outranks p2's 0.0
     expect(hits).toHaveLength(2);
   });
 
   it("handles empty store cleanly", async () => {
     const embedder = makeFakeEmbedder({});
-    const res = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedder, {
+      tenantId: "default",
+    });
     expect(res.passagesCompleted).toBe(0);
     expect(res.batchCount).toBe(0);
     expect(res.passagesSkipped).toBe(0);
@@ -296,13 +413,19 @@ describe("backfillPassageEmbeddings & validation", () => {
   it("validates batchSize bounds", async () => {
     const embedder = makeFakeEmbedder({});
     await expect(
-      backfillPassageEmbeddings(client, "owner-a", embedder, { batchSize: 0 }),
+      backfillPassageEmbeddings(client, "owner-a", embedder, { batchSize: 0, tenantId: "default" }),
     ).rejects.toThrow(RangeError);
     await expect(
-      backfillPassageEmbeddings(client, "owner-a", embedder, { batchSize: 501 }),
+      backfillPassageEmbeddings(client, "owner-a", embedder, {
+        batchSize: 501,
+        tenantId: "default",
+      }),
     ).rejects.toThrow(RangeError);
     await expect(
-      backfillPassageEmbeddings(client, "owner-a", embedder, { batchSize: 2.5 }),
+      backfillPassageEmbeddings(client, "owner-a", embedder, {
+        batchSize: 2.5,
+        tenantId: "default",
+      }),
     ).rejects.toThrow(RangeError);
   });
 
@@ -322,6 +445,7 @@ describe("backfillPassageEmbeddings & validation", () => {
     const memBefore = process.memoryUsage().heapUsed;
     const res = await backfillPassageEmbeddings(client, "owner-a", embedder, {
       batchSize: BATCH_SIZE,
+      tenantId: "default",
     });
     const memAfter = process.memoryUsage().heapUsed;
 
@@ -332,7 +456,17 @@ describe("backfillPassageEmbeddings & validation", () => {
     expect(res.durationMs).toBeGreaterThanOrEqual(0);
 
     // Record runtime and memory delta
-    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-1", [1, 0.5], TOTAL);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "fake-embed-1",
+      [1, 0.5],
+      TOTAL,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits).toHaveLength(TOTAL);
     expect(memAfter - memBefore).toBeDefined();
   });
@@ -351,12 +485,24 @@ describe("backfillPassageEmbeddings & validation", () => {
       },
     };
 
-    const res = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedder, {
+      tenantId: "default",
+    });
     expect(res.passagesCompleted).toBe(0);
     expect(res.passagesSkipped).toBe(2);
     expect(res.failureClass).toBe("VectorCountMismatchError");
 
-    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-partial", [1, 0], 10);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "fake-embed-partial",
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits).toHaveLength(0);
   });
 
@@ -376,10 +522,12 @@ describe("backfillPassageEmbeddings & validation", () => {
 
     // Store first row with dimension 2 for an existing passage
     await storePassageEmbeddings(client, "fake-embed-dim", [
-      { passageId: pExisting, ownerId: "owner-a", vector: [1, 0] },
+      { passageId: pExisting, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
     ]);
 
-    const res = await backfillPassageEmbeddings(client, "owner-a", embedder);
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedder, {
+      tenantId: "default",
+    });
     expect(res.passagesCompleted).toBe(0);
     expect(res.failureClass).toBe("VectorDimensionMismatchError");
   });
@@ -397,13 +545,15 @@ describe("backfillPassageEmbeddings & validation", () => {
       },
     };
 
-    const res = await backfillPassageEmbeddings(client, "owner-a", embedderNaN);
+    const res = await backfillPassageEmbeddings(client, "owner-a", embedderNaN, {
+      tenantId: "default",
+    });
     expect(res.passagesCompleted).toBe(0);
     expect(res.failureClass).toBe("NonFiniteVectorError");
 
     await expect(
       storePassageEmbeddings(client, "fake-embed-nan", [
-        { passageId: "p-inf", ownerId: "owner-a", vector: [Infinity, 0] },
+        { passageId: "p-inf", ownerId: "owner-a", vector: [Infinity, 0], tenantId: "default" },
       ]),
     ).rejects.toThrow();
   });
@@ -411,7 +561,7 @@ describe("backfillPassageEmbeddings & validation", () => {
   it("rejects empty vectors before write", async () => {
     await expect(
       storePassageEmbeddings(client, "fake-embed-empty", [
-        { passageId: "p-empty", ownerId: "owner-a", vector: [] },
+        { passageId: "p-empty", ownerId: "owner-a", vector: [], tenantId: "default" },
       ]),
     ).rejects.toThrow();
   });
@@ -442,6 +592,7 @@ describe("backfillPassageEmbeddings & validation", () => {
     const res1 = await backfillPassageEmbeddings(client, "owner-a", embedder, {
       batchSize: 5,
       signal: controller.signal,
+      tenantId: "default",
     });
 
     expect(res1.batchCount).toBe(1);
@@ -461,13 +612,23 @@ describe("backfillPassageEmbeddings & validation", () => {
           return [1, 0];
         },
       },
-      { batchSize: 5 },
+      { batchSize: 5, tenantId: "default" },
     );
 
     expect(res2.passagesCompleted).toBe(10); // remaining 10 passages
     expect(res2.failureClass).toBeUndefined();
 
-    const hits = await searchByEmbedding(client, "owner-a", "fake-embed-cancel", [1, 0], 20);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "fake-embed-cancel",
+      [1, 0],
+      20,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits).toHaveLength(15);
   });
 
@@ -476,7 +637,7 @@ describe("backfillPassageEmbeddings & validation", () => {
     const p2 = await seedPassage("owner-a", "corrupt passage");
 
     await storePassageEmbeddings(client, "m-corrupt", [
-      { passageId: p1, ownerId: "owner-a", vector: [1, 0] },
+      { passageId: p1, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
     ]);
 
     // Insert corrupt raw bytes directly into SQL (3 bytes, not multiple of 4)
@@ -486,7 +647,17 @@ describe("backfillPassageEmbeddings & validation", () => {
       args: [p2, "owner-a", "m-corrupt", new Date().toISOString()],
     });
 
-    const hits = await searchByEmbedding(client, "owner-a", "m-corrupt", [1, 0], 10);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      "m-corrupt",
+      [1, 0],
+      10,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(hits).toHaveLength(1);
     expect(hits[0]?.passageId).toBe(p1);
   });
@@ -537,16 +708,40 @@ describe("hybridSearch", () => {
       "Saturation effects cap the benefit of repeating words in scored text.": [0.98, 0.02],
     });
     await storePassageEmbeddings(client, "fake-embed-1", [
-      { passageId: keywordPassage, ownerId: "owner-a", vector: [0.55, 0.45] },
-      { passageId: paraphrasePassage, ownerId: "owner-a", vector: [0.98, 0.02] },
+      { passageId: keywordPassage, ownerId: "owner-a", vector: [0.55, 0.45], tenantId: "default" },
+      {
+        passageId: paraphrasePassage,
+        ownerId: "owner-a",
+        vector: [0.98, 0.02],
+        tenantId: "default",
+      },
     ]);
 
     // bm25 alone: the paraphrase passage shares no query tokens.
-    const bm25Only = await searchPassages(client, "owner-a", QUESTION, 5);
+    const bm25Only = await searchPassages(
+      client,
+      "owner-a",
+      QUESTION,
+      5,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(bm25Only.map((h) => h.passageId)).not.toContain(paraphrasePassage);
 
     // hybrid: the vector list contributes it.
-    const fused = await hybridSearch(client, "owner-a", QUESTION, 5, embedder);
+    const fused = await hybridSearch(
+      client,
+      "owner-a",
+      QUESTION,
+      5,
+      embedder,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(fused.map((h) => h.passageId)).toContain(paraphrasePassage);
     expect(fused[0]?.passageId).toBe(keywordPassage); // in both lists → tops fusion
   });
@@ -558,10 +753,31 @@ describe("hybridSearch", () => {
       "bm25 passage about ranking": [0.9, 0.1],
     });
     await storePassageEmbeddings(client, "fake-embed-1", [
-      { passageId: p, ownerId: "owner-a", vector: [0.9, 0.1] },
+      { passageId: p, ownerId: "owner-a", vector: [0.9, 0.1], tenantId: "default" },
     ]);
-    expect(await searchPassages(client, "owner-a", "what is it?", 5)).toEqual([]); // tokenless
-    const fused = await hybridSearch(client, "owner-a", "what is it?", 5, embedder);
+    expect(
+      await searchPassages(
+        client,
+        "owner-a",
+        "what is it?",
+        5,
+        undefined,
+        undefined,
+        undefined,
+        "default",
+      ),
+    ).toEqual([]); // tokenless
+    const fused = await hybridSearch(
+      client,
+      "owner-a",
+      "what is it?",
+      5,
+      embedder,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(fused.map((h) => h.passageId)).toContain(p);
   });
 });
@@ -601,9 +817,9 @@ describe("evidence relevance floor (SRC-11)", () => {
     const high = await seedScoredPassage("owner-a", HIGH, 0.9);
     const legacy = await seedScoredPassage("owner-a", LEGACY, undefined);
     await storePassageEmbeddings(client, "fake-embed-1", [
-      { passageId: low, ownerId: "owner-a", vector: [1, 0] },
-      { passageId: high, ownerId: "owner-a", vector: [0.99, 0.01] },
-      { passageId: legacy, ownerId: "owner-a", vector: [0.98, 0.02] },
+      { passageId: low, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
+      { passageId: high, ownerId: "owner-a", vector: [0.99, 0.01], tenantId: "default" },
+      { passageId: legacy, ownerId: "owner-a", vector: [0.98, 0.02], tenantId: "default" },
     ]);
 
     const hits = await searchByEmbedding(
@@ -614,6 +830,8 @@ describe("evidence relevance floor (SRC-11)", () => {
       10,
       undefined,
       0.7,
+      undefined,
+      "default",
     );
     const surfaced = hits.map((h) => h.passageId);
     expect(surfaced).not.toContain(low); // 0.5 < floor 0.70 — advisory-excluded
@@ -632,12 +850,22 @@ describe("evidence relevance floor (SRC-11)", () => {
       [LEGACY]: [0.98, 0.02],
     });
     await storePassageEmbeddings(client, "fake-embed-1", [
-      { passageId: low, ownerId: "owner-a", vector: [1, 0] },
-      { passageId: high, ownerId: "owner-a", vector: [0.99, 0.01] },
-      { passageId: legacy, ownerId: "owner-a", vector: [0.98, 0.02] },
+      { passageId: low, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
+      { passageId: high, ownerId: "owner-a", vector: [0.99, 0.01], tenantId: "default" },
+      { passageId: legacy, ownerId: "owner-a", vector: [0.98, 0.02], tenantId: "default" },
     ]);
 
-    const fused = await hybridSearch(client, "owner-a", QUESTION, 10, embedder, undefined, 0.7);
+    const fused = await hybridSearch(
+      client,
+      "owner-a",
+      QUESTION,
+      10,
+      embedder,
+      undefined,
+      0.7,
+      undefined,
+      "default",
+    );
     const surfaced = fused.map((h) => h.passageId);
     expect(surfaced).not.toContain(low); // excluded on the bm25 half AND the vector half
     expect(surfaced).toContain(high);
@@ -648,9 +876,19 @@ describe("evidence relevance floor (SRC-11)", () => {
     const low = await seedScoredPassage("owner-a", LOW, 0.5);
     const embedder = makeFakeEmbedder({ [QUESTION]: [1, 0], [LOW]: [1, 0] });
     await storePassageEmbeddings(client, "fake-embed-1", [
-      { passageId: low, ownerId: "owner-a", vector: [1, 0] },
+      { passageId: low, ownerId: "owner-a", vector: [1, 0], tenantId: "default" },
     ]);
-    const fused = await hybridSearch(client, "owner-a", QUESTION, 10, embedder);
+    const fused = await hybridSearch(
+      client,
+      "owner-a",
+      QUESTION,
+      10,
+      embedder,
+      undefined,
+      undefined,
+      undefined,
+      "default",
+    );
     expect(fused.map((h) => h.passageId)).toContain(low); // no floor → no filtering
   });
 });

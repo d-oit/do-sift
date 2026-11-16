@@ -1,6 +1,7 @@
 export { MigrationError, applyMigrations, hashMigrationSql, loadMigrations } from "./migrate.js";
 export type { AppliedMigration, Migration } from "./migrate.js";
-export { DEFAULT_TENANT_ID } from "@do-sift/contracts";
+export { DEFAULT_TENANT_ID, assertTenantScope } from "@do-sift/contracts";
+export type { TenantScope } from "@do-sift/contracts";
 export { Repositories } from "./repositories.js";
 export type {
   AnswerBlocks,

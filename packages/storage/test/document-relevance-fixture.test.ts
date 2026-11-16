@@ -103,7 +103,8 @@ function makeSpikeEmbedder(vectors: Record<string, number[]>): TextEmbedder {
 async function seedFrozenPairs(): Promise<Map<string, string>> {
   const byTitle = new Map<string, string>();
   const vectors: Record<string, number[]> = { [PLAYER_QUESTION]: [1, 0] };
-  const rows: Array<{ passageId: string; ownerId: string; vector: number[] }> = [];
+  const rows: Array<{ passageId: string; ownerId: string; vector: number[]; tenantId: string }> =
+    [];
   for (const pair of ALL_PAIRS) {
     const excerpt = excerptFor(pair.title);
     const documentId = await repos.documents.insert({
@@ -123,7 +124,12 @@ async function seedFrozenPairs(): Promise<Map<string, string>> {
     });
     byTitle.set(pair.title, passageId);
     vectors[excerpt] = vectorFor(pair.score);
-    rows.push({ passageId, ownerId: "owner-a", vector: vectorFor(pair.score) });
+    rows.push({
+      passageId,
+      ownerId: "owner-a",
+      vector: vectorFor(pair.score),
+      tenantId: "default",
+    });
   }
   // legacy / unmeasured row: NULL relevance — always included
   const legacyTitle = "Legacy corpus row";
@@ -144,7 +150,12 @@ async function seedFrozenPairs(): Promise<Map<string, string>> {
   });
   byTitle.set(legacyTitle, legacyPassageId);
   vectors[legacyExcerpt] = [1, 0];
-  rows.push({ passageId: legacyPassageId, ownerId: "owner-a", vector: [1, 0] });
+  rows.push({
+    passageId: legacyPassageId,
+    ownerId: "owner-a",
+    vector: [1, 0],
+    tenantId: "default",
+  });
 
   await storePassageEmbeddings(client, MODEL_ID, rows);
   return byTitle;
@@ -164,7 +175,16 @@ describe("SRC-11 designed classification at the floor 0.70", () => {
   });
 
   it("searchPassages replays the recorded classification exactly", async () => {
-    const hits = await searchPassages(client, "owner-a", QUERY, 20, undefined, FLOOR);
+    const hits = await searchPassages(
+      client,
+      "owner-a",
+      QUERY,
+      20,
+      undefined,
+      FLOOR,
+      undefined,
+      "default",
+    );
     const titles = hits.map((h) => h.excerpt.replace(" treaty foot spike record foot", ""));
     for (const title of INCLUDED_TITLES) expect(titles).toContain(title);
     for (const title of EXCLUDED_TITLES) expect(titles).not.toContain(title);
@@ -173,7 +193,17 @@ describe("SRC-11 designed classification at the floor 0.70", () => {
   });
 
   it("searchByEmbedding replays the recorded classification exactly", async () => {
-    const hits = await searchByEmbedding(client, "owner-a", MODEL_ID, [1, 0], 20, undefined, FLOOR);
+    const hits = await searchByEmbedding(
+      client,
+      "owner-a",
+      MODEL_ID,
+      [1, 0],
+      20,
+      undefined,
+      FLOOR,
+      undefined,
+      "default",
+    );
     const titles = hits.map((h) => h.excerpt.replace(" treaty foot spike record foot", ""));
     for (const title of INCLUDED_TITLES) expect(titles).toContain(title);
     for (const title of EXCLUDED_TITLES) expect(titles).not.toContain(title);
@@ -190,6 +220,8 @@ describe("SRC-11 designed classification at the floor 0.70", () => {
       embedder,
       undefined,
       FLOOR,
+      undefined,
+      "default",
     );
     const titles = fused.map((h) => h.excerpt.replace(" treaty foot spike record foot", ""));
     for (const title of INCLUDED_TITLES) expect(titles).toContain(title);
@@ -199,7 +231,16 @@ describe("SRC-11 designed classification at the floor 0.70", () => {
   });
 
   it("replays the recorded boundary pair: lowest included 0.7375, highest excluded 0.6741", async () => {
-    const hits = await searchPassages(client, "owner-a", QUERY, 20, undefined, FLOOR);
+    const hits = await searchPassages(
+      client,
+      "owner-a",
+      QUERY,
+      20,
+      undefined,
+      FLOOR,
+      undefined,
+      "default",
+    );
     const titles = hits.map((h) => h.excerpt.replace(" treaty foot spike record foot", ""));
     expect(titles).toContain("Tim Berners-Lee"); // 0.7375 — the thin margin's included side
     expect(titles).not.toContain("Aurora (singer)"); // 0.6741 — the excluded side (+0.063 margin)
@@ -207,7 +248,16 @@ describe("SRC-11 designed classification at the floor 0.70", () => {
 
   it("replays the thin margin: any floor in (0.6741, 0.7375) classifies identically", async () => {
     for (const floor of [0.68, 0.7, 0.72]) {
-      const hits = await searchPassages(client, "owner-a", QUERY, 20, undefined, floor);
+      const hits = await searchPassages(
+        client,
+        "owner-a",
+        QUERY,
+        20,
+        undefined,
+        floor,
+        undefined,
+        "default",
+      );
       const titles = hits.map((h) => h.excerpt.replace(" treaty foot spike record foot", ""));
       expect(titles).toContain("Tim Berners-Lee");
       expect(titles).not.toContain("Aurora (singer)");

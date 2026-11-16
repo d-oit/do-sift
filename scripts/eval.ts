@@ -253,7 +253,7 @@ async function evalRetrieval(): Promise<void> {
   // can only be recorded deliberately (evaluate-retrieval skill step 2).
   if (!existsSync(baselinePath)) {
     const bm25 = await measurePath(dataset, client, excerptToCorpusId, (q, k) =>
-      searchPassages(client, "eval-owner", q, k),
+      searchPassages(client, "eval-owner", q, k, undefined, undefined, undefined, "default"),
     );
     const hybrid = await measurePathHybrid(dataset, client, excerptToCorpusId);
     console.error(
@@ -267,7 +267,7 @@ async function evalRetrieval(): Promise<void> {
   if (baseline.metrics.bm25 === undefined || baseline.metrics.hybrid === undefined) {
     // Pre-RET-02 baselines (flat metrics) must be re-recorded deliberately.
     const bm25 = await measurePath(dataset, client, excerptToCorpusId, (q, k) =>
-      searchPassages(client, "eval-owner", q, k),
+      searchPassages(client, "eval-owner", q, k, undefined, undefined, undefined, "default"),
     );
     const hybrid = await measurePathHybrid(dataset, client, excerptToCorpusId);
     console.error(
@@ -278,7 +278,7 @@ async function evalRetrieval(): Promise<void> {
   }
 
   const bm25 = await measurePath(dataset, client, excerptToCorpusId, (q, k) =>
-    searchPassages(client, "eval-owner", q, k),
+    searchPassages(client, "eval-owner", q, k, undefined, undefined, undefined, "default"),
   );
   const hybrid = await measurePathHybrid(dataset, client, excerptToCorpusId);
   // Regression gate, not a promotion gate: at baseline or better passes;

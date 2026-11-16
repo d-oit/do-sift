@@ -163,7 +163,7 @@ describe("relevance-floor scoping (ANS-09)", () => {
         return vectors[text] ?? [0, 0, 1];
       },
     };
-    await backfillPassageEmbeddings(client, "owner-a", embedder);
+    await backfillPassageEmbeddings(client, "owner-a", embedder, { tenantId: "default" });
     const model = new FakeModelProvider();
     const outcome = await createAnswerService(makeDeps(model, true, embedder)).answer({
       ownerId: "owner-a",
