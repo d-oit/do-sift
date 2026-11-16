@@ -21,6 +21,7 @@ New here? Read [the architecture index](architecture/README.md) first, then
 | [live-eval-runbook.md](live-eval-runbook.md)                       | Running the opt-in live model evaluation                             | operators       |
 | [release.md](release.md)                                           | Assembling and verifying a release candidate                         | maintainers     |
 | [upgrading.md](upgrading.md)                                       | Node version requirements and upgrade paths                          | operators       |
+| [dependency-maintenance.md](dependency-maintenance.md)             | Scheduled dependency updates, scan triage, exceptions                | maintainers     |
 | [github-hardening.md](github-hardening.md)                         | Repository protections and what they protect                         | maintainers     |
 | [outbound-transport-inventory.md](outbound-transport-inventory.md) | Every outbound call and the guard in front of it                     | security        |
 | [security-review-2026-10-13.md](security-review-2026-10-13.md)     | Most recent security review                                          | security        |

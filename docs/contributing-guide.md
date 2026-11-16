@@ -183,11 +183,11 @@ zero-capability mock there is no network assertion to make.
 
 ## Common failures
 
-| Symptom                                         | Cause                                                                                                                                 |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `pluginImports` finding                         | Plugin source imports `node:fs`/`node:net`; use context services.                                                                     |
-| Activation refused with an ungranted capability | The manifest declares `paid`/`computer`; that is intended in CI.                                                                      |
-| `links` finding                                 | A relative link or `#anchor` does not resolve; the checker names `file:line`.                                                         |
-| `governance` finding                            | A sensitive path has no CODEOWNERS rule; see [github-hardening.md](github-hardening.md).                                              |
-| `deps` finding                                  | A deprecated package entered the tree, or an `overrides` entry went inert; see [PLAN 044](../plans/044-dependency-review-2026-11.md). |
-| Type error on an optional config field          | `exactOptionalPropertyTypes` is on; build the object then assign.                                                                     |
+| Symptom                                         | Cause                                                                                                                                                                                            |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pluginImports` finding                         | Plugin source imports `node:fs`/`node:net`; use context services.                                                                                                                                |
+| Activation refused with an ungranted capability | The manifest declares `paid`/`computer`; that is intended in CI.                                                                                                                                 |
+| `links` finding                                 | A relative link or `#anchor` does not resolve; the checker names `file:line`.                                                                                                                    |
+| `governance` finding                            | A sensitive path has no CODEOWNERS rule; see [github-hardening.md](github-hardening.md).                                                                                                         |
+| `deps` finding                                  | A deprecated package entered the tree, or an `overrides` entry went inert; see [PLAN 044](../plans/044-dependency-review-2026-11.md) and [dependency-maintenance.md](dependency-maintenance.md). |
+| Type error on an optional config field          | `exactOptionalPropertyTypes` is on; build the object then assign.                                                                                                                                |

@@ -1,0 +1,5 @@
+{
+  "$comment": "Dependency vulnerability exceptions for do-sift (issue #174). Each entry suppresses one advisory-triage failure and MUST carry a rationale, an owner, and an expiry/review date. The advisory-triage script fails on expired entries and on stale entries whose package/advisory no longer appears in `npm audit --json`, so this file cannot silently outlive the problem. See docs/dependency-maintenance.md.",
+  "exceptions": [],
+  "version": 1
+}
