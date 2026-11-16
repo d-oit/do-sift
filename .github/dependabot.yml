@@ -1,16 +1,79 @@
 version: 2
+
+# Dependency automation for do-sift (issue #174).
+#
+# Decision: Dependabot is the single update bot. No second bot (Renovate,
+# Snyk PR bot, etc.) is installed — a second bot would duplicate PRs and
+# widen the review surface. This file is the selection record; see
+# docs/dependency-maintenance.md for the full maintenance loop.
+#
+# Grouping policy (bounded PRs, reviewed merges):
+# - Dev-only minor/patch bumps arrive as one grouped PR.
+# - Runtime (production) minor/patch bumps arrive as a separate grouped PR,
+#   so a dev-tool churn never hides a runtime change.
+# - Native/runtime-sensitive packages (storage engine, embeddings, browser
+#   driver and their native transitive pins) are kept OUT of the groups so
+#   each arrives as its own PR and gets the full CI matrix (Node 24 + 26,
+#   build, tests, offline evals) before merge.
+# - Major updates are never grouped and never auto-merged: each major is
+#   its own manually reviewed PR. TypeScript majors are additionally ignored
+#   until typescript-eslint supports the new major (plan 044 DRV-03: TS 7
+#   needs the @typescript/native backend, still canary upstream).
+#
+# No auto-merge policy is configured anywhere in this repository. Dependabot
+# PRs that touch runtime, native bindings, migrations, policy, auth or
+# provider behavior require full CI and maintainer review — see
+# docs/dependency-maintenance.md ("Merging a dependency PR").
+
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      dev-minor-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      runtime-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      native-sensitive:
+        patterns:
+          - fastembed*
+          - "@libsql/*"
+          - libsql*
+          - onnxruntime-node*
+          - "@anush008/*"
+          - playwright*
+          - playwright-core*
+        update-types:
+          - minor
+          - patch
     ignore:
-      # Node types must track the pinned Node runtime; reviewed separately.
+      # Node types track the pinned Node runtime (ADR 0011); reviewed separately.
       - dependency-name: "@types/node"
+      # TypeScript majors stay manual until typescript-eslint supports the new
+      # major in stable (plan 044 DRV-03). Minor/patch still flow normally.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Etc/UTC"
+    commit-message:
+      prefix: "chore(ci)"

@@ -1,0 +1,67 @@
+name: dependency-scan
+
+# Scheduled dependency freshness and vulnerability triage (issue #174).
+#
+# - Runs weekly plus on manual dispatch. Never runs on pull_request and never
+#   receives secrets: the scan only needs the public registry, and fork code
+#   must not execute with credentials. See docs/dependency-maintenance.md.
+# - Fails on high/critical advisories without a valid unexpired exception in
+#   policies/dependency-exceptions.json (severity triage, not raw count).
+#   Moderate/low/info are reported as notes.
+# - Also runs the offline lockfile sensor (deps-check) so the scan proves the
+#   lockfile is reproducible and in sync with the workspace manifests.
+
+on:
+  schedule:
+    # 06:30 UTC Monday — after the Dependabot Monday grouping window opens,
+    # off the hour to avoid the scheduled-workflow spike.
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: audit triage (node 24)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: capture npm audit (JSON)
+        run: |
+          npm audit --json > audit.json || true
+          test -s audit.json
+
+      - name: triage advisories by severity
+        run: npx tsx scripts/advisory-triage.ts --audit audit.json --exceptions policies/dependency-exceptions.json --report dependency-scan-report.md
+
+      - name: lockfile reproducibility (offline sensor)
+        run: npx tsx scripts/deps-check.ts
+
+      - name: upload scan evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-scan-${{ github.run_id }}
+          path: |
+            audit.json
+            dependency-scan-report.md
+          if-no-files-found: warn
+          retention-days: 90
