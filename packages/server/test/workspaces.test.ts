@@ -347,6 +347,17 @@ describe("comparison route (issue #169)", () => {
     expect(body.comparison.notice).toContain("not reliability or truth signals");
   });
 
+  it("accepts document ids from the read surface and resolves one passage each", async () => {
+    const response = await call("POST", "/api/compare", "token-member", {
+      ids: ["doc-alpha", "doc-beta"],
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      comparison: { sources: Array<{ evidenceId: string }> };
+    };
+    expect(body.comparison.sources.map((s) => s.evidenceId)).toEqual(["doc-alpha", "doc-beta"]);
+  });
+
   it("rejects unknown, duplicate, too-few, and malformed selections", async () => {
     expect(
       (
@@ -386,6 +397,7 @@ describe("comparison route (issue #169)", () => {
     expect(html).toContain("/api/collections");
     expect(html).toContain("/api/compare");
     expect(html).toContain("/api/answer");
+    expect(html).toContain("/api/reports/export");
     // Fetched text, answers, and notes are rendered as text nodes, never markup.
     expect(html).not.toContain("innerHTML");
     expect((await call("GET", "/workspaces", "token-member", undefined, barePort)).status).toBe(

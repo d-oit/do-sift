@@ -65,6 +65,19 @@ export const WORKSPACES_PAGE = `<!doctype html>
     </form>
     <p class="status" id="compare-status"></p>
     <div id="compare-result"></div>
+
+    <h2>Report export</h2>
+    <p class="status">Exports the loaded (or selected) evidence metadata. No claims are invented, and no owner note is attached.</p>
+    <form id="report-form">
+      <select id="report-format">
+        <option value="markdown">Markdown</option>
+        <option value="json">JSON</option>
+        <option value="html">HTML</option>
+        <option value="bibtex">BibTeX</option>
+      </select>
+      <button type="submit">Download report</button>
+    </form>
+    <p class="status" id="report-status"></p>
   </section>
 
   <section>
@@ -167,6 +180,7 @@ export const WORKSPACES_PAGE = `<!doctype html>
   }
 
   let evidenceIds = [];
+  let evidenceRows = [];
   $("evidence-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const list = $("evidence-list");
@@ -175,6 +189,7 @@ export const WORKSPACES_PAGE = `<!doctype html>
     try {
       const data = await api("/api/evidence?limit=25");
       const rows = data.evidence || [];
+      evidenceRows = rows;
       setStatus("evidence-status", rows.length + " evidence row(s)");
       rows.forEach((row) => {
         evidenceIds.push(row.id);
@@ -224,6 +239,60 @@ export const WORKSPACES_PAGE = `<!doctype html>
       result.appendChild(observations);
     } catch (error) {
       setStatus("compare-status", String(error.message), true);
+    }
+  });
+
+  $("report-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const selected = Array.from(document.querySelectorAll("#evidence-list input:checked")).map(
+      (box) => box.value,
+    );
+    const ids = selected.length > 0 ? selected : evidenceIds;
+    if (ids.length === 0) {
+      setStatus("report-status", "Load or select evidence first.", true);
+      return;
+    }
+    const format = $("report-format").value;
+    const sources = evidenceRows
+      .filter((row) => ids.includes(row.id))
+      .map((row) => {
+        const source = { id: row.id, url: row.url, fetchedAt: row.fetchedAt };
+        if (row.title) source.title = row.title;
+        return source;
+      });
+    try {
+      const token = $("token").value.trim();
+      const response = await fetch("/api/reports/export", {
+        method: "POST",
+        headers: Object.assign(
+          { "content-type": "application/json" },
+          token ? { authorization: "Bearer " + token } : {},
+        ),
+        body: JSON.stringify({
+          format: format,
+          report: { schemaVersion: 1, sources: sources, claims: [], annotations: [] },
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        let message = "HTTP " + response.status;
+        try {
+          message = JSON.parse(text).message || message;
+        } catch {
+          message = text || message;
+        }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "report." + (format === "markdown" ? "md" : format === "bibtex" ? "bib" : format);
+      link.click();
+      URL.revokeObjectURL(url);
+      setStatus("report-status", "Downloaded " + sources.length + " source(s) as " + format + ".");
+    } catch (error) {
+      setStatus("report-status", String(error.message), true);
     }
   });
 

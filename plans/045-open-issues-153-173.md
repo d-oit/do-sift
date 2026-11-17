@@ -38,12 +38,12 @@ Task IDs are stable. A row is `done` only with the evidence recorded here.
 - **Parquet writer (#155)**: the schema/manifest/checksum contract is landed and
   tested with JSON interchange. A Parquet native dependency remains a separate
   promotion decision; the DuckDB result does not imply Parquet adoption.
-- **DuckDB adapter (#156)**: the gate passed for optional offline analytics, so
-  the adapter may be built as an isolated analytics package. It must not enter
-  root dependencies, shared contracts, or the request path.
+- **DuckDB adapter (#156)**: adopted as the isolated `@do-sift/analytics`
+  package (plan 047). It is not a root dependency, not in shared contracts, and
+  never in the request path.
 - **Web UI (#168/#169/#170)**: a dependency-free console is served at
-  `/workspaces` and consumes only the documented routes. Report export has no
-  UI yet; the CLI remains the export surface.
+  `/workspaces`; it exports reports through `/api/reports/export`. A
+  real-browser smoke test covers the console (plan 047).
 - **Claim receipts and retention**: `claimAssessment` checks the stored
   answer's citations against passages that still exist. Pruning a passage also
   changes the retrieval set and the cache key, so the reply is usually a fresh
@@ -79,12 +79,8 @@ packages/server/test/workspaces.test.ts` — PASS (archived-collection pruning o
 
 ## Open risks / follow-ups
 
-- The DuckDB spike ran only on win32/x64 Node 24. Prebuilt binaries exist for
-  linux x64/arm64 and darwin x64/arm64, but CI-matrix verification is still
-  required before any analytics package depends on it.
-- The console is a single static page with no build step and no automated DOM
-  test; its route, configuration gate, and no-markup-rendering contract are
-  tested, but interactive behavior is not.
+- The DuckDB gate ran on win32/x64 Node 24; the new analytics CI matrix is the
+  cross-platform verification and its first remote run is the real evidence.
 - Parquet remains a separate decision; the DuckDB result does not cover it.
 - Archived-collection pruning is opt-in and deletes notes with the collection;
   operators must still snapshot the database before `--confirm`.

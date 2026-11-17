@@ -26,21 +26,21 @@ Failed authentication returns `401` with a JSON error. Owners outside
 
 ## Routes
 
-| Method           | Path                                          | Purpose                                                                          |
-| ---------------- | --------------------------------------------- | -------------------------------------------------------------------------------- |
-| GET              | `/`                                           | Source-card web page (HTML)                                                      |
-| GET              | `/healthz`                                    | Liveness: `{"ok":true}`, no auth, no storage calls                               |
-| GET              | `/readyz`                                     | Readiness: `{"ok":true}` or `503 {"ok":false}`                                   |
-| POST             | `/api/research`                               | Research run, streamed as SSE                                                    |
-| POST             | `/api/answer`                                 | Grounded answer, JSON                                                            |
-| GET              | `/api/evidence`                               | Newest stored sources of the caller's own corpus                                 |     | GET  | `/api/answers` | Newest stored answers of the caller's own corpus         |
-| GET/POST         | `/api/collections`                            | List or create the caller's collections                                          |
-| GET/PATCH/DELETE | `/api/collections/<id>`                       | Read, rename, or archive one collection                                          |
-| POST             | `/api/collections/<id>/items`                 | Reference an existing run or evidence id                                         |
-| DELETE           | `/api/collections/<id>/items/<kind>/<itemId>` | Drop a reference                                                                 |
-| GET/POST         | `/api/collections/<id>/notes`                 | List or add owner-authored notes                                                 |
-| DELETE           | `/api/collections/<id>/notes/<noteId>`        | Delete a note                                                                    |     | POST | `/api/compare` | Deterministic side-by-side comparison of stored passages |
-| GET              | `/workspaces`                                 | Static workspaces console (served only when the workspace routes are configured) |
+| Method           | Path                                          | Purpose                                                    |
+| ---------------- | --------------------------------------------- | ---------------------------------------------------------- |
+| GET              | `/`                                           | Source-card web page (HTML)                                |
+| GET              | `/healthz`                                    | Liveness: `{"ok":true}`, no auth, no storage calls         |
+| GET              | `/readyz`                                     | Readiness: `{"ok":true}` or `503 {"ok":false}`             |
+| POST             | `/api/research`                               | Research run, streamed as SSE                              |
+| POST             | `/api/answer`                                 | Grounded answer, JSON                                      |
+| GET              | `/api/evidence`                               | Newest stored sources of the caller's own corpus           |     | GET  | `/api/answers` | Newest stored answers of the caller's own corpus         |
+| GET/POST         | `/api/collections`                            | List or create the caller's collections                    |
+| GET/PATCH/DELETE | `/api/collections/<id>`                       | Read, rename, or archive one collection                    |
+| POST             | `/api/collections/<id>/items`                 | Reference an existing run or evidence id                   |
+| DELETE           | `/api/collections/<id>/items/<kind>/<itemId>` | Drop a reference                                           |
+| GET/POST         | `/api/collections/<id>/notes`                 | List or add owner-authored notes                           |
+| DELETE           | `/api/collections/<id>/notes/<noteId>`        | Delete a note                                              |     | POST | `/api/compare` | Deterministic side-by-side comparison of stored passages |     | GET | `/workspaces` | Static workspaces console (served only when the workspace routes are configured) |
+| POST             | `/api/reports/export`                         | Stateless report formatting (JSON, Markdown, HTML, BibTeX) |
 
 Other paths return `404`. Wrong methods on the POST routes return `405`.
 
@@ -187,11 +187,40 @@ sources.
 - `POST /api/collections/<id>/notes` with `{ body }` → `201 { note }`
 - `DELETE /api/collections/<id>/notes/<noteId>` → `204` or `404`
 - `POST /api/compare` with `{ ids: [2..8 evidence ids] }` →
-  `{ comparison: { sources, observations, notice } }`. The comparison is
-  deterministic, makes no model call, and reports same/different excerpts,
+  `{ comparison: { sources, observations, notice } }`. An id may be a passage
+  id or a document id (as returned by `/api/evidence`); a document resolves to
+  its earliest stored passage, and a passage id wins when both match. The
+  comparison is deterministic, makes no model call, and reports same/different excerpts,
   content hashes, and publication dates as **observations**, not truth or
   reliability verdicts. An unknown id is `404`; duplicates or out-of-range
   selections are `400`.
+
+## POST /api/reports/export
+
+Formats a `ResearchReport` supplied in the request body with the same pure
+formatters the CLI exporter uses. It reads no corpus rows and stores nothing:
+the caller receives a download and remains the only holder of the data.
+
+```json
+{
+  "format": "markdown",
+  "includeQuestion": false,
+  "includeAnnotations": false,
+  "report": {
+    "schemaVersion": 1,
+    "sources": [{ "id": "...", "url": "...", "fetchedAt": "..." }],
+    "claims": [],
+    "annotations": []
+  }
+}
+```
+
+`format` is `json`, `markdown`, `html`, or `bibtex`. The question and owner
+annotations are omitted unless the corresponding flag is `true`. Collection
+bodies are bounded (100 sources/claims/annotations, 8,000 characters per
+claim or note, 512 KiB request body). Responses carry
+`content-disposition: attachment`. A viewer role may export (read action);
+unauthenticated requests are `401`, malformed reports are `400`.
 
 ## Health
 

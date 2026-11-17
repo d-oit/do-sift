@@ -1,0 +1,12 @@
+{
+  "name": "@do-sift/analytics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "^1.4.1-r.5"
+  }
+}

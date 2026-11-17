@@ -10,6 +10,7 @@ export {
   DEFAULT_PAGE,
 } from "./default-page.js";
 export { WORKSPACES_PAGE } from "./workspaces-page.js";
+export { REPORT_EXPORT_PATH, handleReportExport } from "./reports.js";
 export {
   COLLECTIONS_PATH,
   COLLECTIONS_PREFIX,

@@ -58,6 +58,7 @@ export function requestPath(rawUrl: string | undefined): string {
     case "/api/answer":
     case "/api/evidence":
     case "/api/answers":
+    case "/api/reports/export":
     case "/api/admin/members":
     case "/api/admin/member-changes":
       return rawPath;

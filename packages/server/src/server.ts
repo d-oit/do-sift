@@ -17,6 +17,7 @@ import { TenantAccessError } from "./runtime-resolver.js";
 import { handleMembershipAdmin, isMembershipAdminPath } from "./membership-admin.js";
 import { handleReadRoute, isReadPath } from "./read-surface.js";
 import { handleWorkspaceRoute, isWorkspacePath } from "./workspaces.js";
+import { REPORT_EXPORT_PATH, handleReportExport } from "./reports.js";
 import {
   HttpRequestError,
   SSE_HEARTBEAT_MS,
@@ -468,6 +469,10 @@ export function createResearchServer(rawOptions: ResearchServerOptions): Server 
       }
       if (isReadPath(path) && options.readFor !== undefined) {
         await handleReadRoute(req, res, options, path, httpRequestId);
+        return;
+      }
+      if (path === REPORT_EXPORT_PATH) {
+        await handleReportExport(req, res, options, httpRequestId, 512 * 1024);
         return;
       }
       if (isWorkspacePath(path)) {

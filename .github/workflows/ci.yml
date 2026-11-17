@@ -38,6 +38,32 @@ jobs:
       - run: npm run evals:dashboard
       - run: npm run test:coverage
 
+  analytics:
+    # FUP-01 / plan 046: the DuckDB package is offline-only, but its prebuilt
+    # native bindings are the part most likely to differ per OS/Node ABI, so
+    # exercise the package itself on every supported runner before relying
+    # on it.
+    name: analytics (${{ matrix.os }}, node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node-version: 24 }
+          - { os: ubuntu-latest, node-version: 26 }
+          - { os: macos-latest, node-version: 24 }
+          - { os: windows-latest, node-version: 24 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run packages/analytics/test
+
   check-windows:
     name: check (windows, build + fast)
     runs-on: windows-latest

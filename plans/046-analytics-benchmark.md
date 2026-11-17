@@ -51,9 +51,10 @@ recorded but excluded from the gate: the loaders are not equivalent work.
 
 Caveats recorded before building an adapter:
 
-- Only win32/x64 Node 24 was measured. `@duckdb/node-api` ships prebuilt N-API
-  bindings for linux x64/arm64 and darwin x64/arm64, so the supported CI matrix
-  is covered, but each runner must build the adapter once before adoption.
+- Only win32/x64 Node 24 was measured for the gate. The isolated
+  `packages/analytics` package and its CI matrix (Linux 24/26, macOS 24,
+  Windows 24) are the verification that the prebuilt bindings actually load on
+  each supported runner.
 - Peak RSS includes the dataset generator; the direction (DuckDB far below the
   baseline) is stable across all three runs.
 - The win32 bindings cover x64 only; Windows arm64 is not a supported target.

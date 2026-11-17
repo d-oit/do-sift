@@ -16,7 +16,7 @@
  * from the row it mirrors.
  */
 import { randomUUID } from "node:crypto";
-import type { Client } from "@libsql/client";
+import type { Client, Row } from "@libsql/client";
 import { DEFAULT_TENANT_ID } from "@do-sift/contracts";
 import {
   answerFromRow,
@@ -374,31 +374,49 @@ export class Repositories {
       const unique = [...new Set(ids)];
       if (unique.length === 0) return [];
       const placeholders = unique.map(() => "?").join(", ");
+      // The read surface lists document ids while citations use passage ids,
+      // so a selection may contain either. A document id resolves to its
+      // earliest stored passage; a passage id always wins when both match.
       const res = await this.client.execute({
-        sql: `SELECT p.id, p.heading, p.excerpt, d.canonical_url, d.title, d.published_at,
-                     d.fetched_at, d.content_hash
+        sql: `SELECT p.id, p.document_id, p.heading, p.excerpt, d.canonical_url, d.title,
+                     d.published_at, d.fetched_at, d.content_hash
               FROM passages p
               JOIN documents d
                 ON d.id = p.document_id
                AND d.owner_id = p.owner_id
                AND d.tenant_id = p.tenant_id
-              WHERE p.tenant_id = ? AND p.owner_id = ? AND p.id IN (${placeholders})`,
-        args: [this.tenantId, ownerId, ...unique],
+              WHERE p.tenant_id = ? AND p.owner_id = ?
+                AND (p.id IN (${placeholders}) OR p.document_id IN (${placeholders}))
+              ORDER BY p.document_id, p.created_at, p.id`,
+        args: [this.tenantId, ownerId, ...unique, ...unique],
       });
-      return res.rows.map((row) => {
+      const wanted = new Set(unique);
+      const byPassage = new Map<string, Row>();
+      const byDocument = new Map<string, Row>();
+      for (const row of res.rows) {
+        const passageId = str(row, "id");
+        const documentId = str(row, "document_id");
+        if (wanted.has(passageId)) byPassage.set(passageId, row);
+        else if (!byDocument.has(documentId)) byDocument.set(documentId, row);
+      }
+      return unique.flatMap((requestedId) => {
+        const row = byPassage.get(requestedId) ?? byDocument.get(requestedId);
+        if (row === undefined) return [];
         const title = strOrUndefined(row, "title");
         const publishedAt = strOrUndefined(row, "published_at");
         const heading = strOrUndefined(row, "heading");
-        return {
-          evidenceId: str(row, "id"),
-          url: str(row, "canonical_url"),
-          ...(title === undefined ? {} : { title }),
-          ...(publishedAt === undefined ? {} : { publishedAt }),
-          retrievedAt: str(row, "fetched_at"),
-          contentHash: str(row, "content_hash"),
-          ...(heading === undefined ? {} : { heading }),
-          excerpt: str(row, "excerpt"),
-        };
+        return [
+          {
+            evidenceId: requestedId,
+            url: str(row, "canonical_url"),
+            ...(title === undefined ? {} : { title }),
+            ...(publishedAt === undefined ? {} : { publishedAt }),
+            retrievedAt: str(row, "fetched_at"),
+            contentHash: str(row, "content_hash"),
+            ...(heading === undefined ? {} : { heading }),
+            excerpt: str(row, "excerpt"),
+          },
+        ];
       });
     },
   };
