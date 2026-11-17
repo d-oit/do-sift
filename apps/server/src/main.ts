@@ -33,6 +33,7 @@ import {
 } from "@do-sift/server";
 import {
   applyMigrations,
+  CollectionsRepository,
   createFastEmbedEmbedder,
   loadMigrations,
   Repositories,
@@ -492,6 +493,49 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     };
   }
 
+  // Issues #168/#169: collections and comparison are metadata views over
+  // rows the caller already owns. The repository is bound to the principal's
+  // tenant and owner id; the server passes only the authenticated owner id.
+  const collectionsFor: ResearchServerOptions["collectionsFor"] = (principal) => {
+    const repo = new CollectionsRepository(client, principal.userId, principal.tenantId);
+    return Promise.resolve({
+      list: (ownerId, options) => repo.list(options),
+      create: (ownerId, input) => repo.create(input.title, input.description),
+      get: async (ownerId, id) => {
+        const collection = await repo.get(id);
+        if (collection === undefined) return undefined;
+        const [items, notes] = await Promise.all([repo.items(id), repo.notes(id)]);
+        return {
+          collection,
+          items: items.map((item) => ({
+            kind: item.itemKind,
+            id: item.itemId,
+            addedAt: item.addedAt,
+          })),
+          notes,
+        };
+      },
+      update: (ownerId, id, changes) => {
+        const next: { title?: string; description?: string } = {};
+        if (changes.title !== undefined) next.title = changes.title;
+        if (changes.description !== undefined) next.description = changes.description;
+        return repo.update(id, next);
+      },
+      archive: (ownerId, id) => repo.archive(id),
+      addItem: (ownerId, id, kind, itemId) => repo.addItem(id, kind, itemId),
+      removeItem: (ownerId, id, kind, itemId) => repo.removeItem(id, kind, itemId),
+      addNote: (ownerId, id, body) => repo.addNote(id, body),
+      notes: (ownerId, id) => repo.notes(id),
+      deleteNote: (ownerId, id, noteId) => repo.deleteNote(noteId),
+    });
+  };
+  const compareFor: ResearchServerOptions["compareFor"] = (principal) => {
+    const repos = new Repositories(client, principal.tenantId);
+    return Promise.resolve({
+      sources: (ownerId, ids) => repos.passages.compareSources(ownerId, ids),
+    });
+  };
+
   // #67: owner-authenticated Prometheus text at GET /metrics.
   const metrics = new MetricsRegistry();
   const server = createResearchServer({
@@ -499,6 +543,8 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
     metrics,
     ...(runtimeFor === undefined ? {} : { runtimeFor }),
     ...(roleFor === undefined ? {} : { roleFor }),
+    collectionsFor,
+    compareFor,
     // MT-13: read-only views of the caller's own corpus. Repositories are
     // bound to the principal's tenant, and the server passes only the
     // authenticated owner id, so the tenant and owner are never caller input.

@@ -22,6 +22,22 @@ export function requestPath(rawUrl: string | undefined): string {
   if (rawPath.startsWith("//") || rawPath.includes("#") || rawPath.includes("\\")) {
     return "/unmatched";
   }
+  // Research-workspace routes (issues #168/#169). Only the documented
+  // shapes are accepted; each segment is validated again by the handler.
+  if (rawPath === "/api/compare" || rawPath === "/api/collections") return rawPath;
+  if (rawPath.startsWith("/api/collections/")) {
+    const segments = rawPath.slice("/api/collections/".length).split("/");
+    const id = (value: string | undefined): boolean =>
+      value !== undefined && /^[A-Za-z0-9_-]{1,128}$/u.test(value);
+    const [idSegment, sub, third, fourth] = segments;
+    const kind = third === "run" || third === "evidence";
+    const valid =
+      (segments.length === 1 && id(idSegment)) ||
+      (segments.length === 2 && id(idSegment) && (sub === "items" || sub === "notes")) ||
+      (segments.length === 3 && id(idSegment) && sub === "notes" && id(third)) ||
+      (segments.length === 4 && id(idSegment) && sub === "items" && kind && id(fourth));
+    return valid ? rawPath : "/unmatched";
+  }
   // Admin member routes carry one id segment. Anything deeper, empty, or
   // otherwise shaped differently is unmatched — the dispatcher validates the
   // id itself, so only the route shape is decided here.

@@ -16,6 +16,7 @@ import type {
 import { TenantAccessError } from "./runtime-resolver.js";
 import { handleMembershipAdmin, isMembershipAdminPath } from "./membership-admin.js";
 import { handleReadRoute, isReadPath } from "./read-surface.js";
+import { handleWorkspaceRoute, isWorkspacePath } from "./workspaces.js";
 import {
   HttpRequestError,
   SSE_HEARTBEAT_MS,
@@ -48,6 +49,14 @@ export type {
   TenantMemberView,
 } from "./server-contracts.js";
 export type { AnswerHttpResponse } from "./server-contracts.js";
+export type {
+  CollectionDetailView,
+  CollectionItemView,
+  CollectionNoteView,
+  CollectionView,
+  CollectionsHandlers,
+  CompareHandlers,
+} from "./server-contracts.js";
 export type { OwnerLimits } from "./owner-limiter.js";
 export { DEFAULT_REQUEST_DEADLINE_MS } from "./server-http.js";
 export { SSE_HEARTBEAT_MS } from "./server-http.js";
@@ -446,6 +455,10 @@ export function createResearchServer(rawOptions: ResearchServerOptions): Server 
       }
       if (isReadPath(path) && options.readFor !== undefined) {
         await handleReadRoute(req, res, options, path, httpRequestId);
+        return;
+      }
+      if (isWorkspacePath(path)) {
+        await handleWorkspaceRoute(req, res, options, path, httpRequestId);
         return;
       }
       if (isMembershipAdminPath(path)) {

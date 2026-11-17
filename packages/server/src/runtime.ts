@@ -23,6 +23,7 @@ import {
   type ResearchSourceEvent,
 } from "@do-sift/plugin-harness-research";
 import { BudgetService, Repositories, type DailyCaps, type TextEmbedder } from "@do-sift/storage";
+import { assessClaims, summarizeClaims } from "./claims.js";
 import { createAnswerService, DEFAULT_RELEVANCE_FLOOR, type AnswerOutcome } from "./answer.js";
 import type { SynthesisAuditEvent } from "./answer-contracts.js";
 import type { AnswerHttpResponse } from "./server.js";
@@ -200,6 +201,23 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       if (stored === undefined) {
         throw new Error(`stored answer ${outcome.answerId} not found`);
       }
+      // Issue #160: the stored answer's own citations are the authoritative
+      // evidence set, checked against passages that still exist for this
+      // owner. A pruned citation shows as unresolved instead of being
+      // fabricated or treated as grounded. (Pruning also changes the
+      // retrieval set and therefore the cache key, so a reply is usually a
+      // fresh answer; the receipt stays structural in both cases.)
+      const cited = [...new Set(stored.blocks.flatMap((block) => block.citations))];
+      const existing = await repositories.passages.existingIds(ownerId, cited);
+      const claims = assessClaims(
+        stored.blocks.map((block) => ({
+          kind: block.kind,
+          text: block.text,
+          citations: block.citations,
+          ...(block.unresolved === undefined ? {} : { unresolved: block.unresolved }),
+        })),
+        existing,
+      );
       return {
         requestId: outcome.requestId,
         answerId: outcome.answerId,
@@ -218,6 +236,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
         ...(outcome.suspectEvidence === undefined
           ? {}
           : { suspectEvidence: outcome.suspectEvidence }),
+        claimAssessment: { claims, summary: summarizeClaims(claims) },
       };
     },
   };

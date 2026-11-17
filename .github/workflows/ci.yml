@@ -55,6 +55,43 @@ jobs:
       - run: npm run build
       - run: npm run check:fast
 
+  container:
+    name: container (build + smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Issue #163: the multi-stage image is real evidence only if it builds
+      # and serves /healthz. The smoke uses the loopback-only dev bypass, so
+      # the container shares the runner's network namespace and binds
+      # 127.0.0.1 — the shipped image default (0.0.0.0) would refuse the
+      # bypass by design.
+      - name: build runtime image
+        run: docker build -t do-sift:ci .
+      - name: start and probe /healthz
+        run: |
+          docker run -d --name do-sift-ci --network host \
+            -e DO_SIFT_HOST=127.0.0.1 \
+            -e DO_SIFT_PORT=18080 \
+            -e DO_SIFT_DEV_BYPASS=1 \
+            -e DO_SIFT_DEV_OWNER=ci \
+            -e DO_SIFT_OWNERS=ci \
+            -e DO_SIFT_SEARCH_PROVIDER=fixture \
+            do-sift:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/healthz; then exit 0; fi
+            sleep 2
+          done
+          echo "container did not become healthy"; docker logs do-sift-ci; exit 1
+      - name: container logs on failure
+        if: failure()
+        run: docker logs do-sift-ci || true
+      - name: stop container
+        if: always()
+        run: docker rm -f do-sift-ci || true
+
   check-macos:
     name: check (macos, fast)
     runs-on: macos-latest

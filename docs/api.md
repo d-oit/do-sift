@@ -26,15 +26,21 @@ Failed authentication returns `401` with a JSON error. Owners outside
 
 ## Routes
 
-| Method | Path            | Purpose                                            |
-| ------ | --------------- | -------------------------------------------------- |
-| GET    | `/`             | Source-card web page (HTML)                        |
-| GET    | `/healthz`      | Liveness: `{"ok":true}`, no auth, no storage calls |
-| GET    | `/readyz`       | Readiness: `{"ok":true}` or `503 {"ok":false}`     |
-| POST   | `/api/research` | Research run, streamed as SSE                      |
-| POST   | `/api/answer`   | Grounded answer, JSON                              |
-| GET    | `/api/evidence` | Newest stored sources of the caller's own corpus   |
-| GET    | `/api/answers`  | Newest stored answers of the caller's own corpus   |
+| Method           | Path                                          | Purpose                                                  |
+| ---------------- | --------------------------------------------- | -------------------------------------------------------- |
+| GET              | `/`                                           | Source-card web page (HTML)                              |
+| GET              | `/healthz`                                    | Liveness: `{"ok":true}`, no auth, no storage calls       |
+| GET              | `/readyz`                                     | Readiness: `{"ok":true}` or `503 {"ok":false}`           |
+| POST             | `/api/research`                               | Research run, streamed as SSE                            |
+| POST             | `/api/answer`                                 | Grounded answer, JSON                                    |
+| GET              | `/api/evidence`                               | Newest stored sources of the caller's own corpus         |     | GET | `/api/answers` | Newest stored answers of the caller's own corpus |
+| GET/POST         | `/api/collections`                            | List or create the caller's collections                  |
+| GET/PATCH/DELETE | `/api/collections/<id>`                       | Read, rename, or archive one collection                  |
+| POST             | `/api/collections/<id>/items`                 | Reference an existing run or evidence id                 |
+| DELETE           | `/api/collections/<id>/items/<kind>/<itemId>` | Drop a reference                                         |
+| GET/POST         | `/api/collections/<id>/notes`                 | List or add owner-authored notes                         |
+| DELETE           | `/api/collections/<id>/notes/<noteId>`        | Delete a note                                            |
+| POST             | `/api/compare`                                | Deterministic side-by-side comparison of stored passages |
 
 Other paths return `404`. Wrong methods on the POST routes return `405`.
 
@@ -129,6 +135,12 @@ Returns `200 application/json` with the answer outcome:
 - `usage`, `reconciliation` (settle-time usage versus the reservation), and
   `suspectEvidence` (an advisory receipt, never a filter). Some fields are absent
   on cache hits and on the empty-evidence path.
+- `claimAssessment`: a structural per-claim receipt. Each claim carries
+  `resolved`/`unresolved` citation ids and a `support` value of `supported`,
+  `partially-supported`, `unresolved`, or `no-citation`. Citations are checked
+  against the passages that still exist for the caller; `supported` means every
+  citation exists, **never** that the evidence entails the claim. A summary
+  carries the counts.
 
 Status codes:
 
@@ -147,6 +159,37 @@ Status codes:
 
 Budget exhaustion is reported as degraded or evidence-only output, not as an
 HTTP error.
+
+## Research workspaces and comparison
+
+These routes require authentication and are `404` when the host has not
+configured them. Reads require the `read` action; collection writes require
+`research` when a recorded role policy is configured. A `viewer` can read and
+compare but cannot create, rename, archive, add items, or add notes.
+
+Ownership and tenant scope come from the authenticated principal, never from
+the request. Collections **reference** existing run/evidence ids; they never
+copy evidence. Notes are owner-authored metadata and are never treated as
+sources.
+
+- `GET /api/collections?limit=<1..100>&includeArchived=true|false` →
+  `{ collections: [{ id, title, description, createdAt, updatedAt, archivedAt? }] }`
+- `POST /api/collections` with `{ title, description? }` → `201 { collection }`
+- `GET /api/collections/<id>` → `{ collection, items, notes }` (`404` if absent)
+- `PATCH /api/collections/<id>` with `{ title?, description? }` → `{ updated: true }`
+- `DELETE /api/collections/<id>` archives it → `{ archived: true }`
+- `POST /api/collections/<id>/items` with `{ kind: "run"|"evidence", id }` → `204`;
+  `409` when the collection is archived
+- `DELETE /api/collections/<id>/items/<kind>/<itemId>` → `204` or `404`
+- `GET /api/collections/<id>/notes` → `{ notes }`
+- `POST /api/collections/<id>/notes` with `{ body }` → `201 { note }`
+- `DELETE /api/collections/<id>/notes/<noteId>` → `204` or `404`
+- `POST /api/compare` with `{ ids: [2..8 evidence ids] }` →
+  `{ comparison: { sources, observations, notice } }`. The comparison is
+  deterministic, makes no model call, and reports same/different excerpts,
+  content hashes, and publication dates as **observations**, not truth or
+  reliability verdicts. An unknown id is `404`; duplicates or out-of-range
+  selections are `400`.
 
 ## Health
 

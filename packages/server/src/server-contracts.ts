@@ -1,5 +1,7 @@
 /** Public HTTP surface contracts for the research server. */
 import type { TenantMemberChange, TenantRole } from "@do-sift/contracts";
+import type { ClaimAssessment } from "./claims.js";
+import type { ComparisonSourceInput } from "./compare.js";
 import type { MetricsRegistry } from "./metrics.js";
 import type { OwnerLimits } from "./owner-limiter.js";
 import type { PrincipalRuntimeRequest } from "./runtime-resolver.js";
@@ -190,6 +192,21 @@ export interface ResearchServerOptions {
    */
   readFor?: ((principal: PrincipalRuntimeRequest) => Promise<ReadHandlers>) | undefined;
   /**
+   * Collections and annotations (issue #168). When set, an authenticated
+   * member may list/create/update/archive collections and add item references
+   * or notes at `/api/collections*`. Reads require `read`; writes require
+   * `research` when a role policy is configured. Absent → 404.
+   */
+  collectionsFor?:
+    ((principal: PrincipalRuntimeRequest) => Promise<CollectionsHandlers>) | undefined;
+  /**
+   * Side-by-side stored-evidence comparison (issue #169). When set, an
+   * authenticated member may POST evidence ids to `/api/compare`. The host
+   * loads only rows the principal already owns; this route never fetches or
+   * calls a model. Absent → 404.
+   */
+  compareFor?: ((principal: PrincipalRuntimeRequest) => Promise<CompareHandlers>) | undefined;
+  /**
    * Recorded role of the caller in their tenant (issue #120, MT-12). When set,
    * the billable run surfaces consult it before the runtime is resolved: a
    * role that does not permit `research` — a read-only `viewer`, or no
@@ -226,6 +243,70 @@ export interface ResearchServerOptions {
   /** #67: when set, GET /metrics serves Prometheus text behind owner auth. */
   metrics?: MetricsRegistry | undefined;
 }
+export interface CollectionItemView {
+  kind: "run" | "evidence";
+  id: string;
+  addedAt: string;
+}
+
+export interface CollectionNoteView {
+  id: string;
+  body: string;
+  authorId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollectionView {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string | undefined;
+}
+
+export interface CollectionDetailView {
+  collection: CollectionView;
+  items: CollectionItemView[];
+  notes: CollectionNoteView[];
+}
+
+/**
+ * Collections surface bound to one authenticated principal (issue #168).
+ * The host constructs it from a tenant/owner-bound repository, so every
+ * method receives only the authenticated owner id the server already resolved.
+ */
+export interface CollectionsHandlers {
+  list(
+    ownerId: string,
+    options: { limit: number; includeArchived: boolean },
+  ): Promise<CollectionView[]>;
+  create(ownerId: string, input: { title: string; description: string }): Promise<CollectionView>;
+  get(ownerId: string, id: string): Promise<CollectionDetailView | undefined>;
+  update(
+    ownerId: string,
+    id: string,
+    changes: { title?: string | undefined; description?: string | undefined },
+  ): Promise<boolean>;
+  archive(ownerId: string, id: string): Promise<boolean>;
+  addItem(ownerId: string, id: string, kind: "run" | "evidence", itemId: string): Promise<void>;
+  removeItem(
+    ownerId: string,
+    id: string,
+    kind: "run" | "evidence",
+    itemId: string,
+  ): Promise<boolean>;
+  addNote(ownerId: string, id: string, body: string): Promise<CollectionNoteView>;
+  notes(ownerId: string, id: string): Promise<CollectionNoteView[]>;
+  deleteNote(ownerId: string, id: string, noteId: string): Promise<boolean>;
+}
+
+/** Evidence lookup for the comparison route (issue #169). */
+export interface CompareHandlers {
+  sources(ownerId: string, ids: readonly string[]): Promise<ComparisonSourceInput[]>;
+}
+
 export interface AnswerHttpResponse {
   requestId?: string | undefined;
   answerId: string;
@@ -271,4 +352,22 @@ export interface AnswerHttpResponse {
    * Never degrades the answer by itself.
    */
   suspectEvidence?: { passages: number; markers: string[] } | undefined;
+  /**
+   * Structural claim/evidence receipt (issue #160). Citations are checked
+   * against the passages that still exist for this owner at read time; the
+   * stored answer's citations are the authoritative set. `supported` means
+   * every citation exists — never that the evidence entails the claim.
+   */
+  claimAssessment?:
+    | {
+        claims: ClaimAssessment[];
+        summary: {
+          claims: number;
+          supported: number;
+          partiallySupported: number;
+          unresolved: number;
+          noCitation: number;
+        };
+      }
+    | undefined;
 }

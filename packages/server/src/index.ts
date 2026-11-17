@@ -9,6 +9,21 @@ export {
   ANSWER_UNRESOLVED_LABEL,
   DEFAULT_PAGE,
 } from "./default-page.js";
+export {
+  COLLECTIONS_PATH,
+  COLLECTIONS_PREFIX,
+  COMPARE_PATH,
+  isWorkspacePath,
+  parseWorkspaceRoute,
+} from "./workspaces.js";
+export type {
+  CollectionDetailView,
+  CollectionItemView,
+  CollectionNoteView,
+  CollectionView,
+  CollectionsHandlers,
+  CompareHandlers,
+} from "./server.js";
 export type {
   AnswerDegradedEvent,
   AnswerHttpResponse,
