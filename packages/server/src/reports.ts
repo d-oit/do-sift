@@ -2,10 +2,12 @@
  * Stateless report export (issue #170, FUP-02).
  *
  * Formats an explicitly supplied `ResearchReport` with the pure formatters in
- * `@do-sift/contracts`. It stores nothing, reads no corpus rows, and adds no
- * new evidence: the caller already holds the data and receives a download.
- * The question and annotations remain private unless the request opts in, as
- * with the CLI exporter.
+ * `@do-sift/contracts`, or, when the host provides `reportFor`, assembles one
+ * from a stored answer (`answerId`) or collection (`collectionId`). The
+ * stateless mode stores nothing and reads no corpus rows. Stored modes read
+ * only rows the authenticated owner already has; neither mode calls a model
+ * or adds evidence. The question and annotations remain private unless the
+ * request opts in, as with the CLI exporter.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DEFAULT_TENANT_ID, roleAllows } from "@do-sift/contracts";
@@ -246,7 +248,34 @@ export async function handleReportExport(
     if (!isFormat(body["format"])) {
       throw new HttpRequestError(400, `format must be one of: ${FORMATS.join(", ")}`);
     }
-    const report = parseReport(body["report"]);
+    const answerId = optionalText(body["answerId"], "answerId", LIMITS.id);
+    const collectionId = optionalText(body["collectionId"], "collectionId", LIMITS.id);
+    const modes = [
+      body["report"] !== undefined,
+      answerId !== undefined,
+      collectionId !== undefined,
+    ].filter(Boolean).length;
+    if (modes !== 1) {
+      throw new HttpRequestError(
+        400,
+        "exactly one of report, answerId, or collectionId is required",
+      );
+    }
+    let report: ResearchReport;
+    if (body["report"] !== undefined) {
+      report = parseReport(body["report"]);
+    } else {
+      if (options.reportFor === undefined) {
+        throw new HttpRequestError(501, "stored report export is not configured");
+      }
+      const handlers = await options.reportFor(principal);
+      const stored =
+        answerId !== undefined
+          ? await handlers.fromAnswer(owner.ownerId, answerId)
+          : await handlers.fromCollection(owner.ownerId, collectionId ?? "");
+      if (stored === undefined) throw new HttpRequestError(404, "report source not found");
+      report = stored;
+    }
     const rendered = render(report, body["format"], {
       includeQuestion: body["includeQuestion"] === true,
       includeAnnotations: body["includeAnnotations"] === true,

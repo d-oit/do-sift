@@ -31,6 +31,10 @@ export interface CollectionItemRow {
   itemKind: CollectionItemKind;
   itemId: string;
   addedAt: string;
+  /** Provenance snapshot taken at attach time (evidence items only). */
+  evidenceUrl?: string | undefined;
+  evidenceTitle?: string | undefined;
+  evidenceFetchedAt?: string | undefined;
 }
 
 export interface CollectionNoteRow {
@@ -182,18 +186,61 @@ export class CollectionsRepository {
     return res.rowsAffected > 0;
   }
 
-  /** Add a reference to an existing run or evidence id; never copies a row. */
+  /**
+   * Add a reference to an existing run or evidence id; never copies a row.
+   * For evidence that resolves in this scope, the provenance needed by a
+   * report (url/title/fetched_at) is snapshotted alongside the reference.
+   * Unresolvable ids are still accepted as references, with null metadata.
+   */
   async addItem(collectionId: string, kind: CollectionItemKind, itemId: string): Promise<void> {
     if (itemId.trim() === "") throw new Error("item id must not be empty");
     const collection = await this.get(collectionId);
     if (collection === undefined) throw new Error("collection not found in this scope");
     if (collection.archivedAt !== undefined) throw new Error("collection is archived");
+    const metadata = kind === "evidence" ? await this.evidenceMetadata(itemId) : undefined;
     await this.client.execute({
-      sql: `INSERT INTO collection_items (collection_id, tenant_id, owner_id, item_kind, item_id, added_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+      sql: `INSERT INTO collection_items
+              (collection_id, tenant_id, owner_id, item_kind, item_id, added_at,
+               evidence_url, evidence_title, evidence_fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(collection_id, item_kind, item_id) DO NOTHING`,
-      args: [collectionId, this.tenantId, this.ownerId, kind, itemId, isoNow()],
+      args: [
+        collectionId,
+        this.tenantId,
+        this.ownerId,
+        kind,
+        itemId,
+        isoNow(),
+        metadata?.url ?? null,
+        metadata?.title ?? null,
+        metadata?.fetchedAt ?? null,
+      ],
     });
+  }
+
+  private async evidenceMetadata(
+    itemId: string,
+  ): Promise<{ url: string; title?: string | undefined; fetchedAt: string } | undefined> {
+    const res = await this.client.execute({
+      sql: `SELECT d.canonical_url, d.title, d.fetched_at
+            FROM passages p
+            JOIN documents d
+              ON d.id = p.document_id
+             AND d.owner_id = p.owner_id
+             AND d.tenant_id = p.tenant_id
+            WHERE p.tenant_id = ? AND p.owner_id = ?
+              AND (p.id = ? OR p.document_id = ?)
+            ORDER BY p.document_id, p.created_at, p.id LIMIT 1`,
+      args: [this.tenantId, this.ownerId, itemId, itemId],
+    });
+    const row = res.rows[0];
+    if (row === undefined) return undefined;
+    const title = strOrUndefined(row["title"]);
+    return {
+      url: str(row["canonical_url"]),
+      ...(title === undefined ? {} : { title }),
+      fetchedAt: str(row["fetched_at"]),
+    };
   }
 
   async removeItem(
@@ -213,18 +260,27 @@ export class CollectionsRepository {
       throw new Error(`limit must be an integer from 1 to ${COLLECTION_LIST_MAX}`);
     }
     const res = await this.client.execute({
-      sql: `SELECT collection_id, item_kind, item_id, added_at
+      sql: `SELECT collection_id, item_kind, item_id, added_at,
+                   evidence_url, evidence_title, evidence_fetched_at
             FROM collection_items
             WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
             ORDER BY added_at, item_kind, item_id LIMIT ?`,
       args: [collectionId, this.tenantId, this.ownerId, limit],
     });
-    return res.rows.map((row) => ({
-      collectionId: str(row["collection_id"]),
-      itemKind: str(row["item_kind"]) as CollectionItemKind,
-      itemId: str(row["item_id"]),
-      addedAt: str(row["added_at"]),
-    }));
+    return res.rows.map((row) => {
+      const evidenceUrl = strOrUndefined(row["evidence_url"]);
+      const evidenceTitle = strOrUndefined(row["evidence_title"]);
+      const evidenceFetchedAt = strOrUndefined(row["evidence_fetched_at"]);
+      return {
+        collectionId: str(row["collection_id"]),
+        itemKind: str(row["item_kind"]) as CollectionItemKind,
+        itemId: str(row["item_id"]),
+        addedAt: str(row["added_at"]),
+        ...(evidenceUrl === undefined ? {} : { evidenceUrl }),
+        ...(evidenceTitle === undefined ? {} : { evidenceTitle }),
+        ...(evidenceFetchedAt === undefined ? {} : { evidenceFetchedAt }),
+      };
+    });
   }
 
   /** Owner-authored note; `authorId` may name a member, never an evidence row. */

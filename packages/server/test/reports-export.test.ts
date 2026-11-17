@@ -43,8 +43,36 @@ const REPORT = {
   annotations: [{ id: "note-1", body: "private owner note", createdAt: "2026-11-01T00:00:01Z" }],
 };
 
+const storedAnswer = {
+  schemaVersion: 1,
+  question: "stored answer question",
+  sources: [{ id: "psg-1", url: "https://stored.test/a", fetchedAt: "2026-11-01T00:00:00Z" }],
+  claims: [
+    {
+      kind: "paragraph" as const,
+      text: "A stored claim with a citation.",
+      citations: ["psg-1"],
+    },
+  ],
+  annotations: [],
+};
+
+const storedCollection = {
+  schemaVersion: 1,
+  sources: [{ id: "doc-1", url: "https://collection.test/a", fetchedAt: "2026-11-01T00:00:00Z" }],
+  claims: [],
+  annotations: [{ id: "note-1", body: "collection note", createdAt: "2026-11-01T00:00:01Z" }],
+};
+
 beforeAll(async () => {
-  server = createResearchServer({ auth, runResearch: emptyRun });
+  server = createResearchServer({
+    auth,
+    runResearch: emptyRun,
+    reportFor: async () => ({
+      fromAnswer: async (_ownerId, id) => (id === "ans-1" ? storedAnswer : undefined),
+      fromCollection: async (_ownerId, id) => (id === "col-1" ? storedCollection : undefined),
+    }),
+  });
   port = await listen(server);
 });
 
@@ -105,6 +133,56 @@ describe("report export route (issue #170)", () => {
       400,
     );
     expect((await post({ format: "json", report: { schemaVersion: 1 } })).status).toBe(400);
+  });
+
+  it("exports claims and citations from a stored answer", async () => {
+    const response = await post({ format: "markdown", answerId: "ans-1" });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toContain("A stored claim with a citation");
+    expect(text).toContain("[psg-1]");
+    expect(text).toContain("https://stored.test/a");
+    expect(text).not.toContain("stored answer question");
+  });
+
+  it("exports a collection report and its notes only when opted in", async () => {
+    const response = await post({
+      format: "json",
+      collectionId: "col-1",
+      includeAnnotations: true,
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      sources: Array<{ url: string }>;
+      annotations: Array<{ body: string }>;
+    };
+    expect(body.sources[0]?.url).toBe("https://collection.test/a");
+    expect(body.annotations[0]?.body).toBe("collection note");
+  });
+
+  it("rejects ambiguous modes and unknown stored ids", async () => {
+    expect((await post({ format: "json", report: REPORT, answerId: "ans-1" })).status).toBe(400);
+    expect((await post({ format: "json" })).status).toBe(400);
+    expect((await post({ format: "json", answerId: "missing" })).status).toBe(404);
+    expect((await post({ format: "json", collectionId: "missing" })).status).toBe(404);
+  });
+
+  it("answers 501 for stored modes when the host has no reportFor", async () => {
+    const bare = createResearchServer({ auth, runResearch: emptyRun });
+    const barePort = await listen(bare);
+    try {
+      const response = await fetch(`http://127.0.0.1:${barePort}/api/reports/export`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer token-member",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ format: "json", answerId: "ans-1" }),
+      });
+      expect(response.status).toBe(501);
+    } finally {
+      bare.close();
+    }
   });
 
   it("requires authentication and POST", async () => {

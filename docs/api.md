@@ -197,9 +197,21 @@ sources.
 
 ## POST /api/reports/export
 
-Formats a `ResearchReport` supplied in the request body with the same pure
-formatters the CLI exporter uses. It reads no corpus rows and stores nothing:
-the caller receives a download and remains the only holder of the data.
+Formats a `ResearchReport` with the same pure formatters the CLI exporter uses.
+Exactly one source is required:
+
+- `report` — a caller-supplied report. The route reads no corpus rows and
+  stores nothing: the caller receives a download and remains the only holder
+  of the data.
+- `answerId` — a stored answer owned by the caller. Its own request question,
+  verbatim claims, and citations are used; each cited passage resolves to its
+  stored source. This mode requires the host to configure `reportFor`.
+- `collectionId` — a stored collection owned by the caller. Sources come from
+  the evidence metadata snapshotted when each item was attached; attachments
+  made before that snapshot existed are omitted, never re-fetched or invented.
+
+`answerId`/`collectionId` outside the caller's scope are `404`; a host without
+`reportFor` answers `501` for those modes.
 
 ```json
 {
@@ -216,7 +228,8 @@ the caller receives a download and remains the only holder of the data.
 ```
 
 `format` is `json`, `markdown`, `html`, or `bibtex`. The question and owner
-annotations are omitted unless the corresponding flag is `true`. Collection
+annotations (including collection notes) are omitted unless the corresponding
+flag is `true`. Collection
 bodies are bounded (100 sources/claims/annotations, 8,000 characters per
 claim or note, 512 KiB request body). Responses carry
 `content-disposition: attachment`. A viewer role may export (read action);

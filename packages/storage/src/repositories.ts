@@ -566,6 +566,37 @@ export class Repositories {
         createdAt: String(row.created_at),
       }));
     },
+    /**
+     * Report input for one stored answer: its own request question, verbatim
+     * blocks, and provenance for every cited id. Undefined when the answer or
+     * its request is outside this repository's scope.
+     */
+    reportInput: async (
+      ownerId: string,
+      answerId: string,
+    ): Promise<
+      | {
+          question: string;
+          createdAt: string;
+          evidenceOnly: boolean;
+          blocks: AnswerRow["blocks"];
+          sources: Awaited<ReturnType<Repositories["passages"]["compareSources"]>>;
+        }
+      | undefined
+    > => {
+      const answer = await this.answers.get(ownerId, answerId);
+      if (answer === undefined) return undefined;
+      const request = await this.requests.get(ownerId, answer.requestId);
+      if (request === undefined) return undefined;
+      const citations = [...new Set(answer.blocks.flatMap((block) => block.citations))];
+      return {
+        question: request.question,
+        createdAt: answer.createdAt,
+        evidenceOnly: answer.evidenceOnly,
+        blocks: answer.blocks,
+        sources: await this.passages.compareSources(ownerId, citations),
+      };
+    },
     /** Exact-answer cache lookup; cache keys are tenant- and owner-scoped by construction. */
     findByCacheKey: async (ownerId: string, cacheKey: string): Promise<AnswerRow | undefined> => {
       const res = await this.client.execute({

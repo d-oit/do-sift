@@ -48,6 +48,28 @@ export interface ResearchReport {
   };
 }
 
+/** Inputs for a report assembled from one stored answer (no re-synthesis). */
+export interface ReportAnswerInput {
+  question: string;
+  createdAt: string;
+  blocks: Array<{
+    kind: ReportClaim["kind"];
+    text: string;
+    citations: string[];
+    unresolved?: boolean | undefined;
+  }>;
+  sources: ReportSource[];
+}
+
+/** Inputs for a report assembled from a collection's stored item metadata. */
+export interface ReportCollectionInput {
+  title: string;
+  description: string;
+  createdAt: string;
+  sources: ReportSource[];
+  annotations: ReportAnnotation[];
+}
+
 export interface ReportExportOptions {
   /** The question is private by default and must be opted in. */
   includeQuestion?: boolean;
@@ -83,6 +105,40 @@ function selected(report: ResearchReport, options: ReportExportOptions): Researc
     })),
     annotations: options.includeAnnotations === true ? [...report.annotations] : [],
     ...(report.retrieval === undefined ? {} : { retrieval: report.retrieval }),
+  };
+}
+
+/**
+ * Assemble a report from an already-stored answer. Claims and citations are
+ * copied verbatim; unresolved flags are never cleared by this step.
+ */
+export function buildAnswerReport(input: ReportAnswerInput): ResearchReport {
+  return {
+    schemaVersion: REPORT_SCHEMA_VERSION,
+    question: input.question,
+    sources: input.sources,
+    claims: input.blocks.map((block) => ({
+      kind: block.kind,
+      text: block.text,
+      citations: [...block.citations],
+      ...(block.unresolved === true ? { unresolved: true } : {}),
+    })),
+    annotations: [],
+    retrieval: { mode: "answer", retrievedAt: input.createdAt },
+  };
+}
+
+/**
+ * Assemble a report from a collection's stored evidence metadata and notes.
+ * Attachments without a stored snapshot are omitted by the caller; this
+ * function never invents a URL or retrieved time.
+ */
+export function buildCollectionReport(input: ReportCollectionInput): ResearchReport {
+  return {
+    schemaVersion: REPORT_SCHEMA_VERSION,
+    sources: input.sources,
+    claims: [],
+    annotations: input.annotations,
   };
 }
 

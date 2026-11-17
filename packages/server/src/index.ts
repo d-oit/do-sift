@@ -25,6 +25,7 @@ export type {
   CollectionView,
   CollectionsHandlers,
   CompareHandlers,
+  StoredReportHandlers,
 } from "./server.js";
 export type {
   AnswerDegradedEvent,

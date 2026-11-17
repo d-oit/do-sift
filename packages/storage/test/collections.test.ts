@@ -73,6 +73,34 @@ describe("collections repository", () => {
     expect((await repo.items(collection.id)).map((i) => i.itemId)).toEqual(["run-1"]);
   });
 
+  it("snapshots resolvable evidence provenance for report assembly", async () => {
+    await client.execute({
+      sql: `INSERT INTO documents (id, tenant_id, owner_id, canonical_url, original_url, content_hash, fetched_at, title, created_at)
+            VALUES ('doc-1', 'default', 'owner-a', 'https://a.test/p', 'https://a.test/p', 'hash-1', '2026-11-01T00:00:00Z', 'Alpha', '2026-11-01T00:00:00Z')`,
+    });
+    await client.execute({
+      sql: `INSERT INTO passages (id, tenant_id, owner_id, document_id, heading, excerpt, extraction_status, created_at)
+            VALUES ('psg-1', 'default', 'owner-a', 'doc-1', 'H', 'Excerpt', 'ok', '2026-11-01T00:00:01Z')`,
+    });
+    const repo = new CollectionsRepository(client, "owner-a");
+    const collection = await repo.create("Reported");
+    await repo.addItem(collection.id, "evidence", "doc-1");
+    expect((await repo.items(collection.id))[0]).toMatchObject({
+      itemId: "doc-1",
+      evidenceUrl: "https://a.test/p",
+      evidenceTitle: "Alpha",
+      evidenceFetchedAt: "2026-11-01T00:00:00Z",
+    });
+
+    // A reference the corpus cannot resolve is still a reference, with no
+    // invented snapshot.
+    await repo.addItem(collection.id, "evidence", "unresolved-id");
+    const unresolved = (await repo.items(collection.id)).find(
+      (item) => item.itemId === "unresolved-id",
+    );
+    expect(unresolved?.evidenceUrl).toBeUndefined();
+  });
+
   it("keeps notes as authored metadata with an explicit author", async () => {
     const repo = new CollectionsRepository(client, "owner-a");
     const collection = await repo.create("Notes");

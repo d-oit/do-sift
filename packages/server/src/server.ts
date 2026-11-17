@@ -58,6 +58,7 @@ export type {
   CollectionView,
   CollectionsHandlers,
   CompareHandlers,
+  StoredReportHandlers,
 } from "./server-contracts.js";
 export type { OwnerLimits } from "./owner-limiter.js";
 export { DEFAULT_REQUEST_DEADLINE_MS } from "./server-http.js";

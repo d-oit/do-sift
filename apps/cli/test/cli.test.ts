@@ -421,6 +421,79 @@ describe("do-sift CLI (#67)", () => {
     });
   });
 
+  describe("analytics summarize", () => {
+    async function evalFile(rows: unknown): Promise<string> {
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-analytics-"));
+      const input = join(dir, "rows.json");
+      await writeFile(input, JSON.stringify(rows));
+      return input;
+    }
+
+    const rows = [
+      {
+        id: "e1",
+        provider: "alpha",
+        dataset: "q",
+        recall: 0.5,
+        latencyMs: 100,
+        createdDay: "2026-11-01",
+      },
+      {
+        id: "e2",
+        provider: "alpha",
+        dataset: "q",
+        recall: 1,
+        latencyMs: 300,
+        createdDay: "2026-11-02",
+      },
+    ];
+
+    it("prints one aggregate row per provider/dataset with its sample count", async () => {
+      const input = await evalFile(rows);
+      expect(await runCli(["analytics", "summarize", "--in", input], deps())).toBe(0);
+      expect(stdout[0]).toBe(
+        "provider\tdataset\tn\tmean_recall\tmin_recall\tmax_recall\tmean_latency",
+      );
+      expect(stdout[1]).toBe("alpha\tq\t2\t0.75\t0.5\t1\t200");
+    });
+
+    it("writes JSON aggregates to a new file and refuses to overwrite", async () => {
+      const input = await evalFile(rows);
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-analytics-out-"));
+      const out = join(dir, "aggregates.json");
+      expect(
+        await runCli(
+          ["analytics", "summarize", "--in", input, "--format", "json", "--out", out],
+          deps(),
+        ),
+      ).toBe(0);
+      const parsed = JSON.parse(await readFile(out, "utf8")) as Array<{ n: number }>;
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0]?.n).toBe(2);
+
+      expect(
+        await runCli(
+          ["analytics", "summarize", "--in", input, "--format", "json", "--out", out],
+          deps(),
+        ),
+      ).toBe(1);
+    });
+
+    it("rejects malformed rows, missing input, and an unknown format", async () => {
+      const missingProvider = await evalFile([{ ...rows[0], provider: undefined }]);
+      expect(await runCli(["analytics", "summarize", "--in", missingProvider], deps())).toBe(1);
+
+      const notAnArray = await evalFile({ rows });
+      expect(await runCli(["analytics", "summarize", "--in", notAnArray], deps())).toBe(1);
+
+      expect(await runCli(["analytics", "summarize"], deps())).toBe(2);
+      const input = await evalFile(rows);
+      expect(
+        await runCli(["analytics", "summarize", "--in", input, "--format", "csv"], deps()),
+      ).toBe(2);
+    });
+  });
+
   describe("research list & research show", () => {
     it("lists research runs for one explicit owner and redacts question by default", async () => {
       expect(await runCli(["research", "list", "--owner", "alice"], deps())).toBe(0);

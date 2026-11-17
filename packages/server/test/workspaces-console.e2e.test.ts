@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type Client } from "@libsql/client";
 import { chromium, type Browser, type Download, type Page } from "playwright";
 import { AuthError } from "@do-sift/auth";
-import type { TenantRole } from "@do-sift/contracts";
+import { buildCollectionReport, type TenantRole } from "@do-sift/contracts";
 import {
   CollectionsRepository,
   Repositories,
@@ -152,6 +152,42 @@ beforeAll(async () => {
     compareFor,
     // The console loads the same evidence list the production read surface
     // serves, so the browser test exercises the real ids it compares.
+    reportFor: (principal: { tenantId: string; userId: string }) => {
+      const collections = new CollectionsRepository(client, principal.userId, principal.tenantId);
+      return Promise.resolve({
+        fromAnswer: async () => undefined,
+        fromCollection: async (_ownerId: string, collectionId: string) => {
+          const collection = await collections.get(collectionId);
+          if (collection === undefined) return undefined;
+          const [items, notes] = await Promise.all([
+            collections.items(collectionId),
+            collections.notes(collectionId),
+          ]);
+          return buildCollectionReport({
+            title: collection.title,
+            description: collection.description,
+            createdAt: collection.createdAt,
+            sources: items.flatMap((item) =>
+              item.evidenceUrl === undefined || item.evidenceFetchedAt === undefined
+                ? []
+                : [
+                    {
+                      id: item.itemId,
+                      url: item.evidenceUrl,
+                      ...(item.evidenceTitle === undefined ? {} : { title: item.evidenceTitle }),
+                      fetchedAt: item.evidenceFetchedAt,
+                    },
+                  ],
+            ),
+            annotations: notes.map((note) => ({
+              id: note.id,
+              body: note.body,
+              createdAt: note.createdAt,
+            })),
+          });
+        },
+      });
+    },
     readFor: (principal: { tenantId: string }) => {
       const repos = new Repositories(client, principal.tenantId);
       return Promise.resolve({
@@ -211,10 +247,26 @@ describe("workspaces console (real browser)", () => {
     await waitForText(page, "#collection-detail", "0 item(s)");
 
     await page
+      .locator("#collection-detail input[placeholder='Existing evidence id']")
+      .fill("doc-browser-a");
+    await page.getByRole("button", { name: "Attach evidence" }).click();
+    await waitForText(page, "#collection-detail", "doc-browser-a");
+
+    await page
       .locator("#collection-detail input[placeholder^='Owner note']")
       .fill("note from browser");
     await page.getByRole("button", { name: "Add note" }).click();
     await waitForText(page, "#collection-detail", "note from browser");
+
+    // The collection report is built server-side from stored item metadata,
+    // without the console sending its evidence list.
+    const collectionDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download collection report" }).click();
+    const collectionDownload = await collectionDownloadPromise;
+    expect(collectionDownload.suggestedFilename()).toBe("report.md");
+    const collectionMarkdown = await downloadText(collectionDownload);
+    expect(collectionMarkdown).toContain("https://browser-a.test/page");
+    expect(collectionMarkdown).toContain("note from browser");
 
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download report" }).click();

@@ -151,6 +151,36 @@ export const WORKSPACES_PAGE = `<!doctype html>
     return data;
   }
 
+  async function exportReport(body, format) {
+    const token = $("token").value.trim();
+    const response = await fetch("/api/reports/export", {
+      method: "POST",
+      headers: Object.assign(
+        { "content-type": "application/json" },
+        token ? { authorization: "Bearer " + token } : {},
+      ),
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      let message = "HTTP " + response.status;
+      try {
+        message = JSON.parse(text).message || message;
+      } catch {
+        message = text || message;
+      }
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download =
+      "report." + (format === "markdown" ? "md" : format === "bibtex" ? "bib" : format);
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function link(url, label) {
     const a = el("a", label || url);
     a.href = url;
@@ -261,35 +291,13 @@ export const WORKSPACES_PAGE = `<!doctype html>
         return source;
       });
     try {
-      const token = $("token").value.trim();
-      const response = await fetch("/api/reports/export", {
-        method: "POST",
-        headers: Object.assign(
-          { "content-type": "application/json" },
-          token ? { authorization: "Bearer " + token } : {},
-        ),
-        body: JSON.stringify({
+      await exportReport(
+        {
           format: format,
           report: { schemaVersion: 1, sources: sources, claims: [], annotations: [] },
-        }),
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        let message = "HTTP " + response.status;
-        try {
-          message = JSON.parse(text).message || message;
-        } catch {
-          message = text || message;
-        }
-        throw new Error(message);
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "report." + (format === "markdown" ? "md" : format === "bibtex" ? "bib" : format);
-      link.click();
-      URL.revokeObjectURL(url);
+        },
+        format,
+      );
       setStatus("report-status", "Downloaded " + sources.length + " source(s) as " + format + ".");
     } catch (error) {
       setStatus("report-status", String(error.message), true);
@@ -347,6 +355,24 @@ export const WORKSPACES_PAGE = `<!doctype html>
       const meta = el("div", "id " + data.collection.id + " · " + data.items.length + " item(s)");
       meta.className = "meta";
       card.appendChild(meta);
+
+      const reportButton = el("button", "Download collection report");
+      reportButton.type = "button";
+      reportButton.className = "secondary";
+      reportButton.addEventListener("click", async () => {
+        const format = $("report-format").value;
+        try {
+          // Stored metadata makes this independent of the evidence list.
+          await exportReport(
+            { format: format, collectionId: id, includeAnnotations: true },
+            format,
+          );
+          setStatus("collection-status", "Downloaded collection report as " + format + ".");
+        } catch (error) {
+          setStatus("collection-status", String(error.message), true);
+        }
+      });
+      card.appendChild(reportButton);
 
       const items = el("ul");
       data.items.forEach((item) => items.appendChild(el("li", item.kind + " · " + item.id)));

@@ -5,7 +5,7 @@ export const BODY_READ_TIMEOUT_MS = 10_000;
 export const READINESS_TIMEOUT_MS = 1_000;
 export class HttpRequestError extends Error {
   constructor(
-    public readonly status: 400 | 408 | 413 | 415,
+    public readonly status: 400 | 404 | 408 | 413 | 415 | 501,
     message: string,
   ) {
     super(message);

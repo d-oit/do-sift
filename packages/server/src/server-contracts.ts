@@ -1,5 +1,5 @@
 /** Public HTTP surface contracts for the research server. */
-import type { TenantMemberChange, TenantRole } from "@do-sift/contracts";
+import type { ResearchReport, TenantMemberChange, TenantRole } from "@do-sift/contracts";
 import type { ClaimAssessment } from "./claims.js";
 import type { ComparisonSourceInput } from "./compare.js";
 import type { MetricsRegistry } from "./metrics.js";
@@ -158,6 +158,16 @@ export interface MembershipAdminHandlers {
   /** Recent changes of the tenant, newest first (bounded by the host). */
   changes(tenantId: string): Promise<TenantMemberChangeView[]>;
 }
+/**
+ * Reports assembled from stored rows (plan 048). The host resolves owner and
+ * tenant, so the server passes only the authenticated owner id and an id the
+ * caller supplied; an unknown or foreign id must resolve to undefined.
+ */
+export interface StoredReportHandlers {
+  fromAnswer(ownerId: string, answerId: string): Promise<ResearchReport | undefined>;
+  fromCollection(ownerId: string, collectionId: string): Promise<ResearchReport | undefined>;
+}
+
 export interface ResearchServerOptions {
   /** #63: per-owner concurrency and request-rate limits (defaults apply when omitted). */
   ownerLimits?: OwnerLimits;
@@ -206,6 +216,13 @@ export interface ResearchServerOptions {
    * calls a model. Absent → 404.
    */
   compareFor?: ((principal: PrincipalRuntimeRequest) => Promise<CompareHandlers>) | undefined;
+  /**
+   * Stored-report assembly (plan 048). When set, `/api/reports/export` accepts
+   * `answerId` or `collectionId` instead of a caller-supplied report. The host
+   * loads only rows the principal already owns; absent → those modes answer
+   * 501 and the stateless `report` mode keeps working.
+   */
+  reportFor?: ((principal: PrincipalRuntimeRequest) => Promise<StoredReportHandlers>) | undefined;
   /**
    * Recorded role of the caller in their tenant (issue #120, MT-12). When set,
    * the billable run surfaces consult it before the runtime is resolved: a
