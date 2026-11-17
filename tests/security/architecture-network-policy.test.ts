@@ -37,6 +37,8 @@ const ALLOWLIST_FETCH_FILES: Record<string, string> = {
   "apps/server/src/compose-contracts.ts": "Type definition for FetchLike seam",
   "packages/server/src/default-page.ts":
     "Client-side browser JavaScript template for default landing page (runs in browser)",
+  "packages/server/src/workspaces-page.ts":
+    "Client-side browser JavaScript template for the workspaces console (runs in browser)",
 
   // packages/auth
   "packages/auth/src/oidc.ts":

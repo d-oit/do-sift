@@ -1,6 +1,6 @@
 # 046 — Analytics benchmark decision gate (#154)
 
-Status: deferred (2026-11-17). Owner: maintainer.
+Status: decided — adopt for optional offline analytics (2026-11-17). Owner: maintainer.
 
 ## Hypothesis
 
@@ -26,25 +26,47 @@ Marginal or unrepeatable gains do not justify adoption.
 ## What was done in this slice
 
 - `scripts/bench/analytics-bench.ts` generates a deterministic dataset and
-  measures the **existing** aggregation path (group counts, latency
-  percentiles, source freshness buckets), recording Node version, OS, CPU,
-  row count, and seed.
-- No DuckDB dependency was added. Running the comparison requires an explicit
-  opt-in install, which is outside this issue's boundary.
+  measures the existing aggregation path (group counts, aggregate recall and
+  latency, peak RSS), recording Node version, OS, row count, seed, and the full
+  nine-row result set so equivalence can be checked mechanically.
+- A throwaway spike under the gitignored `.spikes/duckdb-bench/` ran the same
+  generator and query through `@duckdb/node-api` 1.4.1-r.5, with the same
+  machine-readable output (full result set included). No production dependency
+  was added; the spike is not committed.
 
 ## Result
 
-**Deferred.** There is no in-repo analytical workload large enough to justify
-a native dependency today, and no measured comparison exists. The gate above
-must be satisfied by a follow-up spike with DuckDB installed and the same
-generator before #155/#156 can be promoted.
+**Adopt for optional offline analytics.** On win32/x64, Node 24.9.0, 100,000
+rows, seed 42, three runs each:
 
-## Reproduce the baseline
+| Metric (median)         | libSQL/SQLite |   DuckDB | Ratio | Gate               |
+| ----------------------- | ------------: | -------: | ----: | ------------------ |
+| Aggregation query       |        315 ms |    27 ms | 11.7× | ≥ 2× faster — pass |
+| Peak RSS                |        556 MB |    91 MB | 0.16× | ≤ 1.5× — pass      |
+| Result set              |      9 groups | 9 groups | equal | no drift — pass    |
+| Request-path dependency |          none |     none |     — | none added — pass  |
+
+Load time (DuckDB appender ~591 ms vs libSQL batched inserts ~7,911 ms) is
+recorded but excluded from the gate: the loaders are not equivalent work.
+
+Caveats recorded before building an adapter:
+
+- Only win32/x64 Node 24 was measured. `@duckdb/node-api` ships prebuilt N-API
+  bindings for linux x64/arm64 and darwin x64/arm64, so the supported CI matrix
+  is covered, but each runner must build the adapter once before adoption.
+- Peak RSS includes the dataset generator; the direction (DuckDB far below the
+  baseline) is stable across all three runs.
+- The win32 bindings cover x64 only; Windows arm64 is not a supported target.
+
+## Reproduce
 
 ```bash
-npx tsx scripts/bench/analytics-bench.ts --rows 10000
 npx tsx scripts/bench/analytics-bench.ts --rows 100000
 ```
 
-The harness prints machine-readable JSON; variance across repeated runs is
-reported rather than hidden.
+The harness prints machine-readable JSON, including every group, so a DuckDB
+run can be compared value by value. The spike script that produced the numbers
+above lived in `.spikes/duckdb-bench/` (gitignored) with
+`@duckdb/node-api@1.4.1-r.5`; it uses the same `mulberry32` generator and the
+same `GROUP BY provider, dataset` query. Recreate it there rather than adding
+the dependency to the repository.

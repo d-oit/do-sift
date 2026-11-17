@@ -25,9 +25,12 @@ from the operational rows, or a request path that reaches an analytical engine.
    never writes operational tables.
 3. **Parquet is an interchange/snapshot format, not an operational database.**
    Snapshots are immutable, versioned, checksummed, and validated on read.
-4. **DuckDB is not adopted.** It is promoted only if `plans/046-analytics-benchmark.md`
-   demonstrates a material, repeatable win on a real workload without
-   unacceptable binary-size, memory, deployment, or maintenance cost.
+4. **DuckDB is adopted for optional offline analytics only.** The gate in
+   `plans/046-analytics-benchmark.md` measured an 11.7× faster aggregation,
+   0.16× peak RSS, and identical results at 100k rows, so an isolated analytics
+   package may use it. It remains absent from root dependencies, shared
+   contracts, and the request path, and the operational source of truth stays
+   libSQL/SQLite.
 5. **No distributed writers.** If DuckDB is ever adopted, it is single-writer
    per file (or in-memory/per-run), never a shared writable file across
    service processes.

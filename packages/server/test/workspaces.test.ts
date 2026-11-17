@@ -378,6 +378,21 @@ describe("comparison route (issue #169)", () => {
     ).toBe(404);
   });
 
+  it("serves the console page only where workspace routes are configured", async () => {
+    const page = await call("GET", "/workspaces", "token-member");
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-type")).toContain("text/html");
+    const html = await page.text();
+    expect(html).toContain("/api/collections");
+    expect(html).toContain("/api/compare");
+    expect(html).toContain("/api/answer");
+    // Fetched text, answers, and notes are rendered as text nodes, never markup.
+    expect(html).not.toContain("innerHTML");
+    expect((await call("GET", "/workspaces", "token-member", undefined, barePort)).status).toBe(
+      404,
+    );
+  });
+
   it("only accepts POST and requires authentication", async () => {
     expect((await call("GET", "/api/compare", "token-member")).status).toBe(405);
     expect(

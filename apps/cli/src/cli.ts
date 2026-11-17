@@ -31,7 +31,7 @@ const USAGE = `usage: do-sift-cli <command> [options]
   evidence export --owner <id> --out <new-file.json> [--tenant <id>]
   research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question] [--tenant <id>]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>] [--tenant <id>]
-  retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>]
+  retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
 
 Every data command takes --tenant (default: "${DEFAULT_TENANT_ID}") and scopes
@@ -39,7 +39,7 @@ its queries by tenant_id as well as owner_id, so one tenant's owner id never
 reaches another tenant's rows (plan 035).
 `;
 
-const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm"]);
+const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm", "prune-collections"]);
 
 function parseFlags(args: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -488,6 +488,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         beforeIso,
         dryRun,
         now: deps.now,
+        pruneArchivedCollections: flags.get("prune-collections") === "true",
       });
 
       if (!receipt.success) {
@@ -508,8 +509,10 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       deps.out(`mode\t${receipt.dryRun ? "dry-run" : "prune"}`);
       deps.out(`candidate_terminal_jobs\t${receipt.candidates.terminalJobs}`);
       deps.out(`candidate_closed_usage\t${receipt.candidates.closedUsage}`);
+      deps.out(`candidate_archived_collections\t${receipt.candidates.archivedCollections}`);
       deps.out(`deleted_terminal_jobs\t${receipt.deleted.terminalJobs}`);
       deps.out(`deleted_closed_usage\t${receipt.deleted.closedUsage}`);
+      deps.out(`deleted_archived_collections\t${receipt.deleted.archivedCollections}`);
       deps.out(`duration_ms\t${receipt.durationMs}`);
       deps.out(`status\tsuccess`);
 

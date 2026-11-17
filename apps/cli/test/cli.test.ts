@@ -230,8 +230,8 @@ describe("do-sift CLI (#67)", () => {
         ownerId: string;
         cutoff: string;
         dryRun: boolean;
-        candidates: { terminalJobs: number; closedUsage: number };
-        deleted: { terminalJobs: number; closedUsage: number };
+        candidates: { terminalJobs: number; closedUsage: number; archivedCollections: number };
+        deleted: { terminalJobs: number; closedUsage: number; archivedCollections: number };
         success: boolean;
       };
 
@@ -239,9 +239,53 @@ describe("do-sift CLI (#67)", () => {
       expect(parsed.dryRun).toBe(true);
       expect(parsed.candidates.terminalJobs).toBe(1);
       expect(parsed.candidates.closedUsage).toBe(2);
+      expect(parsed.candidates.archivedCollections).toBe(0);
       expect(parsed.deleted.terminalJobs).toBe(0);
       expect(parsed.deleted.closedUsage).toBe(0);
       expect(parsed.success).toBe(true);
+    });
+
+    it("prunes archived collections only with --prune-collections", async () => {
+      await client.execute({
+        sql: "INSERT INTO collections (id, tenant_id, owner_id, title, description, created_at, updated_at, archived_at) VALUES ('c1', 'default', 'alice', 'Old', '', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
+      });
+      await client.execute({
+        sql: "INSERT INTO collection_notes (id, collection_id, tenant_id, owner_id, author_id, body, created_at, updated_at) VALUES ('n1', 'c1', 'default', 'alice', 'alice', 'note', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
+      });
+
+      expect(
+        await runCli(
+          ["retention", "prune", "--owner", "alice", "--retention-days", "7", "--confirm"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain("deleted_archived_collections\t0");
+      expect(
+        Number((await client.execute("SELECT COUNT(*) AS c FROM collections")).rows[0]?.c),
+      ).toBe(1);
+
+      expect(
+        await runCli(
+          [
+            "retention",
+            "prune",
+            "--owner",
+            "alice",
+            "--retention-days",
+            "7",
+            "--confirm",
+            "--prune-collections",
+          ],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain("deleted_archived_collections\t1");
+      expect(
+        Number((await client.execute("SELECT COUNT(*) AS c FROM collections")).rows[0]?.c),
+      ).toBe(0);
+      expect(
+        Number((await client.execute("SELECT COUNT(*) AS c FROM collection_notes")).rows[0]?.c),
+      ).toBe(0);
     });
 
     it("rejects cutoff crossing into current UTC day", async () => {

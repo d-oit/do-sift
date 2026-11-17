@@ -47,6 +47,44 @@ async function insertEvidence(id: string, ownerId: string, createdAt: string) {
   });
 }
 
+async function insertCollection(
+  id: string,
+  ownerId: string,
+  archivedAt: string | null,
+  tenantId = "default",
+): Promise<void> {
+  await client.execute({
+    sql: `INSERT INTO collections (id, tenant_id, owner_id, title, description, created_at, updated_at, archived_at)
+          VALUES (?, ?, ?, ?, '', ?, ?, ?)`,
+    args: [id, tenantId, ownerId, id, OLD, OLD, archivedAt],
+  });
+}
+
+async function insertCollectionNote(
+  id: string,
+  collectionId: string,
+  ownerId: string,
+  tenantId = "default",
+): Promise<void> {
+  await client.execute({
+    sql: `INSERT INTO collection_notes (id, collection_id, tenant_id, owner_id, author_id, body, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, 'note body', ?, ?)`,
+    args: [id, collectionId, tenantId, ownerId, ownerId, OLD, OLD],
+  });
+}
+
+async function insertCollectionItem(
+  collectionId: string,
+  ownerId: string,
+  tenantId = "default",
+): Promise<void> {
+  await client.execute({
+    sql: `INSERT INTO collection_items (collection_id, tenant_id, owner_id, item_kind, item_id, added_at)
+          VALUES (?, ?, ?, 'evidence', 'ev-1', ?)`,
+    args: [collectionId, tenantId, ownerId, OLD],
+  });
+}
+
 async function ids(table: "jobs" | "usage_ledger" | "documents" | "passages"): Promise<string[]> {
   const res = await client.execute(`SELECT id FROM ${table} ORDER BY id`);
   return res.rows.map((r) => String(r.id));
@@ -257,8 +295,16 @@ describe("executeOwnerRetention (#64)", () => {
 
     expect(receipt.success).toBe(true);
     expect(receipt.dryRun).toBe(false);
-    expect(receipt.candidates).toEqual({ terminalJobs: 2, closedUsage: 2 });
-    expect(receipt.deleted).toEqual({ terminalJobs: 2, closedUsage: 2 });
+    expect(receipt.candidates).toEqual({
+      terminalJobs: 2,
+      closedUsage: 2,
+      archivedCollections: 0,
+    });
+    expect(receipt.deleted).toEqual({
+      terminalJobs: 2,
+      closedUsage: 2,
+      archivedCollections: 0,
+    });
 
     expect(await ids("jobs")).toEqual(
       ["j-new-done", "j-old-leased", "j-old-queued", "j-other-done"].sort(),
@@ -285,8 +331,16 @@ describe("executeOwnerRetention (#64)", () => {
 
     expect(receipt.success).toBe(true);
     expect(receipt.dryRun).toBe(true);
-    expect(receipt.candidates).toEqual({ terminalJobs: 1, closedUsage: 1 });
-    expect(receipt.deleted).toEqual({ terminalJobs: 0, closedUsage: 0 });
+    expect(receipt.candidates).toEqual({
+      terminalJobs: 1,
+      closedUsage: 1,
+      archivedCollections: 0,
+    });
+    expect(receipt.deleted).toEqual({
+      terminalJobs: 0,
+      closedUsage: 0,
+      archivedCollections: 0,
+    });
 
     // Rows still exist
     expect(await ids("jobs")).toEqual(["j-old-done"]);
@@ -305,7 +359,11 @@ describe("executeOwnerRetention (#64)", () => {
       dryRun: false,
       now: FIXED_NOW,
     });
-    expect(receipt1.deleted).toEqual({ terminalJobs: 1, closedUsage: 1 });
+    expect(receipt1.deleted).toEqual({
+      terminalJobs: 1,
+      closedUsage: 1,
+      archivedCollections: 0,
+    });
 
     // Run 2
     const receipt2 = await executeOwnerRetention(client, {
@@ -315,8 +373,16 @@ describe("executeOwnerRetention (#64)", () => {
       dryRun: false,
       now: FIXED_NOW,
     });
-    expect(receipt2.deleted).toEqual({ terminalJobs: 0, closedUsage: 0 });
-    expect(receipt2.candidates).toEqual({ terminalJobs: 0, closedUsage: 0 });
+    expect(receipt2.deleted).toEqual({
+      terminalJobs: 0,
+      closedUsage: 0,
+      archivedCollections: 0,
+    });
+    expect(receipt2.candidates).toEqual({
+      terminalJobs: 0,
+      closedUsage: 0,
+      archivedCollections: 0,
+    });
   });
 
   it("enforces strict owner boundary isolation", async () => {
@@ -331,8 +397,16 @@ describe("executeOwnerRetention (#64)", () => {
       now: FIXED_NOW,
     });
 
-    expect(receipt.candidates).toEqual({ terminalJobs: 0, closedUsage: 0 });
-    expect(receipt.deleted).toEqual({ terminalJobs: 0, closedUsage: 0 });
+    expect(receipt.candidates).toEqual({
+      terminalJobs: 0,
+      closedUsage: 0,
+      archivedCollections: 0,
+    });
+    expect(receipt.deleted).toEqual({
+      terminalJobs: 0,
+      closedUsage: 0,
+      archivedCollections: 0,
+    });
     expect(await ids("jobs")).toEqual(["j-other-done"]);
     expect(await ids("usage_ledger")).toEqual(["u-other-settled"]);
   });
@@ -342,8 +416,80 @@ describe("executeOwnerRetention (#64)", () => {
     await insertUsage("u-old-settled", "ret-owner", "settled", OLD);
 
     const result = await pruneOwnerHistory(client, "ret-owner", CUTOFF, "default");
-    expect(result).toEqual({ jobsDeleted: 1, usageDeleted: 1 });
+    expect(result).toEqual({ jobsDeleted: 1, usageDeleted: 1, archivedCollectionsDeleted: 0 });
     expect(await ids("jobs")).toEqual([]);
     expect(await ids("usage_ledger")).toEqual([]);
+  });
+
+  describe("archived collection retention", () => {
+    async function count(sql: string, args: string[] = []): Promise<number> {
+      const res = await client.execute({ sql, args });
+      return Number(res.rows[0]?.c ?? 0);
+    }
+
+    it("keeps archived collections, items, and notes unless explicitly opted in", async () => {
+      await insertCollection("c-old", "ret-owner", OLD);
+      await insertCollectionItem("c-old", "ret-owner");
+      await insertCollectionNote("n-old", "c-old", "ret-owner");
+
+      const receipt = await executeOwnerRetention(client, {
+        tenantId: "default",
+        ownerId: "ret-owner",
+        beforeIso: CUTOFF,
+        dryRun: false,
+        now: FIXED_NOW,
+      });
+
+      expect(receipt.candidates.archivedCollections).toBe(0);
+      expect(receipt.deleted.archivedCollections).toBe(0);
+      expect(await count("SELECT COUNT(*) AS c FROM collections")).toBe(1);
+      expect(await count("SELECT COUNT(*) AS c FROM collection_items")).toBe(1);
+      expect(await count("SELECT COUNT(*) AS c FROM collection_notes")).toBe(1);
+    });
+
+    it("prunes only archived collections older than the cutoff, with their children", async () => {
+      await insertCollection("c-old", "ret-owner", OLD);
+      await insertCollectionItem("c-old", "ret-owner");
+      await insertCollectionNote("n-old", "c-old", "ret-owner");
+      await insertCollection("c-recent", "ret-owner", "2026-06-15T00:00:00.000Z");
+      await insertCollection("c-active", "ret-owner", null);
+      await insertCollection("c-other", "ret-other", OLD);
+
+      const receipt = await executeOwnerRetention(client, {
+        tenantId: "default",
+        ownerId: "ret-owner",
+        beforeIso: CUTOFF,
+        dryRun: false,
+        now: FIXED_NOW,
+        pruneArchivedCollections: true,
+      });
+
+      expect(receipt.candidates.archivedCollections).toBe(1);
+      expect(receipt.deleted.archivedCollections).toBe(1);
+      expect(await count("SELECT COUNT(*) AS c FROM collections WHERE id = 'c-old'")).toBe(0);
+      expect(await count("SELECT COUNT(*) AS c FROM collection_items")).toBe(0);
+      expect(await count("SELECT COUNT(*) AS c FROM collection_notes")).toBe(0);
+      expect(await count("SELECT COUNT(*) AS c FROM collections")).toBe(3);
+    });
+
+    it("reports the opt-in candidate in a dry run without deleting anything", async () => {
+      await insertCollection("c-old", "ret-owner", OLD);
+      await insertCollectionNote("n-old", "c-old", "ret-owner");
+
+      const receipt = await executeOwnerRetention(client, {
+        tenantId: "default",
+        ownerId: "ret-owner",
+        beforeIso: CUTOFF,
+        dryRun: true,
+        now: FIXED_NOW,
+        pruneArchivedCollections: true,
+      });
+
+      expect(receipt.dryRun).toBe(true);
+      expect(receipt.candidates.archivedCollections).toBe(1);
+      expect(receipt.deleted.archivedCollections).toBe(0);
+      expect(await count("SELECT COUNT(*) AS c FROM collections")).toBe(1);
+      expect(await count("SELECT COUNT(*) AS c FROM collection_notes")).toBe(1);
+    });
   });
 });

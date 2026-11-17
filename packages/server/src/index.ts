@@ -9,6 +9,7 @@ export {
   ANSWER_UNRESOLVED_LABEL,
   DEFAULT_PAGE,
 } from "./default-page.js";
+export { WORKSPACES_PAGE } from "./workspaces-page.js";
 export {
   COLLECTIONS_PATH,
   COLLECTIONS_PREFIX,

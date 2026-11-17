@@ -26,21 +26,21 @@ Failed authentication returns `401` with a JSON error. Owners outside
 
 ## Routes
 
-| Method           | Path                                          | Purpose                                                  |
-| ---------------- | --------------------------------------------- | -------------------------------------------------------- |
-| GET              | `/`                                           | Source-card web page (HTML)                              |
-| GET              | `/healthz`                                    | Liveness: `{"ok":true}`, no auth, no storage calls       |
-| GET              | `/readyz`                                     | Readiness: `{"ok":true}` or `503 {"ok":false}`           |
-| POST             | `/api/research`                               | Research run, streamed as SSE                            |
-| POST             | `/api/answer`                                 | Grounded answer, JSON                                    |
-| GET              | `/api/evidence`                               | Newest stored sources of the caller's own corpus         |     | GET | `/api/answers` | Newest stored answers of the caller's own corpus |
-| GET/POST         | `/api/collections`                            | List or create the caller's collections                  |
-| GET/PATCH/DELETE | `/api/collections/<id>`                       | Read, rename, or archive one collection                  |
-| POST             | `/api/collections/<id>/items`                 | Reference an existing run or evidence id                 |
-| DELETE           | `/api/collections/<id>/items/<kind>/<itemId>` | Drop a reference                                         |
-| GET/POST         | `/api/collections/<id>/notes`                 | List or add owner-authored notes                         |
-| DELETE           | `/api/collections/<id>/notes/<noteId>`        | Delete a note                                            |
-| POST             | `/api/compare`                                | Deterministic side-by-side comparison of stored passages |
+| Method           | Path                                          | Purpose                                                                          |
+| ---------------- | --------------------------------------------- | -------------------------------------------------------------------------------- |
+| GET              | `/`                                           | Source-card web page (HTML)                                                      |
+| GET              | `/healthz`                                    | Liveness: `{"ok":true}`, no auth, no storage calls                               |
+| GET              | `/readyz`                                     | Readiness: `{"ok":true}` or `503 {"ok":false}`                                   |
+| POST             | `/api/research`                               | Research run, streamed as SSE                                                    |
+| POST             | `/api/answer`                                 | Grounded answer, JSON                                                            |
+| GET              | `/api/evidence`                               | Newest stored sources of the caller's own corpus                                 |     | GET  | `/api/answers` | Newest stored answers of the caller's own corpus         |
+| GET/POST         | `/api/collections`                            | List or create the caller's collections                                          |
+| GET/PATCH/DELETE | `/api/collections/<id>`                       | Read, rename, or archive one collection                                          |
+| POST             | `/api/collections/<id>/items`                 | Reference an existing run or evidence id                                         |
+| DELETE           | `/api/collections/<id>/items/<kind>/<itemId>` | Drop a reference                                                                 |
+| GET/POST         | `/api/collections/<id>/notes`                 | List or add owner-authored notes                                                 |
+| DELETE           | `/api/collections/<id>/notes/<noteId>`        | Delete a note                                                                    |     | POST | `/api/compare` | Deterministic side-by-side comparison of stored passages |
+| GET              | `/workspaces`                                 | Static workspaces console (served only when the workspace routes are configured) |
 
 Other paths return `404`. Wrong methods on the POST routes return `405`.
 
@@ -163,7 +163,9 @@ HTTP error.
 ## Research workspaces and comparison
 
 These routes require authentication and are `404` when the host has not
-configured them. Reads require the `read` action; collection writes require
+configured them. A dependency-free console for them is served at `/workspaces`
+where they are configured; it stores the bearer token in `sessionStorage` for
+the tab and renders every fetched value as a text node. Reads require the `read` action; collection writes require
 `research` when a recorded role policy is configured. A `viewer` can read and
 compare but cannot create, rename, archive, add items, or add notes.
 

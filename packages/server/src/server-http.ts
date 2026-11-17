@@ -50,6 +50,7 @@ export function requestPath(rawUrl: string | undefined): string {
   switch (rawPath) {
     case "/":
     case "/index.html":
+    case "/workspaces":
     case "/healthz":
     case "/readyz":
     case "/metrics":
