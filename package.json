@@ -25,6 +25,13 @@
     "evals:dashboard": "tsx scripts/evals-dashboard.ts",
     "release:check": "tsx scripts/release-check.ts",
     "signals": "tsx scripts/dev-harness/cli.ts",
+    "version:check": "tsx scripts/version-policy.ts",
+    "sbom": "tsx scripts/sbom.ts",
+    "snapshot": "tsx scripts/snapshot.ts",
+    "report:export": "tsx scripts/export-report.ts",
+    "report:offline": "tsx scripts/reports.ts",
+    "providers:status": "tsx scripts/provider-status.ts",
+    "bench:analytics": "tsx scripts/bench/analytics-bench.ts",
     "hooks:install": "tsx scripts/dev-harness/cli.ts hook install",
     "test": "vitest run && vitest run -c vitest.unit.config.ts",
     "build": "tsc -b tsconfig.build.json",
@@ -38,12 +45,12 @@
     "@vitest/coverage-v8": "5.1.0",
     "eslint": "^10.14.0",
     "prettier": "^3.10.1",
-    "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.2",
     "vitest": "5.1.0"
   },
   "dependencies": {
+    "tsx": "^4.23.15",
     "zod": "^4.6.7"
   },
   "overrides": {

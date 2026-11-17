@@ -397,6 +397,22 @@ limiting. A reverse proxy must provide TLS, authentication, rate limits, and
 raw-path/body/read-time controls; the dev bypass is refused on a non-loopback
 bind.
 
+### Research workspaces (collections, issue #168)
+
+Migration `0014_collections.sql` adds `collections`, `collection_items`, and
+`collection_notes`. They are **metadata**: a collection references existing
+research-run and evidence ids and never copies page text, passages, or
+answers. Every row carries `(tenant_id, owner_id)`; triggers reject an item or
+note whose collection belongs to another scope.
+
+Backup/restore: collections are included in the normal libSQL backup
+(`npm run backup` tooling / Turso snapshots). Restoring an older backup loses
+collections created after it but never loses the referenced evidence. Dropping
+the three tables is a safe rollback: nothing else references them.
+
+Notes are user-authored metadata. They are not evidence, are never rendered as
+source text, and must never be packed into a model prompt as a source.
+
 ### Production reverse-proxy profile (OPS-10)
 
 The reference profile is `deploy/caddy/Caddyfile`. It terminates TLS, requires

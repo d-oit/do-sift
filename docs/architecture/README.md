@@ -31,6 +31,15 @@ capabilities were not granted.
 | Safe fetching | `packages/safe-fetch`                       | Scheme/IP/redirect/DNS/size/time/MIME guards in front of every outbound fetch        | [outbound-transport-inventory.md](../outbound-transport-inventory.md)                                          |
 | Auth          | `packages/auth`, `plugins/plugin-auth-oidc` | Owner allowlist fallback and OIDC multi-tenant principals                            | [multi-tenant-auth.md](../multi-tenant-auth.md)                                                                |
 | Guardrails    | `packages/contracts/src/guardrails.*`       | Declarative default-deny policy for browser/computer automation                      | [guardrails.md](../guardrails.md)                                                                              |
+| Analytics     | `scripts/reports.ts`, `scripts/snapshot.ts` | Offline, read-only reports and versioned snapshots; never in the request path        | [ADR-0013](../decisions/0013-analytical-storage-boundary.md)                                                   |
+| Plugin trust  | `packages/kernel`                           | Capability authorization; runtime isolation is a separate, gated boundary            | [plugin-isolation.md](../plugin-isolation.md), [ADR-0014](../decisions/0014-plugin-isolation-boundary.md)      |
+
+## Operational → snapshot → analytics
+
+Operational entities live only in libSQL/SQLite. Offline reporting reads a
+**versioned snapshot** (or an explicit read-only export), never the live
+operational tables, and never writes back. Analytics is optional and is not
+reachable from search or answer execution (ADR 0013).
 
 ## Request lifecycles
 

@@ -36,6 +36,22 @@ export type {
   UsageReconciliation,
 } from "./answer.js";
 export { MetricsRegistry } from "./metrics.js";
+export {
+  COMPARISON_MAX_SOURCES,
+  COMPARISON_MIN_SOURCES,
+  COMPARISON_SCHEMA_VERSION,
+  ComparisonError,
+  compareEvidence,
+} from "./compare.js";
+export type {
+  ComparisonCell,
+  ComparisonObservation,
+  ComparisonObservationKind,
+  ComparisonSourceInput,
+  EvidenceComparison,
+} from "./compare.js";
+export { assessClaims, summarizeClaims } from "./claims.js";
+export type { ClaimAssessment, ClaimSupport, SummaryCounts } from "./claims.js";
 export { createRuntime } from "./runtime.js";
 export type { Runtime, RuntimeOptions } from "./runtime.js";
 export {

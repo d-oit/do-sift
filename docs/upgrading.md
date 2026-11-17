@@ -1,6 +1,6 @@
 # Node.js Version & Upgrade Guide
 
-This guide documents the Node.js runtime floor for **do-sift**, the technical justification for requiring Node >= 22, and practical upgrade instructions for developers and deployment environments transitioning from Node 20 or earlier.
+This guide documents the Node.js runtime floor for **do-sift**, the technical justification for requiring Node >= 24, and practical upgrade instructions for developers and deployment environments transitioning from an older Node line.
 
 ---
 
@@ -8,12 +8,12 @@ This guide documents the Node.js runtime floor for **do-sift**, the technical ju
 
 do-sift adheres to the [Node.js Long-Term Support (LTS) release schedule](https://nodejs.org/en/about/previous-releases):
 
-| Node Release | Status                                     | Role in do-sift                                                                         |
-| ------------ | ------------------------------------------ | --------------------------------------------------------------------------------------- |
-| **Node 20**  | End-of-life (April 2026)                   | **Unsupported**: missing key built-in modules and runtime features required by do-sift  |
-| **Node 22**  | Maintenance LTS (end-of-life April 2027)   | **Compatible**: the test suite still passes here, but it is no longer the shipped floor |
-| **Node 24**  | Active LTS (maintenance from October 2026) | **Minimum Supported Version**: all packages and tools must run without polyfills        |
-| **Node 26**  | Active LTS                                 | **Latest LTS Supported**: CI validates the test suite against this version              |
+| Node Release | Status                                     | Role in do-sift                                                                               |
+| ------------ | ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| **Node 20**  | End-of-life (April 2026)                   | **Unsupported**: missing key built-in modules and runtime features required by do-sift        |
+| **Node 22**  | Maintenance LTS (end-of-life April 2027)   | **Unsupported**: below the shipped floor; use it only to inspect the historical justification |
+| **Node 24**  | Active LTS (maintenance from October 2026) | **Minimum Supported Version**: all packages and tools must run without polyfills              |
+| **Node 26**  | Active LTS                                 | **Latest LTS Supported**: CI validates the test suite against this version                    |
 
 All first-party packages, apps, tests, and scripts declare `"engines": { "node": ">=24" }` in `package.json`.
 
@@ -21,11 +21,11 @@ All first-party packages, apps, tests, and scripts declare `"engines": { "node":
 
 ## 2. Technical Justification: Why Node >= 24?
 
-Node 22 introduced major stable capabilities and standards alignments that eliminate external dependencies, polyfills, and runtime workarounds across do-sift's architecture; Node 24 builds on that same baseline, so the floor moved without any polyfill work returning:
+The floor is Node 24. The capabilities below arrived in earlier lines and are still relied on today; no API newer than Node 24 is required:
 
 ### 2.1 Built-in `node:sqlite`
 
-Node 22 provides native support for `node:sqlite` without needing native compilation toolchains (e.g. `node-gyp`, Python-based build environments). This aligns directly with do-sift's ground rule (AGENTS.md INV-001) prohibiting Python build chains and native build friction during dependency installation.
+Node's built-in `node:sqlite` avoids needing a native compilation toolchain (e.g. `node-gyp`, which historically pulled in Python build environments) for the fallback storage path. This aligns with do-sift's ground rule (AGENTS.md INV-001) prohibiting Python build chains.
 
 ### 2.2 Modern Web Standards and Fetch APIs
 
@@ -35,19 +35,19 @@ do-sift's networking stack (`@do-sift/safe-fetch`, provider adapters, and proxy 
 - AbortController and AbortSignal enhancements (e.g., `AbortSignal.any`, timeout integration).
 - Enhanced streaming and byte handling (`ReadableStream`, `Uint8Array` methods).
 
-In Node 20, several fetch edge behaviors required additional flags, polyfills, or exhibited subtle divergence in timeout and redirect handling. Node 22 stabilizes these behaviors out of the box.
+Older Node lines required flags or polyfills for several fetch edge behaviors (timeout and redirect handling in particular). Node 22+ stabilizes these out of the box, and Node 24 is the tested baseline.
 
 ### 2.3 Native WebSocket Client
 
-Node 22 ships a stable global `WebSocket` client implementation (backed by Undici), eliminating external third-party WebSocket dependencies for browser harnesses and streaming endpoints.
+Node ships a stable global `WebSocket` client (backed by Undici), eliminating a third-party WebSocket dependency for streaming endpoints.
 
 ### 2.4 Enhanced Glob and Filesystem Primitives
 
-Node 22 stabilizes recursive filesystem watching and built-in path utilities (`node:fs/promises` glob matching), used across do-sift's signal harness and repository auditing tools.
+Built-in recursive filesystem watching and `node:fs/promises` glob matching are used by do-sift's signal harness and repository auditing tools.
 
 ### 2.5 V8 Engine Updates & ECMAScript Features
 
-Node 22 runs V8 12.4+, providing built-in support for:
+The supported Node lines provide built-in support for:
 
 - `Array.fromAsync`
 - `Iterator.prototype` helpers
@@ -56,11 +56,11 @@ Node 22 runs V8 12.4+, providing built-in support for:
 
 ---
 
-## 3. Upgrading from Node 20 to Node 22 (or 24)
+## 3. Upgrading to Node 24
 
 ### 3.1 Using `nvm` (Node Version Manager)
 
-The repository includes a `.nvmrc` file specifying the minimum supported LTS version (`22`).
+The repository includes a `.nvmrc` file pinning the supported default (`24`).
 
 To install and activate the required version:
 
