@@ -24,7 +24,9 @@ beforeEach(async () => {
   });
 });
 
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** Each question maps to its own URL and page text; the delay forces overlap. */
 class QuestionSearch implements SearchProvider {

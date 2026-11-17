@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { ComparisonError, compareEvidence, type ComparisonSourceInput } from "../src/compare.js";
 
-const base = (over: Partial<ComparisonSourceInput> = {}): ComparisonSourceInput => ({
-  evidenceId: "ev-1",
-  url: "https://a.test/page",
-  title: "A",
-  retrievedAt: "2026-11-17T00:00:00.000Z",
-  excerpt: "The same   excerpt.",
-  contentHash: "hash-1",
-  ...over,
-});
+function base(over: Partial<ComparisonSourceInput> = {}): ComparisonSourceInput {
+  return {
+    evidenceId: "ev-1",
+    url: "https://a.test/page",
+    title: "A",
+    retrievedAt: "2026-11-17T00:00:00.000Z",
+    excerpt: "The same   excerpt.",
+    contentHash: "hash-1",
+    ...over,
+  };
+}
 
 describe("evidence comparison", () => {
   it("orders by the caller's selection and preserves provenance", () => {

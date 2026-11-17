@@ -7,13 +7,15 @@ import {
   type ProviderRecord,
 } from "@do-sift/contracts";
 
-const record = (over: Partial<ProviderRecord> = {}): ProviderRecord => ({
-  id: "wikipedia",
-  category: "search",
-  configured: true,
-  permitted: true,
-  ...over,
-});
+function record(over: Partial<ProviderRecord> = {}): ProviderRecord {
+  return {
+    id: "wikipedia",
+    category: "search",
+    configured: true,
+    permitted: true,
+    ...over,
+  };
+}
 
 describe("provider registry", () => {
   it("keeps configured, permitted, available, and healthy separate", () => {

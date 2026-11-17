@@ -92,7 +92,10 @@ export function buildSbom(
     if (hash !== undefined) component.hashes = [hash];
     components.push(component);
   }
-  components.sort((a, b) => (a.purl < b.purl ? -1 : a.purl > b.purl ? 1 : 0));
+  // Byte order, not locale order: the SBOM must be identical on every host.
+  components.sort((a, b) =>
+    Buffer.compare(Buffer.from(a.purl, "utf8"), Buffer.from(b.purl, "utf8")),
+  );
 
   return {
     bomFormat: "CycloneDX",

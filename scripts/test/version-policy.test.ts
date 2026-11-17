@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { checkVersionPolicy, parseCiNodeMatrix, parseFloor } from "../version-policy.js";
 
 const ROOT = process.cwd();
-const read = (path: string): string => readFileSync(join(ROOT, path), "utf8");
+function read(path: string): string {
+  return readFileSync(join(ROOT, path), "utf8");
+}
 
 function repoInputs() {
   const pkg = JSON.parse(read("package.json")) as {

@@ -9,16 +9,18 @@ import {
   type SnapshotRecord,
 } from "@do-sift/contracts";
 
-const record = (over: Partial<SnapshotRecord> = {}): SnapshotRecord => ({
-  runId: "run-1",
-  fixtureId: "q-1",
-  datasetVersion: "2026-11",
-  mode: "search",
-  configuration: { provider: "wikipedia", ranker: "bm25" },
-  metrics: { "retrieval.recallAtK": 0.8, "retrieval.mrr": 0.5 },
-  observedAt: "2026-11-17T00:00:00.000Z",
-  ...over,
-});
+function record(over: Partial<SnapshotRecord> = {}): SnapshotRecord {
+  return {
+    runId: "run-1",
+    fixtureId: "q-1",
+    datasetVersion: "2026-11",
+    mode: "search",
+    configuration: { provider: "wikipedia", ranker: "bm25" },
+    metrics: { "retrieval.recallAtK": 0.8, "retrieval.mrr": 0.5 },
+    observedAt: "2026-11-17T00:00:00.000Z",
+    ...over,
+  };
+}
 
 describe("snapshot contract", () => {
   it("canonicalizes record order and metric key order", () => {

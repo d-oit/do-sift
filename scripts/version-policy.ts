@@ -50,6 +50,22 @@ export function parseCiNodeMatrix(ciYml: string): number[] {
   return [...versions].sort((a, b) => a - b);
 }
 
+/** True when the text contains `>=<floor>` (optional spaces) not followed by a digit. */
+export function statesFloor(text: string, floor: number): boolean {
+  const digits = String(floor);
+  let index = text.indexOf(">=");
+  while (index !== -1) {
+    let cursor = index + 2;
+    while (text[cursor] === " ") cursor += 1;
+    if (text.startsWith(digits, cursor)) {
+      const next = text[cursor + digits.length];
+      if (next === undefined || next < "0" || next > "9") return true;
+    }
+    index = text.indexOf(">=", index + 1);
+  }
+  return false;
+}
+
 export function checkVersionPolicy(input: VersionPolicyInputs): VersionPolicyResult {
   const findings: string[] = [];
   const floor = parseFloor(input.engines);
@@ -89,11 +105,10 @@ export function checkVersionPolicy(input: VersionPolicyInputs): VersionPolicyRes
     } else if (Number(docker[1]) < floor) {
       findings.push(`Dockerfile base node:${docker[1]} is below the floor ${floor}`);
     }
-    const documented = new RegExp(`>=\\s*${floor}\\b`, "u");
-    if (!documented.test(input.readme)) {
+    if (!statesFloor(input.readme, floor)) {
       findings.push(`README does not state the Node >=${floor} floor`);
     }
-    if (!documented.test(input.upgrading)) {
+    if (!statesFloor(input.upgrading, floor)) {
       findings.push(`docs/upgrading.md does not state the Node >=${floor} floor`);
     }
   }
