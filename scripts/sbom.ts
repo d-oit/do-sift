@@ -89,7 +89,7 @@ export function buildSbom(
       ...(entry.dev === true ? { scope: "optional" as const } : { scope: "required" as const }),
     };
     const hash = entry.integrity === undefined ? undefined : hashFromIntegrity(entry.integrity);
-    if (hash !== undefined) component.hashes = [hash];
+    if (hash) component.hashes = [hash];
     components.push(component);
   }
   // Byte order, not locale order: the SBOM must be identical on every host.
