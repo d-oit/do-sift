@@ -79,8 +79,8 @@ packages/server/test/workspaces.test.ts` — PASS (archived-collection pruning o
 
 ## Open risks / follow-ups
 
-- The DuckDB gate ran on win32/x64 Node 24; the new analytics CI matrix is the
-  cross-platform verification and its first remote run is the real evidence.
+- The DuckDB gate ran on win32/x64 Node 24; the analytics CI matrix passed on
+  Linux 24/26, macOS 24, and Windows 24, which is the cross-platform evidence.
 - Parquet remains a separate decision; the DuckDB result does not cover it.
 - Archived-collection pruning is opt-in and deletes notes with the collection;
   operators must still snapshot the database before `--confirm`.

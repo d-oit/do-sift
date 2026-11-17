@@ -39,8 +39,9 @@ recorded here.
   document-id comparison resolution.
 - `npm run check` — PASS (12 steps). `npm run signals -- verify --set verification`
   — green.
-- CI: `analytics (ubuntu-latest, node 24/26)`, `(macos-latest, node 24)`,
-  `(windows-latest, node 24)` run the package tests.
+- CI: all four `analytics` matrix jobs pass (Linux 24/26, macOS 24, Windows
+  24), as do the Linux full-test jobs that run the browser smoke test. Codacy,
+  CodeQL, container, SBOM, and both check matrices pass on the same commit.
 
 ## Open risks
 
