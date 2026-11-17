@@ -5,6 +5,7 @@
  * Every data command requires an explicit --owner, so ownership scoping is never implicit.
  */
 import type { Client } from "@libsql/client";
+import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import {
   DEFAULT_TENANT_ID,
@@ -31,7 +32,8 @@ const USAGE = `usage: do-sift-cli <command> [options]
   evidence export --owner <id> --out <new-file.json> [--tenant <id>]
   research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question] [--tenant <id>]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>] [--tenant <id>]
-  retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>]
+  analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
+  retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
 
 Every data command takes --tenant (default: "${DEFAULT_TENANT_ID}") and scopes
@@ -39,7 +41,7 @@ its queries by tenant_id as well as owner_id, so one tenant's owner id never
 reaches another tenant's rows (plan 035).
 `;
 
-const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm"]);
+const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm", "prune-collections"]);
 
 function parseFlags(args: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -448,6 +450,77 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
       return 0;
     }
+    if (group === "analytics" && action === "summarize") {
+      const input = flags.get("in");
+      if (input === undefined || input === "") throw new CliUsageError("--in is required");
+      const format = flags.get("format") ?? "table";
+      if (format !== "table" && format !== "json") {
+        throw new CliUsageError("--format must be table or json");
+      }
+      let raw: unknown;
+      try {
+        raw = JSON.parse(readFileSync(input, "utf8")) as unknown;
+      } catch (error) {
+        throw new Error(`could not read ${input}: ${String(error)}`);
+      }
+      if (!Array.isArray(raw)) throw new Error(`${input} must contain a JSON array of eval rows`);
+      const rows = raw.map((item, index) => {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) {
+          throw new Error(`${input} row ${index} must be an object`);
+        }
+        const value = item as Record<string, unknown>;
+        const id = value["id"];
+        const provider = value["provider"];
+        const dataset = value["dataset"];
+        const recall = value["recall"];
+        const latencyMs = value["latencyMs"];
+        const createdDay = value["createdDay"];
+        if (
+          typeof id !== "string" ||
+          typeof provider !== "string" ||
+          typeof dataset !== "string" ||
+          typeof recall !== "number" ||
+          typeof latencyMs !== "number" ||
+          typeof createdDay !== "string"
+        ) {
+          throw new Error(
+            `${input} row ${index} must have id/provider/dataset strings, recall/latencyMs numbers, and a createdDay string`,
+          );
+        }
+        return { id, provider, dataset, recall, latencyMs, createdDay };
+      });
+      // Loaded lazily: the native DuckDB binding is needed only by this
+      // offline command, never by `owners list` or the retention commands.
+      const { aggregateEvalResults } = await import("@do-sift/analytics");
+      const aggregates = await aggregateEvalResults(rows);
+      const body =
+        format === "json"
+          ? `${JSON.stringify(aggregates, null, 2)}\n`
+          : [
+              "provider\tdataset\tn\tmean_recall\tmin_recall\tmax_recall\tmean_latency",
+              ...aggregates.map((a) =>
+                [
+                  a.provider,
+                  a.dataset,
+                  a.n,
+                  a.meanRecall,
+                  a.minRecall,
+                  a.maxRecall,
+                  a.meanLatency,
+                ].join("\t"),
+              ),
+              "",
+            ].join("\n");
+      const out = flags.get("out");
+      if (out !== undefined && out !== "") {
+        const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
+        await write(out, body);
+        deps.out(`exported ${aggregates.length} aggregate group(s) to ${out}`);
+        return 0;
+      }
+      for (const line of body.trimEnd().split("\n")) deps.out(line);
+      return 0;
+    }
     if (group === "retention" && action === "prune") {
       const owner = requireOwner(flags);
       const tenant = tenantScope(flags);
@@ -488,6 +561,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         beforeIso,
         dryRun,
         now: deps.now,
+        pruneArchivedCollections: flags.get("prune-collections") === "true",
       });
 
       if (!receipt.success) {
@@ -508,8 +582,10 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       deps.out(`mode\t${receipt.dryRun ? "dry-run" : "prune"}`);
       deps.out(`candidate_terminal_jobs\t${receipt.candidates.terminalJobs}`);
       deps.out(`candidate_closed_usage\t${receipt.candidates.closedUsage}`);
+      deps.out(`candidate_archived_collections\t${receipt.candidates.archivedCollections}`);
       deps.out(`deleted_terminal_jobs\t${receipt.deleted.terminalJobs}`);
       deps.out(`deleted_closed_usage\t${receipt.deleted.closedUsage}`);
+      deps.out(`deleted_archived_collections\t${receipt.deleted.archivedCollections}`);
       deps.out(`duration_ms\t${receipt.durationMs}`);
       deps.out(`status\tsuccess`);
 

@@ -16,7 +16,7 @@
  * from the row it mirrors.
  */
 import { randomUUID } from "node:crypto";
-import type { Client } from "@libsql/client";
+import type { Client, Row } from "@libsql/client";
 import { DEFAULT_TENANT_ID } from "@do-sift/contracts";
 import {
   answerFromRow,
@@ -335,6 +335,90 @@ export class Repositories {
       const row = res.rows[0];
       return row ? Number(row.n) : 0;
     },
+    /**
+     * Which of these citation ids still exist for the owner in this tenant
+     * (issue #160). The answer's stored citations are the authoritative set;
+     * a passage removed by retention is reported as unresolved rather than
+     * being re-created or silently treated as grounded.
+     */
+    existingIds: async (ownerId: string, ids: readonly string[]): Promise<Set<string>> => {
+      const unique = [...new Set(ids)];
+      if (unique.length === 0) return new Set<string>();
+      const placeholders = unique.map(() => "?").join(", ");
+      const res = await this.client.execute({
+        sql: `SELECT id FROM passages WHERE tenant_id = ? AND owner_id = ? AND id IN (${placeholders})`,
+        args: [this.tenantId, ownerId, ...unique],
+      });
+      return new Set(res.rows.map((row) => str(row, "id")));
+    },
+    /**
+     * Provenance for the comparison view (issue #169): passage + parent
+     * document, owner- and tenant-scoped. Missing ids are simply absent from
+     * the result so the caller can reject an unknown selection.
+     */
+    compareSources: async (
+      ownerId: string,
+      ids: readonly string[],
+    ): Promise<
+      Array<{
+        evidenceId: string;
+        url: string;
+        title?: string | undefined;
+        publishedAt?: string | undefined;
+        retrievedAt: string;
+        contentHash: string;
+        heading?: string | undefined;
+        excerpt: string;
+      }>
+    > => {
+      const unique = [...new Set(ids)];
+      if (unique.length === 0) return [];
+      const placeholders = unique.map(() => "?").join(", ");
+      // The read surface lists document ids while citations use passage ids,
+      // so a selection may contain either. A document id resolves to its
+      // earliest stored passage; a passage id always wins when both match.
+      const res = await this.client.execute({
+        sql: `SELECT p.id, p.document_id, p.heading, p.excerpt, d.canonical_url, d.title,
+                     d.published_at, d.fetched_at, d.content_hash
+              FROM passages p
+              JOIN documents d
+                ON d.id = p.document_id
+               AND d.owner_id = p.owner_id
+               AND d.tenant_id = p.tenant_id
+              WHERE p.tenant_id = ? AND p.owner_id = ?
+                AND (p.id IN (${placeholders}) OR p.document_id IN (${placeholders}))
+              ORDER BY p.document_id, p.created_at, p.id`,
+        args: [this.tenantId, ownerId, ...unique, ...unique],
+      });
+      const wanted = new Set(unique);
+      const byPassage = new Map<string, Row>();
+      const byDocument = new Map<string, Row>();
+      for (const row of res.rows) {
+        const passageId = str(row, "id");
+        const documentId = str(row, "document_id");
+        if (wanted.has(passageId)) byPassage.set(passageId, row);
+        else if (!byDocument.has(documentId)) byDocument.set(documentId, row);
+      }
+      return unique.flatMap((requestedId) => {
+        const row = byPassage.get(requestedId) ?? byDocument.get(requestedId);
+        if (row === undefined) return [];
+        const title = strOrUndefined(row, "title");
+        const publishedAt = strOrUndefined(row, "published_at");
+        const heading = strOrUndefined(row, "heading");
+        return [
+          {
+            evidenceId: requestedId,
+            url: str(row, "canonical_url"),
+            ...(title === undefined ? {} : { title }),
+            ...(publishedAt === undefined ? {} : { publishedAt }),
+            retrievedAt: str(row, "fetched_at"),
+            contentHash: str(row, "content_hash"),
+            ...(heading === undefined ? {} : { heading }),
+            excerpt: str(row, "excerpt"),
+          },
+        ];
+      });
+    },
   };
 
   readonly requests = {
@@ -481,6 +565,37 @@ export class Repositories {
         evidenceOnly: Number(row.evidence_only) === 1,
         createdAt: String(row.created_at),
       }));
+    },
+    /**
+     * Report input for one stored answer: its own request question, verbatim
+     * blocks, and provenance for every cited id. Undefined when the answer or
+     * its request is outside this repository's scope.
+     */
+    reportInput: async (
+      ownerId: string,
+      answerId: string,
+    ): Promise<
+      | {
+          question: string;
+          createdAt: string;
+          evidenceOnly: boolean;
+          blocks: AnswerRow["blocks"];
+          sources: Awaited<ReturnType<Repositories["passages"]["compareSources"]>>;
+        }
+      | undefined
+    > => {
+      const answer = await this.answers.get(ownerId, answerId);
+      if (answer === undefined) return undefined;
+      const request = await this.requests.get(ownerId, answer.requestId);
+      if (request === undefined) return undefined;
+      const citations = [...new Set(answer.blocks.flatMap((block) => block.citations))];
+      return {
+        question: request.question,
+        createdAt: answer.createdAt,
+        evidenceOnly: answer.evidenceOnly,
+        blocks: answer.blocks,
+        sources: await this.passages.compareSources(ownerId, citations),
+      };
     },
     /** Exact-answer cache lookup; cache keys are tenant- and owner-scoped by construction. */
     findByCacheKey: async (ownerId: string, cacheKey: string): Promise<AnswerRow | undefined> => {

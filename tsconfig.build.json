@@ -5,6 +5,7 @@
     { "path": "packages/kernel" },
     { "path": "packages/safe-fetch" },
     { "path": "packages/fake-providers" },
+    { "path": "packages/analytics" },
     { "path": "packages/storage" },
     { "path": "packages/auth" },
     { "path": "packages/server" }

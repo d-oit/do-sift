@@ -1,11 +1,15 @@
-# do-sift service image (OPS-03 + OPS-05, plans/005-007).
+# do-sift service image (OPS-03/OPS-05, plans/005-007; split in issue #163).
 #
-# Purpose: a reproducible, non-root container that carries the runtime AND
-# the packaged entrypoint (apps/server): CMD = the service, healthcheck =
-# its /healthz route. The offline check suite still runs INSIDE the image
-# at build time (INV-006: deterministic datasets, 0 network, 0 model calls
-# — local ONNX inference only) and warms the model cache so the runtime
-# fastembed embedder stays offline.
+# Three stages:
+#   deps     installs the full workspace dependency tree once
+#   build    runs the offline checks inside the image and warms the model cache
+#   runtime  a non-root image with production dependencies + tsx, no test/build
+#            toolchain (typescript, eslint, prettier, vitest are absent)
+#
+# The runtime entrypoint is still the TypeScript source through tsx: workspace
+# packages export `./src/index.ts`, so a compiled-JS-only image would first
+# need a packaging change (see plans/045, OI-163). `tsx` therefore lives in
+# `dependencies`, not `devDependencies`.
 #
 # Fail-closed env is deliberately NOT defaulted: `docker run` without
 # DO_SIFT_OWNERS and DO_SIFT_SEARCH_PROVIDER refuses to start (see
@@ -14,11 +18,10 @@
 #
 # Debian-slim (glibc), not alpine: native deps (@libsql, onnxruntime-node)
 # ship glibc prebuilds.
-FROM node:24-slim
+FROM node:24-slim AS deps
 
 WORKDIR /app
 
-# Dependencies first (layer cache), then the tree.
 COPY package.json package-lock.json ./
 COPY tsconfig.json tsconfig.base.json tsconfig.build.json ./
 COPY packages ./packages
@@ -29,26 +32,42 @@ COPY evals ./evals
 COPY eslint.config.mjs .prettierrc.json .prettierignore vitest.config.ts ./
 COPY do-harness.toml ./
 
-# Dev tooling is included deliberately: the repo runs through tsx (a devDep)
-# and the offline checks are the image's payload. NODE_ENV=production would
-# prune them (npm ci honors it), so it is set only after install.
 RUN npm ci --include=dev
 
+FROM deps AS build
+
 # Offline checks INSIDE the image, at build time: the deterministic eval
-# suite must pass in-container (also warms the gitignored-by-host model
-# cache into /app/.fastembed_cache so runtime healthchecks stay offline).
+# suite must pass in-container. This also warms the gitignored-by-host model
+# cache into /app/.fastembed_cache so runtime healthchecks stay offline.
 RUN npm run eval:offline
+RUN npm run build
+RUN mkdir -p /app/.fastembed_cache
+
+FROM node:24-slim AS runtime
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Production dependency tree only: no typescript/eslint/prettier/vitest.
+# Workspace manifests are needed for npm's workspace linking.
+COPY package.json package-lock.json ./
+COPY packages ./packages
+COPY apps ./apps
+COPY migrations ./migrations
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Sources and the baked model cache come from the build stage.
+COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/evals ./evals
+COPY --from=build /app/.fastembed_cache ./.fastembed_cache
 
 # Writable data dir for the non-root runtime: the in-image DB default is
-# file:/data/do-sift.db — mount a volume there for persistence. The baked
-# model cache dir is chowned too, so a runtime-enabled fastembed embedder
-# can refresh it.
+# file:/data/do-sift.db — mount a volume there for persistence.
 RUN mkdir -p /data /app/.fastembed_cache && chown node:node /data /app/.fastembed_cache
 ENV DO_SIFT_DB_URL="file:/data/do-sift.db"
 VOLUME /data
 
-# Non-root (node image ships uid 1000 "node"); /app is world-readable so
-# the runtime user can read sources and the baked model cache.
+# Non-root (node image ships uid 1000 "node").
 USER node
 
 # Container convention: bind all interfaces inside the container namespace;

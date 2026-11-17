@@ -9,6 +9,24 @@ export {
   ANSWER_UNRESOLVED_LABEL,
   DEFAULT_PAGE,
 } from "./default-page.js";
+export { WORKSPACES_PAGE } from "./workspaces-page.js";
+export { REPORT_EXPORT_PATH, handleReportExport } from "./reports.js";
+export {
+  COLLECTIONS_PATH,
+  COLLECTIONS_PREFIX,
+  COMPARE_PATH,
+  isWorkspacePath,
+  parseWorkspaceRoute,
+} from "./workspaces.js";
+export type {
+  CollectionDetailView,
+  CollectionItemView,
+  CollectionNoteView,
+  CollectionView,
+  CollectionsHandlers,
+  CompareHandlers,
+  StoredReportHandlers,
+} from "./server.js";
 export type {
   AnswerDegradedEvent,
   AnswerHttpResponse,
@@ -36,6 +54,22 @@ export type {
   UsageReconciliation,
 } from "./answer.js";
 export { MetricsRegistry } from "./metrics.js";
+export {
+  COMPARISON_MAX_SOURCES,
+  COMPARISON_MIN_SOURCES,
+  COMPARISON_SCHEMA_VERSION,
+  ComparisonError,
+  compareEvidence,
+} from "./compare.js";
+export type {
+  ComparisonCell,
+  ComparisonObservation,
+  ComparisonObservationKind,
+  ComparisonSourceInput,
+  EvidenceComparison,
+} from "./compare.js";
+export { assessClaims, summarizeClaims } from "./claims.js";
+export type { ClaimAssessment, ClaimSupport, SummaryCounts } from "./claims.js";
 export { createRuntime } from "./runtime.js";
 export type { Runtime, RuntimeOptions } from "./runtime.js";
 export {

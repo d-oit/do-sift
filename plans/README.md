@@ -21,6 +21,10 @@ see the [architecture index](../docs/architecture/README.md) and the
 
 ## Current queue
 
+- `046-analytics-benchmark.md` — decided (2026-11-17, issue #154): DuckDB adopted for optional offline analytics after a measured 11.7× query win and 0.16× RSS at 100k rows with identical results. `packages/analytics` is isolated from the request path.
+- `045-open-issues-153-173.md` — in progress (2026-11-17); one honest slice per open issue, with native/UI follow-ups named rather than claimed. See the task table for each issue's status and evidence.
+- `047-console-analytics-followups.md` — in progress (2026-11-17); isolated analytics package, report-export route, and a real-browser console smoke test.
+- `048-report-and-analytics-followups.md` — in progress (2026-11-17); analytics CLI, stored-answer reports with citations, and collection reports built from snapshotted evidence metadata.
 - `044-dependency-review-2026-11.md` — review done (2026-11-09); every row is implemented except DRV-06. DRV-02 (Node 24 floor) is #143; DRV-04/05/07 (vitest pin, Playwright 1.65.0, honest BRW-04 e2e, `deps` gate sensor) are #145; DRV-01 (minimatch) is `043-minimatch-ghsa-g3hv.md` (#142). DRV-03 moves `typescript` to `~6.0.3` after #149 declares `types: ["node"]`: TS 6 no longer auto-includes `@types/*`, which broke the per-package build (111 errors) while the root typecheck stayed green. TS 7 is deferred: typescript-eslint will not widen its peer range, and its 7.1 backend is canary-only. DRV-06 stays blocked upstream.
 - `043-minimatch-ghsa-g3hv.md` — done (2026-11-09); fixes Dependabot alert #18 (`minimatch` GHSA-g3hv-75wg-m249) with an `overrides` entry to `^11.0.5`, since no `eslint`/`typescript-eslint` release accepts 11 yet; lint file set unchanged; removal tracked as R-20.
 - `042-guardrails-docs-closeout.md` — done (2026-11-09); docs closeout for plans 039–041: CHANGELOG entry for the Rego export and sync gate, the missing plan 039 index row, and `guardrails` in the `check:fast` comment lines.

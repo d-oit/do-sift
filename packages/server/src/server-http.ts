@@ -5,7 +5,7 @@ export const BODY_READ_TIMEOUT_MS = 10_000;
 export const READINESS_TIMEOUT_MS = 1_000;
 export class HttpRequestError extends Error {
   constructor(
-    public readonly status: 400 | 408 | 413 | 415,
+    public readonly status: 400 | 404 | 408 | 413 | 415 | 501,
     message: string,
   ) {
     super(message);
@@ -22,6 +22,23 @@ export function requestPath(rawUrl: string | undefined): string {
   if (rawPath.startsWith("//") || rawPath.includes("#") || rawPath.includes("\\")) {
     return "/unmatched";
   }
+  // Research-workspace routes (issues #168/#169). Only the documented
+  // shapes are accepted; each segment is validated again by the handler.
+  if (rawPath === "/api/compare" || rawPath === "/api/collections") return rawPath;
+  if (rawPath.startsWith("/api/collections/")) {
+    const segments = rawPath.slice("/api/collections/".length).split("/");
+    function id(value: string | undefined): boolean {
+      return value !== undefined && /^[A-Za-z0-9_-]{1,128}$/u.test(value);
+    }
+    const [idSegment, sub, third, fourth] = segments;
+    const kind = third === "run" || third === "evidence";
+    const valid =
+      (segments.length === 1 && id(idSegment)) ||
+      (segments.length === 2 && id(idSegment) && (sub === "items" || sub === "notes")) ||
+      (segments.length === 3 && id(idSegment) && sub === "notes" && id(third)) ||
+      (segments.length === 4 && id(idSegment) && sub === "items" && kind && id(fourth));
+    return valid ? rawPath : "/unmatched";
+  }
   // Admin member routes carry one id segment. Anything deeper, empty, or
   // otherwise shaped differently is unmatched — the dispatcher validates the
   // id itself, so only the route shape is decided here.
@@ -33,6 +50,7 @@ export function requestPath(rawUrl: string | undefined): string {
   switch (rawPath) {
     case "/":
     case "/index.html":
+    case "/workspaces":
     case "/healthz":
     case "/readyz":
     case "/metrics":
@@ -40,6 +58,7 @@ export function requestPath(rawUrl: string | undefined): string {
     case "/api/answer":
     case "/api/evidence":
     case "/api/answers":
+    case "/api/reports/export":
     case "/api/admin/members":
     case "/api/admin/member-changes":
       return rawPath;

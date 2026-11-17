@@ -158,7 +158,7 @@ npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:
 npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
-npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--prune-collections] [--out receipt.json] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
 ```
 
@@ -169,11 +169,12 @@ new file and fail if the path already exists. Sensitive question text is redacte
 
 Retention in do-sift is owner-scoped, explicit, observable, and transactionally isolated:
 
-- **What is pruned:** Only terminal jobs (`done`/`dead`) and closed usage rows (`settled`/`expired`) older than the cutoff timestamp.
-- **What is NEVER pruned:** Documents, passages, embeddings, answers, requests, queued/leased jobs, and active reservations are untouched. Retention is strictly operational cleanup, **not** evidence deletion. Evidence retention remains a separate deliberate decision with research provenance and reproducibility implications.
+- **What is pruned:** Only terminal jobs (`done`/`dead`) and closed usage rows (`settled`/`expired`) older than the cutoff timestamp. With the explicit `--prune-collections` opt-in, collections archived before the cutoff are deleted together with their item references and notes in the same transaction.
+- **What is NEVER pruned:** Documents, passages, embeddings, answers, requests, queued/leased jobs, active reservations, active collections, and archived collections without the opt-in are untouched. Retention is strictly operational cleanup, **not** evidence deletion. Evidence retention remains a separate deliberate decision with research provenance and reproducibility implications.
 - **Accounting safety:** Cutoffs cannot cross into the current UTC day (`00:00:00.000Z`) so daily cap accounting for today is never lost.
 - **Dry-run and confirmation boundary:** Without `--confirm`, the command defaults to `--dry-run`, reporting eligible candidate counts without deleting data. Deletion requires an explicit `--confirm` flag.
-- **Structured audit receipts:** Emits structured receipts (owner ID, cutoff, candidate counts, deleted counts, duration, and status) without leaking prompts, credentials, or raw text.
+- **Structured audit receipts:** Emits structured receipts (owner ID, cutoff, candidate counts, deleted counts, duration, and status) without leaking prompts, credentials, or raw text. Collection counts appear as `candidate_archived_collections` / `deleted_archived_collections` and in the JSON receipt.
+- **Archived collections are opt-in:** without `--prune-collections`, archived collections and their notes are retained even when older than the cutoff (candidate count stays `0`). With the flag, a dry run reports the count and deletes nothing; `--confirm` performs the deletion.
 - **Scheduled maintenance runbook:** Maintenance must never run silently during service startup or ordinary reads. Schedule retention via cron or orchestration (e.g. daily or weekly off-peak jobs) invoking the CLI with explicit owner IDs and confirmation flags.
 
 #### Membership change log retention (plan 024, MT-11)
@@ -396,6 +397,22 @@ selectively with `-p`); the server itself still has no TLS or rate
 limiting. A reverse proxy must provide TLS, authentication, rate limits, and
 raw-path/body/read-time controls; the dev bypass is refused on a non-loopback
 bind.
+
+### Research workspaces (collections, issue #168)
+
+Migration `0014_collections.sql` adds `collections`, `collection_items`, and
+`collection_notes`. They are **metadata**: a collection references existing
+research-run and evidence ids and never copies page text, passages, or
+answers. Every row carries `(tenant_id, owner_id)`; triggers reject an item or
+note whose collection belongs to another scope.
+
+Backup/restore: collections are included in the normal libSQL backup
+(`npm run backup` tooling / Turso snapshots). Restoring an older backup loses
+collections created after it but never loses the referenced evidence. Dropping
+the three tables is a safe rollback: nothing else references them.
+
+Notes are user-authored metadata. They are not evidence, are never rendered as
+source text, and must never be packed into a model prompt as a source.
 
 ### Production reverse-proxy profile (OPS-10)
 

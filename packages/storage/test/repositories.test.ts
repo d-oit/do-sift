@@ -99,6 +99,41 @@ describe("requests + answers + feedback", () => {
     expect((await repos.answers.findByCacheKey("owner-a", "ans:v1:abc123"))?.id).toBe(answerId);
   });
 
+  it("builds report input from a stored answer and its cited evidence", async () => {
+    const requestId = await repos.requests.create("owner-a", "answer", "What is X?");
+    const documentId = await insertDocFor("owner-a", requestId);
+    const passageId = await repos.passages.insert({
+      ownerId: "owner-a",
+      documentId,
+      heading: "Section",
+      excerpt: "Evidence excerpt",
+      extractionStatus: "ok",
+    });
+    const answerId = await repos.answers.insert({
+      ownerId: "owner-a",
+      requestId,
+      blocks: [
+        { kind: "paragraph", text: "A grounded claim", citations: [passageId] },
+        { kind: "caveat", text: "An unresolved claim", citations: [], unresolved: true },
+      ],
+      evidenceOnly: false,
+    });
+
+    const input = await repos.answers.reportInput("owner-a", answerId);
+    expect(input?.question).toBe("What is X?");
+    expect(input?.blocks).toHaveLength(2);
+    expect(input?.blocks[1]?.unresolved).toBe(true);
+    expect(input?.sources).toEqual([
+      expect.objectContaining({
+        evidenceId: passageId,
+        url: "https://example.org/doc",
+        title: "Doc",
+        retrievedAt: "2026-09-07T00:00:00Z",
+      }),
+    ]);
+    expect(await repos.answers.reportInput("owner-b", answerId)).toBeUndefined();
+  });
+
   it("never shares a cache hit across owners", async () => {
     const requestIdB = await repos.requests.create("owner-b", "answer", "What is X?");
     const answerIdB = await repos.answers.insert({

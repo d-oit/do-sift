@@ -5,20 +5,22 @@ _what we decided_, _why_, and _what it costs us_. They restate decisions whose
 long-form records live in the repository's `plans/adr/` directory; where the
 two differ, `plans/adr/` is authoritative and this index is out of date.
 
-| Record                                      | Decision                                                    | Long-form source                               |
-| ------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| [0001](0001-capability-based-kernel.md)     | Everything is a plugin behind a capability-based kernel     | `plans/adr/0004-own-kernel-vs-dsh.md`          |
-| [0002](0002-libsql-storage.md)              | libSQL (Turso) for durable storage                          | `plans/adr/0002-libsql-and-storage.md`         |
-| [0003](0003-zero-llm-search.md)             | Search mode makes zero LLM calls                            | `plans/000-product-and-decisions.md` (D5)      |
-| [0004](0004-evidence-contract.md)           | Evidence is stored with provenance before any merge         | `plans/adr/0003-evidence-contract.md`          |
-| [0005](0005-single-bounded-synthesis.md)    | Answer mode makes exactly one bounded synthesis call        | `plans/adr/0006-no-autonomous-agent-loop.md`   |
-| [0006](0006-hybrid-retrieval.md)            | bm25 first; local embeddings only if they beat the baseline | `plans/adr/0009-fastembed-hybrid-retrieval.md` |
-| [0007](0007-browser-automation-boundary.md) | Browser automation is policy-gated and non-stealth          | `plans/adr/0005-browser-ethics-boundary.md`    |
-| [0008](0008-node-only-no-python.md)         | TypeScript/Node only; no authored Python                    | `plans/adr/0001-typescript-node.md`            |
-| [0009](0009-plugin-lifecycle.md)            | Plugins have an explicit activate/deactivate lifecycle      | `plans/adr/0004-own-kernel-vs-dsh.md`          |
-| [0010](0010-dev-signal-harness.md)          | Checks run as receipt-producing sensors                     | `plans/adr/0007-dev-signal-harness.md`         |
-| [0011](0011-rego-guardrails-export.md)      | Guardrails ship an OPA-readable Rego export                 | `plans/039-rego-guardrails-export.md`          |
-| [0012](0012-node-24-floor.md)               | Ship and type on Node 24 LTS                                | `plans/adr/0011-node-24-floor.md`              |
+| Record                                      | Decision                                                                 | Long-form source                               |
+| ------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------- |
+| [0001](0001-capability-based-kernel.md)     | Everything is a plugin behind a capability-based kernel                  | `plans/adr/0004-own-kernel-vs-dsh.md`          |
+| [0002](0002-libsql-storage.md)              | libSQL (Turso) for durable storage                                       | `plans/adr/0002-libsql-and-storage.md`         |
+| [0003](0003-zero-llm-search.md)             | Search mode makes zero LLM calls                                         | `plans/000-product-and-decisions.md` (D5)      |
+| [0004](0004-evidence-contract.md)           | Evidence is stored with provenance before any merge                      | `plans/adr/0003-evidence-contract.md`          |
+| [0005](0005-single-bounded-synthesis.md)    | Answer mode makes exactly one bounded synthesis call                     | `plans/adr/0006-no-autonomous-agent-loop.md`   |
+| [0006](0006-hybrid-retrieval.md)            | bm25 first; local embeddings only if they beat the baseline              | `plans/adr/0009-fastembed-hybrid-retrieval.md` |
+| [0007](0007-browser-automation-boundary.md) | Browser automation is policy-gated and non-stealth                       | `plans/adr/0005-browser-ethics-boundary.md`    |
+| [0008](0008-node-only-no-python.md)         | TypeScript/Node only; no authored Python                                 | `plans/adr/0001-typescript-node.md`            |
+| [0009](0009-plugin-lifecycle.md)            | Plugins have an explicit activate/deactivate lifecycle                   | `plans/adr/0004-own-kernel-vs-dsh.md`          |
+| [0010](0010-dev-signal-harness.md)          | Checks run as receipt-producing sensors                                  | `plans/adr/0007-dev-signal-harness.md`         |
+| [0011](0011-rego-guardrails-export.md)      | Guardrails ship an OPA-readable Rego export                              | `plans/039-rego-guardrails-export.md`          |
+| [0012](0012-node-24-floor.md)               | Ship and type on Node 24 LTS                                             | `plans/adr/0011-node-24-floor.md`              |
+| [0013](0013-analytical-storage-boundary.md) | libSQL stays authoritative; analytics is optional and read-only          | `plans/045-open-issues-153-173.md`             |
+| [0014](0014-plugin-isolation-boundary.md)   | Capability grants are not a sandbox; only trusted plugins run in-process | `plans/045-open-issues-153-173.md`             |
 
 ## Status vocabulary
 

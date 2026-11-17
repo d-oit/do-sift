@@ -38,9 +38,89 @@ jobs:
       - run: npm run evals:dashboard
       - run: npm run test:coverage
 
+  analytics:
+    # FUP-01 / plan 046: the DuckDB package is offline-only, but its prebuilt
+    # native bindings are the part most likely to differ per OS/Node ABI, so
+    # exercise the package itself on every supported runner before relying
+    # on it.
+    name: analytics (${{ matrix.os }}, node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node-version: 24 }
+          - { os: ubuntu-latest, node-version: 26 }
+          - { os: macos-latest, node-version: 24 }
+          - { os: windows-latest, node-version: 24 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run packages/analytics/test
+
   check-windows:
-    name: check (windows, fast)
+    name: check (windows, build + fast)
     runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Issue #165: native/runtime packaging is the part most likely to differ
+      # on Windows, so build it there instead of only type-checking.
+      - run: npm run build
+      - run: npm run check:fast
+
+  container:
+    name: container (build + smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Issue #163: the multi-stage image is real evidence only if it builds
+      # and serves /healthz. The smoke uses the loopback-only dev bypass, so
+      # the container shares the runner's network namespace and binds
+      # 127.0.0.1 — the shipped image default (0.0.0.0) would refuse the
+      # bypass by design.
+      - name: build runtime image
+        run: docker build -t do-sift:ci .
+      - name: start and probe /healthz
+        run: |
+          docker run -d --name do-sift-ci --network host \
+            -e DO_SIFT_HOST=127.0.0.1 \
+            -e DO_SIFT_PORT=18080 \
+            -e DO_SIFT_DEV_BYPASS=1 \
+            -e DO_SIFT_DEV_OWNER=ci \
+            -e DO_SIFT_OWNERS=ci \
+            -e DO_SIFT_SEARCH_PROVIDER=fixture \
+            do-sift:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/healthz; then exit 0; fi
+            sleep 2
+          done
+          echo "container did not become healthy"; docker logs do-sift-ci; exit 1
+      - name: container logs on failure
+        if: failure()
+        run: docker logs do-sift-ci || true
+      - name: stop container
+        if: always()
+        run: docker rm -f do-sift-ci || true
+
+  check-macos:
+    name: check (macos, fast)
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

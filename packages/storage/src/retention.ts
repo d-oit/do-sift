@@ -3,7 +3,9 @@
  * behaviour: terminal jobs (`done`/`dead`) and closed usage rows
  * (`settled`/`expired`) older than the cutoff. Open reservations, queued or
  * leased jobs, and evidence (documents, passages, answers) are never touched.
- * Callers pass a cutoff at or before the start of the current UTC day so
+ * Archived collections are metadata rather than evidence, so they are pruned
+ * only when the caller opts in with `pruneArchivedCollections`; their item
+ * references and notes go with them in the same transaction. Callers pass a cutoff at or before the start of the current UTC day so
  * daily cap accounting for today is never lost.
  */
 import type { Client } from "@libsql/client";
@@ -28,6 +30,7 @@ export const DEFAULT_RETENTION_CONFIG: RetentionConfig = {
 export interface RetentionResult {
   jobsDeleted: number;
   usageDeleted: number;
+  archivedCollectionsDeleted: number;
 }
 
 export interface RetentionReceipt {
@@ -37,10 +40,12 @@ export interface RetentionReceipt {
   candidates: {
     terminalJobs: number;
     closedUsage: number;
+    archivedCollections: number;
   };
   deleted: {
     terminalJobs: number;
     closedUsage: number;
+    archivedCollections: number;
   };
   durationMs: number;
   success: boolean;
@@ -63,6 +68,12 @@ export interface RetentionOptions {
   dryRun?: boolean | undefined;
   /** Reference time for calculating current UTC day start (defaults to new Date()). */
   now?: Date | undefined;
+  /**
+   * Opt in to deleting collections archived before the cutoff, together with
+   * their item references and notes. Defaults to false: archived metadata is
+   * retained unless the operator asks for it to be removed.
+   */
+  pruneArchivedCollections?: boolean | undefined;
 }
 
 export function calculateStartOfTodayUtc(now: Date = new Date()): Date {
@@ -124,8 +135,17 @@ export async function executeOwnerRetention(
     args: [tenantId, ownerId, cutoff],
   });
 
+  const pruneCollections = options.pruneArchivedCollections === true;
+  const collectionsCandidateRes = await client.execute({
+    sql: "SELECT COUNT(*) AS c FROM collections WHERE tenant_id = ? AND owner_id = ? AND archived_at IS NOT NULL AND archived_at < ?",
+    args: [tenantId, ownerId, cutoff],
+  });
+
   const terminalJobsCandidates = Number(jobsCandidateRes.rows[0]?.c ?? 0);
   const closedUsageCandidates = Number(usageCandidateRes.rows[0]?.c ?? 0);
+  const archivedCollectionCandidates = pruneCollections
+    ? Number(collectionsCandidateRes.rows[0]?.c ?? 0)
+    : 0;
 
   if (dryRun) {
     return {
@@ -135,10 +155,12 @@ export async function executeOwnerRetention(
       candidates: {
         terminalJobs: terminalJobsCandidates,
         closedUsage: closedUsageCandidates,
+        archivedCollections: archivedCollectionCandidates,
       },
       deleted: {
         terminalJobs: 0,
         closedUsage: 0,
+        archivedCollections: 0,
       },
       durationMs: Date.now() - startTime,
       success: true,
@@ -157,6 +179,28 @@ export async function executeOwnerRetention(
       args: [tenantId, ownerId, cutoff],
     });
 
+    // Delete children explicitly rather than relying on FK cascade: the
+    // migration declares ON DELETE CASCADE, but this stays correct even on a
+    // connection with foreign keys disabled.
+    let collectionsDeleted = 0;
+    if (pruneCollections) {
+      const scope =
+        "SELECT id FROM collections WHERE tenant_id = ? AND owner_id = ? AND archived_at IS NOT NULL AND archived_at < ?";
+      await tx.execute({
+        sql: `DELETE FROM collection_notes WHERE collection_id IN (${scope})`,
+        args: [tenantId, ownerId, cutoff],
+      });
+      await tx.execute({
+        sql: `DELETE FROM collection_items WHERE collection_id IN (${scope})`,
+        args: [tenantId, ownerId, cutoff],
+      });
+      const collectionsRes = await tx.execute({
+        sql: `DELETE FROM collections WHERE id IN (${scope})`,
+        args: [tenantId, ownerId, cutoff],
+      });
+      collectionsDeleted = Number(collectionsRes.rowsAffected);
+    }
+
     await tx.commit();
 
     const jobsDeleted = Number(jobsRes.rowsAffected);
@@ -169,10 +213,12 @@ export async function executeOwnerRetention(
       candidates: {
         terminalJobs: terminalJobsCandidates,
         closedUsage: closedUsageCandidates,
+        archivedCollections: archivedCollectionCandidates,
       },
       deleted: {
         terminalJobs: jobsDeleted,
         closedUsage: usageDeleted,
+        archivedCollections: collectionsDeleted,
       },
       durationMs: Date.now() - startTime,
       success: true,
@@ -191,10 +237,12 @@ export async function executeOwnerRetention(
       candidates: {
         terminalJobs: terminalJobsCandidates,
         closedUsage: closedUsageCandidates,
+        archivedCollections: archivedCollectionCandidates,
       },
       deleted: {
         terminalJobs: 0,
         closedUsage: 0,
+        archivedCollections: 0,
       },
       durationMs: Date.now() - startTime,
       success: false,
@@ -358,5 +406,6 @@ export async function pruneOwnerHistory(
   return {
     jobsDeleted: receipt.deleted.terminalJobs,
     usageDeleted: receipt.deleted.closedUsage,
+    archivedCollectionsDeleted: receipt.deleted.archivedCollections,
   };
 }

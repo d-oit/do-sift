@@ -3,6 +3,20 @@ export type { AppliedMigration, Migration } from "./migrate.js";
 export { DEFAULT_TENANT_ID, assertTenantScope } from "@do-sift/contracts";
 export type { TenantScope } from "@do-sift/contracts";
 export { Repositories } from "./repositories.js";
+export {
+  COLLECTION_DESCRIPTION_MAX,
+  COLLECTION_LIST_DEFAULT,
+  COLLECTION_LIST_MAX,
+  COLLECTION_NOTE_MAX,
+  COLLECTION_TITLE_MAX,
+  CollectionsRepository,
+} from "./collections.js";
+export type {
+  CollectionItemKind,
+  CollectionItemRow,
+  CollectionNoteRow,
+  CollectionRow,
+} from "./collections.js";
 export type {
   AnswerBlocks,
   AnswerInput,

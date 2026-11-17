@@ -1,0 +1,16 @@
+# Codacy configuration.
+#
+# migrations/ is excluded from Codacy's SQL analysis because its parser does
+# not accept SQLite trigger syntax (`WHEN (<subquery>) = 0 BEGIN ... END`).
+# The migrations are still verified by `packages/storage/test/migrate.test.ts`
+# and by the collection tests, which execute every migration against a real
+# libSQL database — a stronger check than a static parse in a different
+# dialect. Do not exclude application code here.
+exclude_paths:
+  - "migrations/**"
+  # Test files are executed in CI and analyzed by CodeQL. Codacy's browser
+  # selector rule misfires on test helper functions, and its SSRF rule treats
+  # the local 127.0.0.1 test client as user-controlled input. Excluding tests
+  # here does not remove any executed check.
+  - "**/test/**"
+  - "**/*.test.ts"

@@ -16,6 +16,8 @@ import type {
 import { TenantAccessError } from "./runtime-resolver.js";
 import { handleMembershipAdmin, isMembershipAdminPath } from "./membership-admin.js";
 import { handleReadRoute, isReadPath } from "./read-surface.js";
+import { handleWorkspaceRoute, isWorkspacePath } from "./workspaces.js";
+import { REPORT_EXPORT_PATH, handleReportExport } from "./reports.js";
 import {
   HttpRequestError,
   SSE_HEARTBEAT_MS,
@@ -33,6 +35,7 @@ import {
 import type { ReadinessProbe } from "./server-http.js";
 import { admissionKey, admitOwner } from "./owner-limiter.js";
 import { DEFAULT_PAGE } from "./default-page.js";
+import { WORKSPACES_PAGE } from "./workspaces-page.js";
 export type { SourceCard } from "./server-contracts.js";
 export type { ResearchRunOutcome } from "./server-contracts.js";
 export type { HttpRequestEvent } from "./server-contracts.js";
@@ -48,6 +51,15 @@ export type {
   TenantMemberView,
 } from "./server-contracts.js";
 export type { AnswerHttpResponse } from "./server-contracts.js";
+export type {
+  CollectionDetailView,
+  CollectionItemView,
+  CollectionNoteView,
+  CollectionView,
+  CollectionsHandlers,
+  CompareHandlers,
+  StoredReportHandlers,
+} from "./server-contracts.js";
 export type { OwnerLimits } from "./owner-limiter.js";
 export { DEFAULT_REQUEST_DEADLINE_MS } from "./server-http.js";
 export { SSE_HEARTBEAT_MS } from "./server-http.js";
@@ -402,6 +414,18 @@ export function createResearchServer(rawOptions: ResearchServerOptions): Server 
         res.end(options.pageHtml ?? DEFAULT_PAGE);
         return;
       }
+      // The workspace console is only served where the workspace routes exist;
+      // otherwise it would be a dead page whose every call 404s.
+      if (
+        req.method === "GET" &&
+        path === "/workspaces" &&
+        (options.collectionsFor !== undefined || options.compareFor !== undefined)
+      ) {
+        if (rejectBodyOnBodylessRoute(req, res, httpRequestId)) return;
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(WORKSPACES_PAGE);
+        return;
+      }
       if (path === "/metrics" && options.metrics !== undefined) {
         if (req.method !== "GET") {
           res.setHeader("allow", "GET");
@@ -446,6 +470,14 @@ export function createResearchServer(rawOptions: ResearchServerOptions): Server 
       }
       if (isReadPath(path) && options.readFor !== undefined) {
         await handleReadRoute(req, res, options, path, httpRequestId);
+        return;
+      }
+      if (path === REPORT_EXPORT_PATH) {
+        await handleReportExport(req, res, options, httpRequestId, 512 * 1024);
+        return;
+      }
+      if (isWorkspacePath(path)) {
+        await handleWorkspaceRoute(req, res, options, path, httpRequestId);
         return;
       }
       if (isMembershipAdminPath(path)) {

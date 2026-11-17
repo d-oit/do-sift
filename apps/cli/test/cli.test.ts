@@ -230,8 +230,8 @@ describe("do-sift CLI (#67)", () => {
         ownerId: string;
         cutoff: string;
         dryRun: boolean;
-        candidates: { terminalJobs: number; closedUsage: number };
-        deleted: { terminalJobs: number; closedUsage: number };
+        candidates: { terminalJobs: number; closedUsage: number; archivedCollections: number };
+        deleted: { terminalJobs: number; closedUsage: number; archivedCollections: number };
         success: boolean;
       };
 
@@ -239,9 +239,53 @@ describe("do-sift CLI (#67)", () => {
       expect(parsed.dryRun).toBe(true);
       expect(parsed.candidates.terminalJobs).toBe(1);
       expect(parsed.candidates.closedUsage).toBe(2);
+      expect(parsed.candidates.archivedCollections).toBe(0);
       expect(parsed.deleted.terminalJobs).toBe(0);
       expect(parsed.deleted.closedUsage).toBe(0);
       expect(parsed.success).toBe(true);
+    });
+
+    it("prunes archived collections only with --prune-collections", async () => {
+      await client.execute({
+        sql: "INSERT INTO collections (id, tenant_id, owner_id, title, description, created_at, updated_at, archived_at) VALUES ('c1', 'default', 'alice', 'Old', '', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
+      });
+      await client.execute({
+        sql: "INSERT INTO collection_notes (id, collection_id, tenant_id, owner_id, author_id, body, created_at, updated_at) VALUES ('n1', 'c1', 'default', 'alice', 'alice', 'note', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
+      });
+
+      expect(
+        await runCli(
+          ["retention", "prune", "--owner", "alice", "--retention-days", "7", "--confirm"],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain("deleted_archived_collections\t0");
+      expect(
+        Number((await client.execute("SELECT COUNT(*) AS c FROM collections")).rows[0]?.c),
+      ).toBe(1);
+
+      expect(
+        await runCli(
+          [
+            "retention",
+            "prune",
+            "--owner",
+            "alice",
+            "--retention-days",
+            "7",
+            "--confirm",
+            "--prune-collections",
+          ],
+          deps({ now: fixedNow }),
+        ),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain("deleted_archived_collections\t1");
+      expect(
+        Number((await client.execute("SELECT COUNT(*) AS c FROM collections")).rows[0]?.c),
+      ).toBe(0);
+      expect(
+        Number((await client.execute("SELECT COUNT(*) AS c FROM collection_notes")).rows[0]?.c),
+      ).toBe(0);
     });
 
     it("rejects cutoff crossing into current UTC day", async () => {
@@ -374,6 +418,79 @@ describe("do-sift CLI (#67)", () => {
       };
       expect(parsed).toMatchObject({ tenantId: "acme", dryRun: true, candidates: 1, deleted: 0 });
       expect(parsed.success).toBe(true);
+    });
+  });
+
+  describe("analytics summarize", () => {
+    async function evalFile(rows: unknown): Promise<string> {
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-analytics-"));
+      const input = join(dir, "rows.json");
+      await writeFile(input, JSON.stringify(rows));
+      return input;
+    }
+
+    const rows = [
+      {
+        id: "e1",
+        provider: "alpha",
+        dataset: "q",
+        recall: 0.5,
+        latencyMs: 100,
+        createdDay: "2026-11-01",
+      },
+      {
+        id: "e2",
+        provider: "alpha",
+        dataset: "q",
+        recall: 1,
+        latencyMs: 300,
+        createdDay: "2026-11-02",
+      },
+    ];
+
+    it("prints one aggregate row per provider/dataset with its sample count", async () => {
+      const input = await evalFile(rows);
+      expect(await runCli(["analytics", "summarize", "--in", input], deps())).toBe(0);
+      expect(stdout[0]).toBe(
+        "provider\tdataset\tn\tmean_recall\tmin_recall\tmax_recall\tmean_latency",
+      );
+      expect(stdout[1]).toBe("alpha\tq\t2\t0.75\t0.5\t1\t200");
+    });
+
+    it("writes JSON aggregates to a new file and refuses to overwrite", async () => {
+      const input = await evalFile(rows);
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-analytics-out-"));
+      const out = join(dir, "aggregates.json");
+      expect(
+        await runCli(
+          ["analytics", "summarize", "--in", input, "--format", "json", "--out", out],
+          deps(),
+        ),
+      ).toBe(0);
+      const parsed = JSON.parse(await readFile(out, "utf8")) as Array<{ n: number }>;
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0]?.n).toBe(2);
+
+      expect(
+        await runCli(
+          ["analytics", "summarize", "--in", input, "--format", "json", "--out", out],
+          deps(),
+        ),
+      ).toBe(1);
+    });
+
+    it("rejects malformed rows, missing input, and an unknown format", async () => {
+      const missingProvider = await evalFile([{ ...rows[0], provider: undefined }]);
+      expect(await runCli(["analytics", "summarize", "--in", missingProvider], deps())).toBe(1);
+
+      const notAnArray = await evalFile({ rows });
+      expect(await runCli(["analytics", "summarize", "--in", notAnArray], deps())).toBe(1);
+
+      expect(await runCli(["analytics", "summarize"], deps())).toBe(2);
+      const input = await evalFile(rows);
+      expect(
+        await runCli(["analytics", "summarize", "--in", input, "--format", "csv"], deps()),
+      ).toBe(2);
     });
   });
 
