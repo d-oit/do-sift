@@ -29,6 +29,8 @@ import {
   resolvePrincipalRuntime,
   type ResearchRunOutcome,
   type ResearchServerOptions,
+  type CollectionsHandlers,
+  type CompareHandlers,
   type SynthesisAuditEvent,
 } from "@do-sift/server";
 import {
@@ -496,7 +498,8 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
   // Issues #168/#169: collections and comparison are metadata views over
   // rows the caller already owns. The repository is bound to the principal's
   // tenant and owner id; the server passes only the authenticated owner id.
-  const collectionsFor: ResearchServerOptions["collectionsFor"] = (principal) => {
+  type CollectionsPrincipal = Parameters<NonNullable<ResearchServerOptions["collectionsFor"]>>[0];
+  function collectionsFor(principal: CollectionsPrincipal): Promise<CollectionsHandlers> {
     const repo = new CollectionsRepository(client, principal.userId, principal.tenantId);
     return Promise.resolve({
       list: (ownerId, options) => repo.list(options),
@@ -528,13 +531,13 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       notes: (ownerId, id) => repo.notes(id),
       deleteNote: (ownerId, id, noteId) => repo.deleteNote(noteId),
     });
-  };
-  const compareFor: ResearchServerOptions["compareFor"] = (principal) => {
+  }
+  function compareFor(principal: CollectionsPrincipal): Promise<CompareHandlers> {
     const repos = new Repositories(client, principal.tenantId);
     return Promise.resolve({
       sources: (ownerId, ids) => repos.passages.compareSources(ownerId, ids),
     });
-  };
+  }
 
   // #67: owner-authenticated Prometheus text at GET /metrics.
   const metrics = new MetricsRegistry();

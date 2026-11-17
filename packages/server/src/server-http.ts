@@ -27,8 +27,9 @@ export function requestPath(rawUrl: string | undefined): string {
   if (rawPath === "/api/compare" || rawPath === "/api/collections") return rawPath;
   if (rawPath.startsWith("/api/collections/")) {
     const segments = rawPath.slice("/api/collections/".length).split("/");
-    const id = (value: string | undefined): boolean =>
-      value !== undefined && /^[A-Za-z0-9_-]{1,128}$/u.test(value);
+    function id(value: string | undefined): boolean {
+      return value !== undefined && /^[A-Za-z0-9_-]{1,128}$/u.test(value);
+    }
     const [idSegment, sub, third, fourth] = segments;
     const kind = third === "run" || third === "evidence";
     const valid =

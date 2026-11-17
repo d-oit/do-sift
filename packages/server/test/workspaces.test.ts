@@ -52,20 +52,33 @@ const auth: ResearchServerOptions["auth"] = {
   },
 };
 
-const roleFor: ResearchServerOptions["roleFor"] = (principal) =>
-  Promise.resolve(ROLES[`${principal.tenantId}/${principal.userId}`]);
+function roleFor(principal: { tenantId: string; userId: string }): Promise<TenantRole | undefined> {
+  return Promise.resolve(ROLES[`${principal.tenantId}/${principal.userId}`]);
+}
 
-const emptyRun: ResearchServerOptions["runResearch"] = async () => ({
-  hits: 0,
-  documentsStored: 0,
-  passagesStored: 0,
-  denied: 0,
-  fetchErrors: 0,
-  skippedBudget: 0,
-});
+async function emptyRun(): Promise<{
+  hits: number;
+  documentsStored: number;
+  passagesStored: number;
+  denied: number;
+  fetchErrors: number;
+  skippedBudget: number;
+}> {
+  return {
+    hits: 0,
+    documentsStored: 0,
+    passagesStored: 0,
+    denied: 0,
+    fetchErrors: 0,
+    skippedBudget: 0,
+  };
+}
 
 /** Mirrors the production wiring: a repository bound to the principal. */
-const collectionsFor: ResearchServerOptions["collectionsFor"] = (principal) => {
+function collectionsFor(principal: {
+  tenantId: string;
+  userId: string;
+}): Promise<CollectionsHandlers> {
   const repo = new CollectionsRepository(client, principal.userId, principal.tenantId);
   const handlers: CollectionsHandlers = {
     list: (_ownerId, options) => repo.list(options),
@@ -98,15 +111,15 @@ const collectionsFor: ResearchServerOptions["collectionsFor"] = (principal) => {
     deleteNote: (_ownerId, id, noteId) => repo.deleteNote(noteId),
   };
   return Promise.resolve(handlers);
-};
+}
 
-const compareFor: ResearchServerOptions["compareFor"] = (principal) => {
+function compareFor(principal: { tenantId: string; userId: string }): Promise<CompareHandlers> {
   const repos = new Repositories(client, principal.tenantId);
   const handlers: CompareHandlers = {
     sources: (ownerId, ids) => repos.passages.compareSources(ownerId, ids),
   };
   return Promise.resolve(handlers);
-};
+}
 
 async function seedOwner(ownerId: string): Promise<void> {
   await client.execute({
