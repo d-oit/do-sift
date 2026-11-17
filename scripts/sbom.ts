@@ -80,7 +80,7 @@ export function buildSbom(
     if (key === "") continue;
     const name = packageNameFromKey(key);
     if (name === "" || entry.version === undefined) continue;
-    const purl = `pkg:npm/${name.startsWith("@") ? name.replace("/", "%2F") : name}@${entry.version}`;
+    const purl = `pkg:npm/${name.startsWith("@") ? name.replace(/\//gu, "%2F") : name}@${entry.version}`;
     const component: SbomComponent = {
       type: "library",
       name,

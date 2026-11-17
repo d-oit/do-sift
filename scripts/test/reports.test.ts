@@ -4,7 +4,7 @@ import {
   type SnapshotManifest,
   type SnapshotRecord,
 } from "@do-sift/contracts";
-import { buildReports, renderReportMarkdown } from "../reports.js";
+import { buildReports, escapeCell, renderReportMarkdown } from "../reports.js";
 
 const manifest: SnapshotManifest = {
   schemaVersion: SNAPSHOT_SCHEMA_VERSION,
@@ -88,6 +88,11 @@ describe("offline reports", () => {
     expect(a).toBe(b);
     expect(a).toContain("| retrieval.recallAtK | 2 | 0.75 | 0.5 | 1 |");
     expect(a).toContain("never a reliability or truth score");
+  });
+
+  it("escapes backslashes before the table separator", () => {
+    expect(escapeCell("a|b")).toBe("a\\|b");
+    expect(escapeCell("a\\|b")).toBe("a\\\\\\|b");
   });
 
   it("refuses an empty dataset", () => {

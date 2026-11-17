@@ -245,8 +245,10 @@ export function renderReportMarkdown(bundle: ReportsBundle): string {
   return lines.join("\n");
 }
 
-function escapeCell(value: string): string {
-  return value.replace(/\|/gu, "\\|");
+export function escapeCell(value: string): string {
+  // Escape backslashes first, then the column separator: replacing `|` alone
+  // would let an existing `\|` become `\\|` and still split the table cell.
+  return value.replace(/\\/gu, "\\\\").replace(/\|/gu, "\\|");
 }
 
 function atomicWrite(path: string, content: string): void {
