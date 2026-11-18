@@ -50,7 +50,7 @@ ENV NODE_ENV=production
 
 # Production dependency tree only: no typescript/eslint/prettier/vitest.
 # Workspace manifests are needed for npm's workspace linking.
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 COPY packages ./packages
 COPY apps ./apps
 COPY migrations ./migrations
