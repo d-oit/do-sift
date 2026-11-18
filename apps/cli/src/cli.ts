@@ -51,7 +51,7 @@ const USAGE = `usage: do-sift-cli <command> [options]
   analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
   report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--checksum] [--manifest] [--tenant <id>]
   report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--checksum] [--manifest] [--tenant <id>]
-  report verify --in <report-file> [--sidecar <sha256-file>] [--manifest]
+  report verify --in <report-file> [--sidecar <sha256-file>] [--manifest] [--manifest-file <json-file>]
   collections backfill --owner <id> [--collection <id>] [--dry-run] [--tenant <id>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
@@ -680,8 +680,12 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         return 1;
       }
       let manifestPath: string | undefined;
-      if (flags.get("manifest") === "true") {
-        manifestPath = `${input}.manifest.json`;
+      const manifestFile = flags.get("manifest-file");
+      if (flags.get("manifest") === "true" || (manifestFile !== undefined && manifestFile !== "")) {
+        manifestPath =
+          manifestFile === undefined || manifestFile === ""
+            ? `${input}.manifest.json`
+            : manifestFile;
         let rawManifest: string;
         try {
           rawManifest = readFileSync(manifestPath, "utf8");

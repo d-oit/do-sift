@@ -669,6 +669,14 @@ describe("do-sift CLI (#67)", () => {
       expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(0);
       expect(stdout.join("\n")).toContain(`manifest ${manifestPath}`);
 
+      const customManifest = join(dir, "custom.manifest.json");
+      await writeFile(customManifest, JSON.stringify(manifest));
+      stdout = [];
+      expect(
+        await runCli(["report", "verify", "--in", out, "--manifest-file", customManifest], deps()),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain(`manifest ${customManifest}`);
+
       await writeFile(manifestPath, JSON.stringify({ ...manifest, sha256: "0".repeat(64) }));
       stderr = [];
       expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(1);

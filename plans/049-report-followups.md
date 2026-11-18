@@ -21,6 +21,7 @@ question stays private unless explicitly opted in.
 | RPT-17 | `report verify` checks a report against its sidecar and fails closed on mismatch          | RPT-16; no storage or report formatter change                            |
 | RPT-18 | JSON manifest sidecar for CLI report exports, opt-in via `--manifest`                     | RPT-15/RPT-16; no report schema or formatter change                      |
 | RPT-19 | `report verify --manifest` validates manifest shape, digest, and byte count               | RPT-17/RPT-18; counts remain metadata                                    |
+| RPT-20 | `--manifest-file` selects a non-default manifest for verification                         | RPT-19; no storage or formatter change                                   |
 
 ## Boundaries
 
@@ -78,6 +79,8 @@ question stays private unless explicitly opted in.
   non-negative integer counts. It checks the digest and byte count against the
   artifact. Counts are shape-checked only: verifying them would require the
   source rows, which the offline command intentionally does not read.
+  `--manifest-file <path>` selects a different manifest and implies the same
+  validation.
 - The console sends only an answer id; the server authenticates the owner and
   resolves the answer in that owner's tenant.
 - One formatter dispatcher (`renderReport`) is shared by the HTTP route and
@@ -124,6 +127,7 @@ question stays private unless explicitly opted in.
 - `report verify --manifest` succeeds only when the manifest schema is valid
   and its digest and byte count match the report. A stale digest, stale byte
   count, malformed JSON, or malformed schema exits `1` without modifying files.
+  `--manifest-file` verifies the named path without requiring `--manifest`.
 - `npm run check` and `npm run signals -- verify --set verification` pass.
 
 ## Evidence (2026-11-18)
@@ -162,7 +166,9 @@ question stays private unless explicitly opted in.
 - RPT-19: `npx vitest run apps/cli/test/cli.test.ts` — PASS (43 tests).
   Manifest verification accepts a generated manifest and rejects stale digests,
   stale byte counts, and schema-invalid manifests without modifying files.
-- `npm run check` — PASS (12 steps, after RPT-19);
+- RPT-20: `npx vitest run apps/cli/test/cli.test.ts` — PASS (43 tests).
+  `--manifest-file` verifies a custom manifest path without `--manifest`.
+- `npm run check` — PASS (12 steps, after RPT-20);
   `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
   — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),
