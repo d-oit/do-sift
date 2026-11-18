@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type Client } from "@libsql/client";
 import { chromium, type Browser, type Download, type Page } from "playwright";
 import { AuthError } from "@do-sift/auth";
-import { buildCollectionReport, type TenantRole } from "@do-sift/contracts";
+import { buildAnswerReport, buildCollectionReport, type TenantRole } from "@do-sift/contracts";
 import {
   CollectionsRepository,
   Repositories,
@@ -28,6 +28,7 @@ let client: Client;
 let server: Server;
 let port: number;
 let browser: Browser | undefined;
+let browserAnswerId: string;
 
 const auth: ResearchServerOptions["auth"] = {
   authenticateOwner: async ({ token }) => {
@@ -143,6 +144,24 @@ beforeAll(async () => {
     sql: "INSERT INTO owners (id, tenant_id, display_name, created_at) VALUES ('browser-member', 'acme', 'Browser', '2026-01-01T00:00:00Z')",
   });
   await seedEvidence();
+  const seedRepos = new Repositories(client, "acme");
+  const requestId = await seedRepos.requests.create(
+    "browser-member",
+    "answer",
+    "What did the browser retrieve?",
+  );
+  browserAnswerId = await seedRepos.answers.insert({
+    ownerId: "browser-member",
+    requestId,
+    blocks: [
+      {
+        kind: "paragraph",
+        text: "Browser claim about alpha.",
+        citations: ["psg-browser-a"],
+      },
+    ],
+    evidenceOnly: false,
+  });
 
   server = createResearchServer({
     auth,
@@ -154,8 +173,28 @@ beforeAll(async () => {
     // serves, so the browser test exercises the real ids it compares.
     reportFor: (principal: { tenantId: string; userId: string }) => {
       const collections = new CollectionsRepository(client, principal.userId, principal.tenantId);
+      const repos = new Repositories(client, principal.tenantId);
       return Promise.resolve({
-        fromAnswer: async () => undefined,
+        fromAnswer: async (ownerId: string, answerId: string) => {
+          const input = await repos.answers.reportInput(ownerId, answerId);
+          if (input === undefined) return undefined;
+          return buildAnswerReport({
+            question: input.question,
+            createdAt: input.createdAt,
+            blocks: input.blocks.map((block) => ({
+              kind: block.kind,
+              text: block.text,
+              citations: block.citations,
+              ...(block.unresolved === true ? { unresolved: true } : {}),
+            })),
+            sources: input.sources.map((source) => ({
+              id: source.evidenceId,
+              url: source.url,
+              ...(source.title === undefined ? {} : { title: source.title }),
+              fetchedAt: source.retrievedAt,
+            })),
+          });
+        },
         fromCollection: async (_ownerId: string, collectionId: string) => {
           const collection = await collections.get(collectionId);
           if (collection === undefined) return undefined;
@@ -267,6 +306,17 @@ describe("workspaces console (real browser)", () => {
     const collectionMarkdown = await downloadText(collectionDownload);
     expect(collectionMarkdown).toContain("https://browser-a.test/page");
     expect(collectionMarkdown).toContain("note from browser");
+
+    await page.locator("#stored-answer-id").fill(browserAnswerId);
+    const answerDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download stored answer report" }).click();
+    const answerDownload = await answerDownloadPromise;
+    expect(answerDownload.suggestedFilename()).toBe("report.md");
+    const answerMarkdown = await downloadText(answerDownload);
+    expect(answerMarkdown).toContain("Browser claim about alpha");
+    expect(answerMarkdown).toContain("psg-browser-a");
+    expect(answerMarkdown).toContain("https://browser-a.test/page");
+    expect(answerMarkdown).not.toContain("What did the browser retrieve?");
 
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download report" }).click();

@@ -8,6 +8,12 @@
  * an owner annotation.
  */
 export const REPORT_SCHEMA_VERSION = 1;
+export const REPORT_FORMATS = ["json", "markdown", "html", "bibtex"] as const;
+export type ReportFormat = (typeof REPORT_FORMATS)[number];
+
+export function isReportFormat(value: unknown): value is ReportFormat {
+  return typeof value === "string" && (REPORT_FORMATS as readonly string[]).includes(value);
+}
 
 export interface ReportSource {
   id: string;
@@ -322,4 +328,45 @@ export function toBibTeX(report: ResearchReport): string {
     entries.push(`@misc{${key},\n${fields.join(",\n")}\n}`);
   }
   return entries.length === 0 ? "" : `${entries.join("\n\n")}\n`;
+}
+
+export interface RenderedReport {
+  body: string;
+  contentType: string;
+  /** File extension without the leading dot. */
+  extension: string;
+}
+
+/** One formatter dispatch for both the HTTP route and the offline CLI. */
+export function renderReport(
+  report: ResearchReport,
+  format: ReportFormat,
+  options: ReportExportOptions = {},
+): RenderedReport {
+  switch (format) {
+    case "json":
+      return {
+        body: toJsonReport(report, options),
+        contentType: "application/json; charset=utf-8",
+        extension: "json",
+      };
+    case "markdown":
+      return {
+        body: toMarkdownReport(report, options),
+        contentType: "text/markdown; charset=utf-8",
+        extension: "md",
+      };
+    case "html":
+      return {
+        body: toHtmlReport(report, options),
+        contentType: "text/html; charset=utf-8",
+        extension: "html",
+      };
+    case "bibtex":
+      return {
+        body: toBibTeX(report),
+        contentType: "application/x-bibtex; charset=utf-8",
+        extension: "bib",
+      };
+  }
 }

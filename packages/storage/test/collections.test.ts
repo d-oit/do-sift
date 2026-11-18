@@ -101,6 +101,51 @@ describe("collections repository", () => {
     expect(unresolved?.evidenceUrl).toBeUndefined();
   });
 
+  it("backfills metadata for evidence references attached before the snapshot", async () => {
+    await client.execute({
+      sql: `INSERT INTO documents (id, tenant_id, owner_id, canonical_url, original_url, content_hash, fetched_at, title, created_at)
+            VALUES ('doc-legacy', 'default', 'owner-a', 'https://legacy.test/p', 'https://legacy.test/p', 'hash-legacy', '2026-10-01T00:00:00Z', 'Legacy', '2026-10-01T00:00:00Z')`,
+    });
+    await client.execute({
+      sql: `INSERT INTO passages (id, tenant_id, owner_id, document_id, heading, excerpt, extraction_status, created_at)
+            VALUES ('psg-legacy', 'default', 'owner-a', 'doc-legacy', 'H', 'Excerpt', 'ok', '2026-10-01T00:00:01Z')`,
+    });
+    const repo = new CollectionsRepository(client, "owner-a");
+    const collection = await repo.create("Legacy refs");
+    // Simulate rows created before migration 0015: the reference exists, the
+    // provenance snapshot does not.
+    await client.execute({
+      sql: `INSERT INTO collection_items (collection_id, tenant_id, owner_id, item_kind, item_id, added_at)
+            VALUES (?, 'default', 'owner-a', 'evidence', 'doc-legacy', '2026-10-02T00:00:00Z'),
+                   (?, 'default', 'owner-a', 'evidence', 'still-missing', '2026-10-03T00:00:00Z')`,
+      args: [collection.id, collection.id],
+    });
+
+    const dryRun = await repo.backfillEvidenceMetadata({ dryRun: true });
+    expect(dryRun).toEqual({ scanned: 2, updated: 1, unresolved: 1, dryRun: true });
+    expect((await repo.items(collection.id))[0]?.evidenceUrl).toBeUndefined();
+
+    expect(await repo.backfillEvidenceMetadata()).toEqual({
+      scanned: 2,
+      updated: 1,
+      unresolved: 1,
+      dryRun: false,
+    });
+    const items = await repo.items(collection.id);
+    expect(items.find((item) => item.itemId === "doc-legacy")).toMatchObject({
+      evidenceUrl: "https://legacy.test/p",
+      evidenceTitle: "Legacy",
+      evidenceFetchedAt: "2026-10-01T00:00:00Z",
+    });
+    expect(items.find((item) => item.itemId === "still-missing")?.evidenceUrl).toBeUndefined();
+
+    // Only the still-unresolved reference is scanned on a later run.
+    expect(await repo.backfillEvidenceMetadata()).toMatchObject({ scanned: 1, updated: 0 });
+    expect(
+      await new CollectionsRepository(client, "owner-b").backfillEvidenceMetadata(),
+    ).toMatchObject({ scanned: 0, updated: 0 });
+  });
+
   it("keeps notes as authored metadata with an explicit author", async () => {
     const repo = new CollectionsRepository(client, "owner-a");
     const collection = await repo.create("Notes");

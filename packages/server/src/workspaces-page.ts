@@ -78,6 +78,14 @@ export const WORKSPACES_PAGE = `<!doctype html>
       <button type="submit">Download report</button>
     </form>
     <p class="status" id="report-status"></p>
+
+    <h3>Stored answer</h3>
+    <p class="status">Export a stored answer's claims and citations by id. The question stays private.</p>
+    <form id="stored-answer-form">
+      <input id="stored-answer-id" placeholder="Stored answer id" required>
+      <button type="submit">Download stored answer report</button>
+    </form>
+    <p class="status" id="stored-answer-status"></p>
   </section>
 
   <section>
@@ -301,6 +309,22 @@ export const WORKSPACES_PAGE = `<!doctype html>
       setStatus("report-status", "Downloaded " + sources.length + " source(s) as " + format + ".");
     } catch (error) {
       setStatus("report-status", String(error.message), true);
+    }
+  });
+
+  $("stored-answer-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const answerId = $("stored-answer-id").value.trim();
+    if (!answerId) {
+      setStatus("stored-answer-status", "Enter a stored answer id.", true);
+      return;
+    }
+    const format = $("report-format").value;
+    try {
+      await exportReport({ format: format, answerId: answerId }, format);
+      setStatus("stored-answer-status", "Downloaded stored answer report as " + format + ".");
+    } catch (error) {
+      setStatus("stored-answer-status", String(error.message), true);
     }
   });
 

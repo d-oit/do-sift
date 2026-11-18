@@ -146,10 +146,11 @@ process restart; scrape them from a single instance or aggregate with
 ### Owner and evidence CLI (#67)
 
 `apps/cli` reads the same libSQL database as the server. Every command except
-the two confirmation-gated `retention prune*` maintenance commands is
-read-only; neither migrates or creates schema. Pass the database with
-`--db` or `DO_SIFT_DB_URL`; the CLI does not read any auth token from the
-environment.
+the two confirmation-gated `retention prune*` commands and `collections
+backfill` is read-only; neither migrates or creates schema. `collections
+backfill` only fills null evidence metadata snapshots and never rewrites an
+existing one. Pass the database with `--db` or `DO_SIFT_DB_URL`; the CLI does
+not read any auth token from the environment.
 
 ```bash
 npx tsx apps/cli/src/index.ts owners list --db file:do-sift.db
@@ -158,12 +159,18 @@ npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:
 npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report answer --owner <id> --answer <id> [--format json|markdown|html|bibtex] [--include-question] [--out report.md] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts collections backfill --owner <id> [--collection <id>] [--dry-run] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--prune-collections] [--out receipt.json] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
 ```
 
-Every data command requires an explicit `--owner`. `evidence export` and `research show --out` write a
-new file and fail if the path already exists. Sensitive question text is redacted as `[REDACTED]` by default unless `--show-question` is provided, and raw page contents (`documents.raw_text`) or passages are never exposed. Exit codes: `0` success, `2` usage error, `1` runtime error.
+Every data command requires an explicit `--owner`. `evidence export`, `research show --out`, and
+`report answer --out` write a new file and fail if the path already exists. Sensitive question text
+is redacted as `[REDACTED]` by default unless `--show-question` is provided (or `--include-question`
+for `report answer`), and raw page contents (`documents.raw_text`) or passages are never exposed.
+`collections backfill` snapshots provenance for evidence references attached before migration 0015;
+`--dry-run` reports the counts without writing. Exit codes: `0` success, `2` usage error, `1` runtime error.
 
 ### Retention and maintenance policy
 
