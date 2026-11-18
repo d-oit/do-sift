@@ -66,7 +66,8 @@ question stays private unless explicitly opted in.
   is zero.
 - `npx vitest run packages/server/test/workspaces-console.e2e.test.ts` — PASS.
   Real Chromium opens the collection and, after attaching one evidence row,
-  sees `1 item(s)` from the reported total.
+  sees `1 item(s)` from the reported total; a second collection with 101
+  references renders `100 of 101 item(s) shown` plus the export hint.
 - `npm run check` — PASS (12 steps, after RPT-12);
   `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`

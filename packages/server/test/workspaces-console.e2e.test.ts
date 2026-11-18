@@ -341,6 +341,26 @@ describe("workspaces console (real browser)", () => {
     expect(markdown).toContain("https://browser-a.test/page");
     expect(markdown).toContain("https://browser-b.test/page");
 
+    // A capped list must say so: seed 101 references into a second collection
+    // and confirm the console reports the full total while listing the page.
+    await page.locator("#collection-title").fill("Browser large");
+    await page.getByRole("button", { name: "Create" }).click();
+    await waitForText(page, "#collection-status", "2 collection(s)");
+    const largeRepo = new CollectionsRepository(client, "browser-member", "acme");
+    const large = (await largeRepo.list()).find(
+      (collection) => collection.title === "Browser large",
+    );
+    if (large === undefined) throw new Error("large collection missing");
+    for (let i = 0; i < 101; i++) {
+      await largeRepo.addItem(large.id, "run", `run-large-${String(i).padStart(3, "0")}`);
+    }
+    await page
+      .locator(".card", { hasText: "Browser large" })
+      .getByRole("button", { name: "Open" })
+      .click();
+    await waitForText(page, "#collection-detail", "100 of 101 item(s) shown");
+    await waitForText(page, "#collection-detail", "Download the collection report");
+
     expect(errors).toEqual([]);
     await page.close();
   }, 45_000);
