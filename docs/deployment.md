@@ -160,6 +160,7 @@ npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json -
 npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts report answer --owner <id> --answer <id> [--format json|markdown|html|bibtex] [--include-question] [--out report.md] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report collection --owner <id> --collection <id> [--format json|markdown|html|bibtex] [--include-annotations] [--out report.md] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts collections backfill --owner <id> [--collection <id>] [--dry-run] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--prune-collections] [--out receipt.json] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
@@ -169,7 +170,8 @@ Every data command requires an explicit `--owner`. `evidence export`, `research 
 `report answer --out` write a new file and fail if the path already exists. Sensitive question text
 is redacted as `[REDACTED]` by default unless `--show-question` is provided (or `--include-question`
 for `report answer`), and raw page contents (`documents.raw_text`) or passages are never exposed.
-`collections backfill` snapshots provenance for evidence references attached before migration 0015;
+`report collection` renders only snapshotted evidence and omits owner notes unless
+`--include-annotations`; `collections backfill` snapshots provenance for evidence references attached before migration 0015;
 `--dry-run` reports the counts without writing. Exit codes: `0` success, `2` usage error, `1` runtime error.
 
 ### Retention and maintenance policy

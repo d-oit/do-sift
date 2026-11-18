@@ -18,8 +18,10 @@ import {
 import {
   REPORT_FORMATS,
   buildAnswerReport,
+  buildCollectionReport,
   isReportFormat,
   renderReport,
+  type ReportFormat,
 } from "@do-sift/contracts";
 
 export interface CliDeps {
@@ -42,6 +44,7 @@ const USAGE = `usage: do-sift-cli <command> [options]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>] [--tenant <id>]
   analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
   report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--tenant <id>]
+  report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--tenant <id>]
   collections backfill --owner <id> [--collection <id>] [--dry-run] [--tenant <id>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
@@ -54,10 +57,19 @@ reaches another tenant's rows (plan 035).
 const BOOLEAN_FLAGS = new Set([
   "show-question",
   "include-question",
+  "include-annotations",
   "dry-run",
   "confirm",
   "prune-collections",
 ]);
+
+function reportFormat(flags: Map<string, string>): ReportFormat {
+  const format = flags.get("format") ?? "markdown";
+  if (!isReportFormat(format)) {
+    throw new CliUsageError(`--format must be one of: ${REPORT_FORMATS.join(", ")}`);
+  }
+  return format;
+}
 
 function parseFlags(args: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -544,10 +556,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       if (answerId === undefined || answerId === "") {
         throw new CliUsageError("--answer is required");
       }
-      const format = flags.get("format") ?? "markdown";
-      if (!isReportFormat(format)) {
-        throw new CliUsageError(`--format must be one of: ${REPORT_FORMATS.join(", ")}`);
-      }
+      const format = reportFormat(flags);
       const repos = new Repositories(deps.client, tenant);
       const input = await repos.answers.reportInput(owner, answerId);
       if (input === undefined) {
@@ -583,6 +592,65 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
         await write(out, rendered.body);
         deps.out(`exported ${format} report for ${answerId} to ${out}`);
+        return 0;
+      }
+      deps.out(rendered.body.trimEnd());
+      return 0;
+    }
+    if (group === "report" && action === "collection") {
+      const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
+      const collectionId = flags.get("collection");
+      if (collectionId === undefined || collectionId === "") {
+        throw new CliUsageError("--collection is required");
+      }
+      const format = reportFormat(flags);
+      const repo = new CollectionsRepository(deps.client, owner, tenant);
+      const collection = await repo.get(collectionId);
+      if (collection === undefined) {
+        deps.err(
+          `error: collection ${collectionId} not found for owner ${owner} in tenant ${tenant}`,
+        );
+        return 1;
+      }
+      const [items, notes] = await Promise.all([
+        repo.items(collectionId),
+        repo.notes(collectionId),
+      ]);
+      const report = buildCollectionReport({
+        title: collection.title,
+        description: collection.description,
+        createdAt: collection.createdAt,
+        // Legacy references without a metadata snapshot stay omitted; the
+        // report never invents a URL or retrieval time.
+        sources: items.flatMap((item) => {
+          if (item.evidenceUrl === undefined || item.evidenceFetchedAt === undefined) return [];
+          return [
+            {
+              id: item.itemId,
+              url: item.evidenceUrl,
+              ...(item.evidenceTitle === undefined ? {} : { title: item.evidenceTitle }),
+              fetchedAt: item.evidenceFetchedAt,
+            },
+          ];
+        }),
+        annotations: notes.map((note) => ({
+          id: note.id,
+          body: note.body,
+          createdAt: note.createdAt,
+        })),
+      });
+      // Owner notes stay private unless explicitly opted in, matching
+      // `POST /api/reports/export`.
+      const rendered = renderReport(report, format, {
+        includeQuestion: false,
+        includeAnnotations: flags.get("include-annotations") === "true",
+      });
+      const out = flags.get("out");
+      if (out !== undefined && out !== "") {
+        const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
+        await write(out, rendered.body);
+        deps.out(`exported ${format} report for collection ${collectionId} to ${out}`);
         return 0;
       }
       deps.out(rendered.body.trimEnd());

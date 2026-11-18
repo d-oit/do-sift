@@ -552,6 +552,101 @@ describe("do-sift CLI (#67)", () => {
     });
   });
 
+  describe("report collection", () => {
+    async function seedCollection(): Promise<void> {
+      await client.execute(
+        "INSERT INTO collections (id, tenant_id, owner_id, title, description, created_at, updated_at) VALUES ('colrpt','default','alice','Reported collection','', '2026-10-01T00:00:00Z','2026-10-01T00:00:00Z')",
+      );
+      await client.execute(
+        `INSERT INTO collection_items (collection_id, tenant_id, owner_id, item_kind, item_id, added_at, evidence_url, evidence_title, evidence_fetched_at)
+         VALUES ('colrpt','default','alice','evidence','d1','2026-10-02T00:00:00Z','https://a.test/x','Alpha','2026-10-02T10:00:01Z'),
+                ('colrpt','default','alice','evidence','missing','2026-10-03T00:00:00Z',NULL,NULL,NULL),
+                ('colrpt','default','alice','run','req1','2026-10-04T00:00:00Z',NULL,NULL,NULL)`,
+      );
+      await client.execute(
+        "INSERT INTO collection_notes (id, collection_id, tenant_id, owner_id, author_id, body, created_at, updated_at) VALUES ('n1','colrpt','default','alice','alice','Owner note about Alpha.','2026-10-05T00:00:00Z','2026-10-05T00:00:00Z')",
+      );
+    }
+
+    it("renders snapshotted sources and keeps owner notes private by default", async () => {
+      await seedCollection();
+      expect(
+        await runCli(
+          ["report", "collection", "--owner", "alice", "--collection", "colrpt"],
+          deps(),
+        ),
+      ).toBe(0);
+      const text = stdout.join("\n");
+      expect(text).toContain("https://a.test/x");
+      expect(text).toContain("Alpha");
+      expect(text).not.toContain("Owner note about Alpha");
+
+      stdout = [];
+      expect(
+        await runCli(
+          [
+            "report",
+            "collection",
+            "--owner",
+            "alice",
+            "--collection",
+            "colrpt",
+            "--include-annotations",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain("Owner note about Alpha");
+      expect(stdout.join("\n")).toContain("Owner annotations");
+    });
+
+    it("writes JSON with resolved evidence only and rejects foreign ids", async () => {
+      await seedCollection();
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-collection-report-"));
+      const out = join(dir, "collection.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "collection",
+            "--owner",
+            "alice",
+            "--collection",
+            "colrpt",
+            "--format",
+            "json",
+            "--include-annotations",
+            "--out",
+            out,
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const parsed = JSON.parse(await readFile(out, "utf8")) as {
+        sources: Array<{ id: string; url: string }>;
+        annotations: Array<{ body: string }>;
+      };
+      expect(parsed.sources).toEqual([
+        { id: "d1", url: "https://a.test/x", title: "Alpha", fetchedAt: "2026-10-02T10:00:01Z" },
+      ]);
+      expect(parsed.annotations[0]?.body).toBe("Owner note about Alpha.");
+
+      expect(
+        await runCli(["report", "collection", "--owner", "bob", "--collection", "colrpt"], deps()),
+      ).toBe(1);
+      expect(stderr.join("\n")).toContain("collection colrpt not found for owner bob");
+
+      stderr = [];
+      expect(
+        await runCli(
+          ["report", "collection", "--owner", "alice", "--collection", "colrpt", "--format", "pdf"],
+          deps(),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("--format must be one of");
+    });
+  });
+
   describe("collections backfill", () => {
     it("dry-runs and then snapshots only legacy evidence references", async () => {
       await client.execute(
