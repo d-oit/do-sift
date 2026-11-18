@@ -51,7 +51,7 @@ const USAGE = `usage: do-sift-cli <command> [options]
   analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
   report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--checksum] [--manifest] [--tenant <id>]
   report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--checksum] [--manifest] [--tenant <id>]
-  report verify --in <report-file> [--sidecar <sha256-file>]
+  report verify --in <report-file> [--sidecar <sha256-file>] [--manifest]
   collections backfill --owner <id> [--collection <id>] [--dry-run] [--tenant <id>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
@@ -121,6 +121,40 @@ async function writeManifestSidecar(
   manifest: ReportManifest,
 ): Promise<void> {
   await write(`${out}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function parseReportManifest(raw: unknown): ReportManifest | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const value = raw as Record<string, unknown>;
+  if (value["manifestVersion"] !== 1) return undefined;
+  if (value["reportSchemaVersion"] !== REPORT_SCHEMA_VERSION) return undefined;
+  if (!isReportFormat(value["format"])) return undefined;
+  const sha256 = value["sha256"];
+  if (typeof sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(sha256)) return undefined;
+  const bytes = value["bytes"];
+  const sourceCount = value["sourceCount"];
+  const claimCount = value["claimCount"];
+  const annotationCount = value["annotationCount"];
+  if (!nonNegativeInteger(bytes)) return undefined;
+  if (!nonNegativeInteger(sourceCount)) return undefined;
+  if (!nonNegativeInteger(claimCount)) return undefined;
+  if (!nonNegativeInteger(annotationCount)) return undefined;
+  if (typeof value["questionIncluded"] !== "boolean") return undefined;
+  return {
+    manifestVersion: 1,
+    reportSchemaVersion: REPORT_SCHEMA_VERSION,
+    format: value["format"],
+    sha256,
+    bytes,
+    sourceCount,
+    claimCount,
+    annotationCount,
+    questionIncluded: value["questionIncluded"],
+  };
 }
 
 function reportFormat(flags: Map<string, string>): ReportFormat {
@@ -645,7 +679,41 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         deps.err(`error: checksum mismatch for ${input}`);
         return 1;
       }
-      deps.out(`verified ${input} sha256 ${actual}`);
+      let manifestPath: string | undefined;
+      if (flags.get("manifest") === "true") {
+        manifestPath = `${input}.manifest.json`;
+        let rawManifest: string;
+        try {
+          rawManifest = readFileSync(manifestPath, "utf8");
+        } catch {
+          deps.err(`error: cannot read manifest ${manifestPath}`);
+          return 1;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(rawManifest) as unknown;
+        } catch {
+          deps.err(`error: manifest is not valid JSON`);
+          return 1;
+        }
+        const manifest = parseReportManifest(parsed);
+        if (manifest === undefined) {
+          deps.err("error: manifest does not match the report manifest schema");
+          return 1;
+        }
+        if (manifest.sha256 !== actual) {
+          deps.err(`error: manifest checksum mismatch for ${input}`);
+          return 1;
+        }
+        if (manifest.bytes !== Buffer.byteLength(content, "utf8")) {
+          deps.err(`error: manifest byte count mismatch for ${input}`);
+          return 1;
+        }
+      }
+      deps.out(
+        `verified ${input} sha256 ${actual}` +
+          (manifestPath === undefined ? "" : ` manifest ${manifestPath}`),
+      );
       return 0;
     }
     if (group === "report" && action === "answer") {

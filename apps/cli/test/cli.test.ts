@@ -636,6 +636,55 @@ describe("do-sift CLI (#67)", () => {
       expect(stdout.join("\n")).toBe(`verified ${out} sha256 ${digest}`);
     });
 
+    it("validates the manifest sidecar", async () => {
+      const answerId = await seedAnswer();
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-verify-manifest-"));
+      const out = join(dir, "manifest.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--out",
+            out,
+            "--checksum",
+            "--manifest",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const manifestPath = `${out}.manifest.json`;
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+        sha256: string;
+        bytes: number;
+      };
+
+      stdout = [];
+      expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(0);
+      expect(stdout.join("\n")).toContain(`manifest ${manifestPath}`);
+
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, sha256: "0".repeat(64) }));
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("manifest checksum mismatch");
+
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, bytes: manifest.bytes + 1 }));
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("manifest byte count mismatch");
+
+      await writeFile(manifestPath, "{}");
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("manifest does not match");
+    });
+
     it("rejects a mismatched, misnamed, or missing checksum", async () => {
       const answerId = await seedAnswer();
       const dir = await mkdtemp(join(tmpdir(), "do-sift-verify-report-"));
