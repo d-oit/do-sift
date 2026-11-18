@@ -6,6 +6,7 @@
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthError } from "@do-sift/auth";
+import { MAX_COLLECTION_REPORT_ATTACHMENTS } from "@do-sift/contracts";
 import { createResearchServer, listen, type ResearchServerOptions } from "../src/index.js";
 
 let server: Server;
@@ -71,7 +72,20 @@ beforeAll(async () => {
     runResearch: emptyRun,
     reportFor: async () => ({
       fromAnswer: async (_ownerId, id) => (id === "ans-1" ? storedAnswer : undefined),
-      fromCollection: async (_ownerId, id) => (id === "col-1" ? storedCollection : undefined),
+      fromCollection: async (_ownerId, id) => {
+        if (id === "col-1") return storedCollection;
+        if (id === "col-large") {
+          return {
+            ...storedCollection,
+            sources: Array.from({ length: MAX_COLLECTION_REPORT_ATTACHMENTS + 1 }, (_, index) => ({
+              id: `doc-${index}`,
+              url: "https://collection.test/page",
+              fetchedAt: "2026-11-01T00:00:00Z",
+            })),
+          };
+        }
+        return undefined;
+      },
     }),
   });
   port = await listen(server);
@@ -185,6 +199,12 @@ describe("report export route (issue #170)", () => {
     expect(body.collection).toEqual({ title: "Stored collection", description: "Owner context" });
     expect(body.sources[0]?.url).toBe("https://collection.test/a");
     expect(body.annotations[0]?.body).toBe("collection note");
+  });
+
+  it("refuses a stored collection above the attachment safety ceiling", async () => {
+    const response = await post({ format: "json", collectionId: "col-large" });
+    expect(response.status).toBe(413);
+    expect(await response.text()).toContain("too many attachments");
   });
 
   it("rejects ambiguous modes and unknown stored ids", async () => {

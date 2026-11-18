@@ -8,6 +8,8 @@ import {
   type OidcVerifier,
 } from "@do-sift/auth";
 import {
+  MAX_COLLECTION_REPORT_ATTACHMENTS,
+  assertCollectionReportSize,
   buildAnswerReport,
   buildCollectionReport,
   type ModelProvider,
@@ -608,9 +610,10 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         const collection = await collections.get(collectionId);
         if (collection === undefined) return undefined;
         const [items, notes] = await Promise.all([
-          collections.allItems(collectionId),
+          collections.itemsUpTo(collectionId, MAX_COLLECTION_REPORT_ATTACHMENTS + 1),
           collections.notes(collectionId),
         ]);
+        assertCollectionReportSize(items.length);
         return buildCollectionReport({
           title: collection.title,
           description: collection.description,

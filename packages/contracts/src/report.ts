@@ -8,7 +8,28 @@
  * an owner annotation.
  */
 export const REPORT_SCHEMA_VERSION = 1;
+/**
+ * Safety ceiling for a stored collection report. This is intentionally far
+ * above the 100-item detail page; a larger collection refuses rather than
+ * silently truncating or building an unbounded export.
+ */
+export const MAX_COLLECTION_REPORT_ATTACHMENTS = 10_000;
 export const REPORT_FORMATS = ["json", "markdown", "html", "bibtex"] as const;
+
+export class CollectionReportTooLargeError extends Error {
+  constructor(public readonly count: number) {
+    super(
+      `collection has too many attachments to export (${count}; limit ${MAX_COLLECTION_REPORT_ATTACHMENTS})`,
+    );
+    this.name = "CollectionReportTooLargeError";
+  }
+}
+
+export function assertCollectionReportSize(count: number): void {
+  if (count > MAX_COLLECTION_REPORT_ATTACHMENTS) {
+    throw new CollectionReportTooLargeError(count);
+  }
+}
 export type ReportFormat = (typeof REPORT_FORMATS)[number];
 
 export function isReportFormat(value: unknown): value is ReportFormat {
@@ -148,6 +169,7 @@ export function buildAnswerReport(input: ReportAnswerInput): ResearchReport {
  * function never invents a URL or retrieved time.
  */
 export function buildCollectionReport(input: ReportCollectionInput): ResearchReport {
+  assertCollectionReportSize(input.sources.length);
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
     collection: {

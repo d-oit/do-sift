@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  CollectionReportTooLargeError,
+  MAX_COLLECTION_REPORT_ATTACHMENTS,
   REPORT_SCHEMA_VERSION,
+  assertCollectionReportSize,
   buildCollectionReport,
   escapeHtml,
   escapeMarkdown,
@@ -95,6 +98,26 @@ describe("report exports", () => {
     expect(html).toContain("<strong>Collection:</strong> Reading *list*");
     expect(html).toContain("&lt;b&gt;Owner context&lt;/b&gt;");
     expect(html).not.toContain("<b>Owner context</b>");
+  });
+
+  it("refuses a collection report above the attachment safety ceiling", () => {
+    const sources = Array.from({ length: MAX_COLLECTION_REPORT_ATTACHMENTS + 1 }, (_, index) => ({
+      id: `src-${index}`,
+      url: "https://example.test/page",
+      fetchedAt: "2026-11-18T00:00:00Z",
+    }));
+    expect(() =>
+      buildCollectionReport({
+        title: "Too large",
+        description: "",
+        createdAt: "2026-11-18T00:00:00Z",
+        sources,
+        annotations: [],
+      }),
+    ).toThrow(CollectionReportTooLargeError);
+    expect(() => assertCollectionReportSize(MAX_COLLECTION_REPORT_ATTACHMENTS + 1)).toThrow(
+      CollectionReportTooLargeError,
+    );
   });
 
   it("emits only present BibTeX metadata and skips entries without a title", () => {

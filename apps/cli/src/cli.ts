@@ -16,7 +16,9 @@ import {
   pruneMemberChangeLog,
 } from "@do-sift/storage";
 import {
+  MAX_COLLECTION_REPORT_ATTACHMENTS,
   REPORT_FORMATS,
+  assertCollectionReportSize,
   buildAnswerReport,
   buildCollectionReport,
   isReportFormat,
@@ -614,9 +616,10 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         return 1;
       }
       const [items, notes] = await Promise.all([
-        repo.allItems(collectionId),
+        repo.itemsUpTo(collectionId, MAX_COLLECTION_REPORT_ATTACHMENTS + 1),
         repo.notes(collectionId),
       ]);
+      assertCollectionReportSize(items.length);
       const report = buildCollectionReport({
         title: collection.title,
         description: collection.description,

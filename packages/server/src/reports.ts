@@ -12,8 +12,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DEFAULT_TENANT_ID, roleAllows } from "@do-sift/contracts";
 import {
+  CollectionReportTooLargeError,
   REPORT_FORMATS,
   REPORT_SCHEMA_VERSION,
+  assertCollectionReportSize,
   isReportFormat,
   renderReport,
   type ResearchReport,
@@ -248,6 +250,9 @@ export async function handleReportExport(
           ? await handlers.fromAnswer(owner.ownerId, answerId)
           : await handlers.fromCollection(owner.ownerId, collectionId ?? "");
       if (stored === undefined) throw new HttpRequestError(404, "report source not found");
+      // A host implementation may assemble the report itself; enforce the
+      // collection ceiling here as well as in the shared builder.
+      if (stored.collection !== undefined) assertCollectionReportSize(stored.sources.length);
       report = stored;
     }
     const rendered = renderReport(report, body["format"], {
@@ -264,6 +269,10 @@ export async function handleReportExport(
   } catch (error) {
     if (error instanceof HttpRequestError) {
       jsonError(res, error.status, error.message, httpRequestId, req);
+      return;
+    }
+    if (error instanceof CollectionReportTooLargeError) {
+      jsonError(res, 413, error.message, httpRequestId, req);
       return;
     }
     console.error(`[${httpRequestId}] report export failed: ${String(error)}`);

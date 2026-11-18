@@ -425,12 +425,20 @@ export class CollectionsRepository {
   }
 
   /**
-   * Every item reference in a collection, for report assembly. The collection
-   * detail view deliberately stops at `COLLECTION_LIST_MAX`; an export must
-   * not silently omit later attachments, so this read has no limit.
+   * Every item reference in a collection, for unbounded reads. Report
+   * assembly uses `itemsUpTo` so a pathological collection cannot load an
+   * unbounded result before the report ceiling is checked.
    */
   async allItems(collectionId: string): Promise<CollectionItemRow[]> {
     return this.selectItems(collectionId);
+  }
+
+  /** At most `limit` rows; callers choose the ceiling and reject overflow. */
+  async itemsUpTo(collectionId: string, limit: number): Promise<CollectionItemRow[]> {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error("limit must be a positive integer");
+    }
+    return this.selectItems(collectionId, limit);
   }
 
   /** Owner-authored note; `authorId` may name a member, never an evidence row. */

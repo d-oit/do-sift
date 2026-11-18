@@ -85,6 +85,8 @@ describe("collections repository", () => {
     const all = await repo.allItems(collection.id);
     expect(all).toHaveLength(101);
     expect(all.at(-1)?.itemId).toBe("run-100");
+    expect(await repo.itemsUpTo(collection.id, 2)).toHaveLength(2);
+    await expect(repo.itemsUpTo(collection.id, 0)).rejects.toThrow(/positive integer/u);
     expect(await new CollectionsRepository(client, "owner-b").countItems(collection.id)).toBe(0);
 
     const first = await repo.itemsPage(collection.id, 100);

@@ -9,7 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type Client } from "@libsql/client";
 import { chromium, type Browser, type Download, type Page } from "playwright";
 import { AuthError } from "@do-sift/auth";
-import { buildAnswerReport, buildCollectionReport, type TenantRole } from "@do-sift/contracts";
+import {
+  MAX_COLLECTION_REPORT_ATTACHMENTS,
+  assertCollectionReportSize,
+  buildAnswerReport,
+  buildCollectionReport,
+  type TenantRole,
+} from "@do-sift/contracts";
 import {
   CollectionsRepository,
   Repositories,
@@ -233,9 +239,10 @@ beforeAll(async () => {
           const collection = await collections.get(collectionId);
           if (collection === undefined) return undefined;
           const [items, notes] = await Promise.all([
-            collections.allItems(collectionId),
+            collections.itemsUpTo(collectionId, MAX_COLLECTION_REPORT_ATTACHMENTS + 1),
             collections.notes(collectionId),
           ]);
+          assertCollectionReportSize(items.length);
           return buildCollectionReport({
             title: collection.title,
             description: collection.description,

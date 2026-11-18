@@ -5,16 +5,17 @@ named after RPT-07. Same boundaries: no network,
 no model call, owner/tenant scoping on every read and write, and the stored
 question stays private unless explicitly opted in.
 
-| ID     | Task                                                                                   | Precondition                                                             |
-| ------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| RPT-06 | Backfill evidence metadata for collection items attached before migration 0015         | Snapshot columns exist (0015); references stay owner-scoped              |
-| RPT-07 | Offline `report answer` CLI command: stored claims and citations, any supported format | `answers.reportInput` from RPT-04; pure formatters in contracts          |
-| RPT-08 | Console export of a stored answer by id                                                | `reportFor.fromAnswer` host wiring (RPT-04); console report helper (047) |
-| RPT-09 | Offline `report collection` CLI command: snapshotted sources and opt-in notes          | Collection snapshot (RPT-05/RPT-06); shared formatter (RPT-07)           |
-| RPT-10 | Collection identity in reports: optional title/description through every formatter     | RPT-09; report schema v1 remains backward-compatible (optional field)    |
-| RPT-11 | Collection exports read every attachment; the detail view keeps its 100-item cap       | RPT-09; repository scope and snapshot rules unchanged                    |
-| RPT-12 | Collection detail reports `totalItems`; the console shows shown-of-total when capped   | RPT-11; repository scope unchanged                                       |
-| RPT-13 | Cursor paging for collection items; the console loads pages beyond the first 100       | RPT-12; repository scope and snapshot rules unchanged                    |
+| ID     | Task                                                                                      | Precondition                                                             |
+| ------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| RPT-06 | Backfill evidence metadata for collection items attached before migration 0015            | Snapshot columns exist (0015); references stay owner-scoped              |
+| RPT-07 | Offline `report answer` CLI command: stored claims and citations, any supported format    | `answers.reportInput` from RPT-04; pure formatters in contracts          |
+| RPT-08 | Console export of a stored answer by id                                                   | `reportFor.fromAnswer` host wiring (RPT-04); console report helper (047) |
+| RPT-09 | Offline `report collection` CLI command: snapshotted sources and opt-in notes             | Collection snapshot (RPT-05/RPT-06); shared formatter (RPT-07)           |
+| RPT-10 | Collection identity in reports: optional title/description through every formatter        | RPT-09; report schema v1 remains backward-compatible (optional field)    |
+| RPT-11 | Collection exports read every attachment; the detail view keeps its 100-item cap          | RPT-09; repository scope and snapshot rules unchanged                    |
+| RPT-12 | Collection detail reports `totalItems`; the console shows shown-of-total when capped      | RPT-11; repository scope unchanged                                       |
+| RPT-13 | Cursor paging for collection items; the console loads pages beyond the first 100          | RPT-12; repository scope and snapshot rules unchanged                    |
+| RPT-14 | Bound stored collection report assembly; refuse an oversized export instead of truncating | RPT-11; report formatters and schema v1 unchanged                        |
 
 ## Boundaries
 
@@ -29,12 +30,19 @@ question stays private unless explicitly opted in.
 - A collection report carries an optional `collection: { title, description? }`
   identity. It is rendered in JSON, Markdown, and HTML; BibTeX remains
   source-only. The field is optional, so schema v1 readers keep working.
-- Report assembly uses `allItems`, an owner/tenant-scoped read with no limit,
-  so a collection larger than `COLLECTION_LIST_MAX` does not lose older
-  attachments. The workspace detail view still uses the capped `items` read,
-  plus a scoped `countItems` so its response can expose the true `totalItems`.
-  The console renders `N of M item(s) shown` and points at the complete export
-  when the list is truncated.
+- Report assembly reads at most `MAX_COLLECTION_REPORT_ATTACHMENTS + 1` rows
+  through `itemsUpTo`, so a collection larger than `COLLECTION_LIST_MAX` does
+  not lose older attachments but a pathological collection cannot load an
+  unbounded result. Above 10,000 attachments the export refuses with a clear
+  error rather than truncating. The workspace detail view still uses the
+  capped `items` read, plus a scoped `countItems` so its response can expose
+  the true `totalItems`. The console renders `N of M item(s) shown` and points
+  at the complete export when the list is truncated.
+- Both stored-report entrypoints read at most 10,000 + 1 attachments and
+  reject overflow before mapping; the shared builder also rejects more than
+  10,000 sources. The server answers `413`, the CLI exits `1`, and neither path
+  truncates or emits a partial report. The overflow row is read only to
+  distinguish "exactly at the ceiling" from "too large".
 - `itemsPage` orders by `(added_at, item_kind, item_id)` and pages strictly
   after the caller's last tuple, so equal timestamps neither repeat nor skip.
   It reads one extra row to decide `hasMore`; the five-field cursor is opaque,
@@ -57,8 +65,8 @@ question stays private unless explicitly opted in.
   unsupported format.
 - `report collection` does the same for a collection, emits only resolved
   evidence snapshots, keeps collection notes out unless requested, names the
-  collection in JSON/Markdown/HTML, and exports every attachment even when the
-  collection has more than 100 items.
+  collection in JSON/Markdown/HTML, and exports every attachment up to the
+  10,000-attachment ceiling, including collections with more than 100 items.
 - The console downloads a stored answer's claims, citations, and sources; the
   stored question does not appear in the default Markdown.
 - A 101-item collection returns 100 `items` and `totalItems: 101`; a foreign
@@ -68,6 +76,9 @@ question stays private unless explicitly opted in.
   a malformed cursor or invalid limit is `400`, and an unknown/foreign
   collection is `404`. The console's **Load more** control appends the page,
   updates the count to `101 item(s)`, and disappears when complete.
+- A stored collection with 10,001 attachments is refused before formatting:
+  the server returns `413`, and the CLI reports the same error with exit `1`.
+  A collection at the ceiling still exports every attachment.
 - `npm run check` and `npm run signals -- verify --set verification` pass.
 
 ## Evidence (2026-11-18)
@@ -85,7 +96,11 @@ question stays private unless explicitly opted in.
   malformed cursors and invalid limits answer `400`, a foreign owner answers
   `404`, and the console's **Load more** appends `run-large-100`, updates the
   count to `101 item(s)`, and hides the control.
-- `npm run check` — PASS (12 steps, after RPT-13);
+- RPT-14: `npx vitest run packages/storage/test/collections.test.ts scripts/test/report.test.ts packages/server/test/reports-export.test.ts packages/server/test/workspaces-console.e2e.test.ts`
+  — PASS (28 tests). The builder rejects 10,001 sources, the stored HTTP path
+  answers `413`, `itemsUpTo` bounds the read and rejects a non-positive limit,
+  and the real-browser collection flow still passes.
+- `npm run check` — PASS (12 steps, after RPT-14);
   `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
   — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),
