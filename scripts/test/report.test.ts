@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   REPORT_SCHEMA_VERSION,
+  buildCollectionReport,
   escapeHtml,
   escapeMarkdown,
   toBibTeX,
@@ -70,6 +71,30 @@ describe("report exports", () => {
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain('rel="noopener noreferrer"');
     expect(toMarkdownReport(report)).not.toContain("What <script>");
+  });
+
+  it("identifies a collection report and escapes its metadata", () => {
+    const collection = buildCollectionReport({
+      title: "Reading *list*",
+      description: "<b>Owner context</b>",
+      createdAt: "2026-11-18T00:00:00Z",
+      sources: [],
+      annotations: [],
+    });
+    const json = JSON.parse(toJsonReport(collection)) as ResearchReport;
+    expect(json.collection).toEqual({
+      title: "Reading *list*",
+      description: "<b>Owner context</b>",
+    });
+
+    const markdown = toMarkdownReport(collection);
+    expect(markdown).toContain("**Collection:** Reading \\*list\\*");
+    expect(markdown).toContain("<b\\>Owner context</b\\>");
+
+    const html = toHtmlReport(collection);
+    expect(html).toContain("<strong>Collection:</strong> Reading *list*");
+    expect(html).toContain("&lt;b&gt;Owner context&lt;/b&gt;");
+    expect(html).not.toContain("<b>Owner context</b>");
   });
 
   it("emits only present BibTeX metadata and skips entries without a title", () => {

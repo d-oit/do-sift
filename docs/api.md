@@ -220,12 +220,18 @@ Exactly one source is required:
   "includeAnnotations": false,
   "report": {
     "schemaVersion": 1,
+    "collection": { "title": "...", "description": "..." },
     "sources": [{ "id": "...", "url": "...", "fetchedAt": "..." }],
     "claims": [],
     "annotations": []
   }
 }
 ```
+
+A report may carry an optional `collection` identity (title up to 200
+characters, description up to 2,000). Stored collection exports fill it from
+the collection row; it appears in JSON and in the Markdown/HTML body. BibTeX
+stays source-only.
 
 `format` is `json`, `markdown`, `html`, or `bibtex`. The question and owner
 annotations (including collection notes) are omitted unless the corresponding

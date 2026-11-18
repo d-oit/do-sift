@@ -577,6 +577,7 @@ describe("do-sift CLI (#67)", () => {
         ),
       ).toBe(0);
       const text = stdout.join("\n");
+      expect(text).toContain("**Collection:** Reported collection");
       expect(text).toContain("https://a.test/x");
       expect(text).toContain("Alpha");
       expect(text).not.toContain("Owner note about Alpha");
@@ -623,9 +624,11 @@ describe("do-sift CLI (#67)", () => {
         ),
       ).toBe(0);
       const parsed = JSON.parse(await readFile(out, "utf8")) as {
+        collection?: { title: string; description?: string };
         sources: Array<{ id: string; url: string }>;
         annotations: Array<{ body: string }>;
       };
+      expect(parsed.collection).toEqual({ title: "Reported collection" });
       expect(parsed.sources).toEqual([
         { id: "d1", url: "https://a.test/x", title: "Alpha", fetchedAt: "2026-10-02T10:00:01Z" },
       ]);

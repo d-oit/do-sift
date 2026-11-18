@@ -59,6 +59,7 @@ const storedAnswer = {
 
 const storedCollection = {
   schemaVersion: 1,
+  collection: { title: "Stored collection", description: "Owner context" },
   sources: [{ id: "doc-1", url: "https://collection.test/a", fetchedAt: "2026-11-01T00:00:00Z" }],
   claims: [],
   annotations: [{ id: "note-1", body: "collection note", createdAt: "2026-11-01T00:00:01Z" }],
@@ -127,6 +128,30 @@ describe("report export route (issue #170)", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
+  it("accepts bounded collection metadata in a caller-supplied report", async () => {
+    const response = await post({
+      format: "json",
+      report: { ...REPORT, collection: { title: "Caller collection", description: "Context" } },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      collection: { title: string; description: string };
+    };
+    expect(body.collection).toEqual({ title: "Caller collection", description: "Context" });
+
+    expect(
+      (
+        await post({
+          format: "json",
+          report: { ...REPORT, collection: { title: "x".repeat(201) } },
+        })
+      ).status,
+    ).toBe(400);
+    expect((await post({ format: "json", report: { ...REPORT, collection: [] } })).status).toBe(
+      400,
+    );
+  });
+
   it("rejects unknown formats and reports from a different schema", async () => {
     expect((await post({ format: "pdf", report: REPORT })).status).toBe(400);
     expect((await post({ format: "json", report: { ...REPORT, schemaVersion: 2 } })).status).toBe(
@@ -153,9 +178,11 @@ describe("report export route (issue #170)", () => {
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
+      collection?: { title: string; description?: string };
       sources: Array<{ url: string }>;
       annotations: Array<{ body: string }>;
     };
+    expect(body.collection).toEqual({ title: "Stored collection", description: "Owner context" });
     expect(body.sources[0]?.url).toBe("https://collection.test/a");
     expect(body.annotations[0]?.body).toBe("collection note");
   });

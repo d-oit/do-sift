@@ -304,6 +304,7 @@ describe("workspaces console (real browser)", () => {
     const collectionDownload = await collectionDownloadPromise;
     expect(collectionDownload.suggestedFilename()).toBe("report.md");
     const collectionMarkdown = await downloadText(collectionDownload);
+    expect(collectionMarkdown).toContain("**Collection:** Browser smoke");
     expect(collectionMarkdown).toContain("https://browser-a.test/page");
     expect(collectionMarkdown).toContain("note from browser");
 

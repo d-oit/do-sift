@@ -170,7 +170,7 @@ Every data command requires an explicit `--owner`. `evidence export`, `research 
 `report answer --out` write a new file and fail if the path already exists. Sensitive question text
 is redacted as `[REDACTED]` by default unless `--show-question` is provided (or `--include-question`
 for `report answer`), and raw page contents (`documents.raw_text`) or passages are never exposed.
-`report collection` renders only snapshotted evidence and omits owner notes unless
+`report collection` renders the collection title/description and only snapshotted evidence, and omits owner notes unless
 `--include-annotations`; `collections backfill` snapshots provenance for evidence references attached before migration 0015;
 `--dry-run` reports the counts without writing. Exit codes: `0` success, `2` usage error, `1` runtime error.
 

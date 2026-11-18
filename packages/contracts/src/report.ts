@@ -41,9 +41,16 @@ export interface ReportAnnotation {
   createdAt: string;
 }
 
+export interface ReportCollection {
+  title: string;
+  description?: string;
+}
+
 export interface ResearchReport {
   schemaVersion: number;
   question?: string;
+  /** Present when the report was assembled from a collection. */
+  collection?: ReportCollection;
   sources: ReportSource[];
   claims: ReportClaim[];
   annotations: ReportAnnotation[];
@@ -102,6 +109,7 @@ function selected(report: ResearchReport, options: ReportExportOptions): Researc
     ...(options.includeQuestion === true && report.question !== undefined
       ? { question: report.question }
       : {}),
+    ...(report.collection === undefined ? {} : { collection: report.collection }),
     sources: [...report.sources].sort(bySourceId),
     claims: report.claims.map((claim) => ({
       kind: claim.kind,
@@ -142,6 +150,10 @@ export function buildAnswerReport(input: ReportAnswerInput): ResearchReport {
 export function buildCollectionReport(input: ReportCollectionInput): ResearchReport {
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
+    collection: {
+      title: input.title,
+      ...(input.description === "" ? {} : { description: input.description }),
+    },
     sources: input.sources,
     claims: [],
     annotations: input.annotations,
@@ -178,6 +190,12 @@ export function toMarkdownReport(
 ): string {
   const data = selected(report, options);
   const lines: string[] = ["# Research report", ""];
+  if (data.collection !== undefined) {
+    lines.push(`**Collection:** ${escapeMarkdown(data.collection.title)}`, "");
+    if (data.collection.description !== undefined) {
+      lines.push(escapeMarkdown(data.collection.description), "");
+    }
+  }
   if (data.question !== undefined) {
     lines.push(`**Question:** ${escapeMarkdown(data.question)}`, "");
   }
@@ -237,6 +255,12 @@ export function toHtmlReport(report: ResearchReport, options: ReportExportOption
     "</head><body>",
     "<h1>Research report</h1>",
   ];
+  if (data.collection !== undefined) {
+    parts.push(`<p><strong>Collection:</strong> ${escapeHtml(data.collection.title)}</p>`);
+    if (data.collection.description !== undefined) {
+      parts.push(`<p>${escapeHtml(data.collection.description)}</p>`);
+    }
+  }
   if (data.question !== undefined) {
     parts.push(`<p><strong>Question:</strong> ${escapeHtml(data.question)}</p>`);
   }

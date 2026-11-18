@@ -34,6 +34,8 @@ export const REPORT_EXPORT_PATH = "/api/reports/export";
 
 const LIMITS = {
   question: 2_000,
+  collectionTitle: 200,
+  collectionDescription: 2_000,
   sources: 100,
   claims: 100,
   annotations: 100,
@@ -147,6 +149,22 @@ function parseReport(raw: unknown): ResearchReport {
   };
   const question = optionalText(value["question"], "report.question", LIMITS.question);
   if (question !== undefined) report.question = question;
+  const rawCollection = value["collection"];
+  if (rawCollection !== undefined) {
+    const collection = rawCollection as Record<string, unknown>;
+    if (typeof collection !== "object" || collection === null || Array.isArray(collection)) {
+      throw new HttpRequestError(400, "report.collection must be an object");
+    }
+    const description = optionalText(
+      collection["description"],
+      "report.collection.description",
+      LIMITS.collectionDescription,
+    );
+    report.collection = {
+      title: text(collection["title"], "report.collection.title", LIMITS.collectionTitle),
+      ...(description === undefined ? {} : { description }),
+    };
+  }
   return report;
 }
 
