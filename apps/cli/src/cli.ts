@@ -10,9 +10,17 @@ import { writeFile } from "node:fs/promises";
 import {
   DEFAULT_TENANT_ID,
   MIN_MEMBER_CHANGE_RETENTION_DAYS,
+  CollectionsRepository,
+  Repositories,
   executeOwnerRetention,
   pruneMemberChangeLog,
 } from "@do-sift/storage";
+import {
+  REPORT_FORMATS,
+  buildAnswerReport,
+  isReportFormat,
+  renderReport,
+} from "@do-sift/contracts";
 
 export interface CliDeps {
   client: Client;
@@ -33,6 +41,8 @@ const USAGE = `usage: do-sift-cli <command> [options]
   research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question] [--tenant <id>]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>] [--tenant <id>]
   analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
+  report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--tenant <id>]
+  collections backfill --owner <id> [--collection <id>] [--dry-run] [--tenant <id>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
 
@@ -41,7 +51,13 @@ its queries by tenant_id as well as owner_id, so one tenant's owner id never
 reaches another tenant's rows (plan 035).
 `;
 
-const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm", "prune-collections"]);
+const BOOLEAN_FLAGS = new Set([
+  "show-question",
+  "include-question",
+  "dry-run",
+  "confirm",
+  "prune-collections",
+]);
 
 function parseFlags(args: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -519,6 +535,86 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         return 0;
       }
       for (const line of body.trimEnd().split("\n")) deps.out(line);
+      return 0;
+    }
+    if (group === "report" && action === "answer") {
+      const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
+      const answerId = flags.get("answer");
+      if (answerId === undefined || answerId === "") {
+        throw new CliUsageError("--answer is required");
+      }
+      const format = flags.get("format") ?? "markdown";
+      if (!isReportFormat(format)) {
+        throw new CliUsageError(`--format must be one of: ${REPORT_FORMATS.join(", ")}`);
+      }
+      const repos = new Repositories(deps.client, tenant);
+      const input = await repos.answers.reportInput(owner, answerId);
+      if (input === undefined) {
+        deps.err(`error: answer ${answerId} not found for owner ${owner} in tenant ${tenant}`);
+        return 1;
+      }
+      const report = buildAnswerReport({
+        question: input.question,
+        createdAt: input.createdAt,
+        blocks: input.blocks.map((block) => ({
+          kind: block.kind,
+          text: block.text,
+          citations: block.citations,
+          ...(block.unresolved === true ? { unresolved: true } : {}),
+        })),
+        sources: input.sources.map((source) => ({
+          id: source.evidenceId,
+          url: source.url,
+          ...(source.title === undefined ? {} : { title: source.title }),
+          ...(source.publishedAt === undefined ? {} : { publishedAt: source.publishedAt }),
+          fetchedAt: source.retrievedAt,
+          ...(source.contentHash === undefined ? {} : { contentHash: source.contentHash }),
+        })),
+      });
+      // The stored question stays private unless explicitly opted in, matching
+      // `POST /api/reports/export`.
+      const rendered = renderReport(report, format, {
+        includeQuestion: flags.get("include-question") === "true",
+        includeAnnotations: false,
+      });
+      const out = flags.get("out");
+      if (out !== undefined && out !== "") {
+        const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
+        await write(out, rendered.body);
+        deps.out(`exported ${format} report for ${answerId} to ${out}`);
+        return 0;
+      }
+      deps.out(rendered.body.trimEnd());
+      return 0;
+    }
+    if (group === "collections" && action === "backfill") {
+      const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
+      const collectionId = flags.get("collection");
+      const repo = new CollectionsRepository(deps.client, owner, tenant);
+      if (collectionId !== undefined && collectionId !== "") {
+        const collection = await repo.get(collectionId);
+        if (collection === undefined) {
+          deps.err(
+            `error: collection ${collectionId} not found for owner ${owner} in tenant ${tenant}`,
+          );
+          return 1;
+        }
+      }
+      const receipt = await repo.backfillEvidenceMetadata({
+        ...(collectionId === undefined || collectionId === "" ? {} : { collectionId }),
+        dryRun: flags.get("dry-run") === "true",
+      });
+      deps.out(`owner_id\t${owner}`);
+      deps.out(`tenant_id\t${tenant}`);
+      deps.out(
+        `collection_id\t${collectionId === undefined || collectionId === "" ? "*" : collectionId}`,
+      );
+      deps.out(`mode\t${receipt.dryRun ? "dry-run" : "backfill"}`);
+      deps.out(`scanned\t${receipt.scanned}`);
+      deps.out(`updated\t${receipt.updated}`);
+      deps.out(`unresolved\t${receipt.unresolved}`);
       return 0;
     }
     if (group === "retention" && action === "prune") {

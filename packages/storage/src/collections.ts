@@ -37,6 +37,16 @@ export interface CollectionItemRow {
   evidenceFetchedAt?: string | undefined;
 }
 
+export interface CollectionBackfillReceipt {
+  /** Evidence references with no stored URL snapshot at scan time. */
+  scanned: number;
+  /** References whose metadata resolved and was (or would be) written. */
+  updated: number;
+  /** References the owner's corpus still cannot resolve. */
+  unresolved: number;
+  dryRun: boolean;
+}
+
 export interface CollectionNoteRow {
   id: string;
   collectionId: string;
@@ -241,6 +251,78 @@ export class CollectionsRepository {
       ...(title === undefined ? {} : { title }),
       fetchedAt: str(row["fetched_at"]),
     };
+  }
+
+  /**
+   * Snapshot provenance for evidence references attached before migration
+   * 0015 (or before the id resolved). Only rows with a null `evidence_url`
+   * are touched; existing snapshots are never rewritten. With `dryRun` the
+   * counts are computed and nothing is written.
+   */
+  async backfillEvidenceMetadata(
+    options: { collectionId?: string; dryRun?: boolean } = {},
+  ): Promise<CollectionBackfillReceipt> {
+    const dryRun = options.dryRun === true;
+    const conditions = [
+      "tenant_id = ?",
+      "owner_id = ?",
+      "item_kind = 'evidence'",
+      "evidence_url IS NULL",
+    ];
+    const args: string[] = [this.tenantId, this.ownerId];
+    if (options.collectionId !== undefined) {
+      conditions.push("collection_id = ?");
+      args.push(options.collectionId);
+    }
+    const res = await this.client.execute({
+      sql: `SELECT collection_id, item_id FROM collection_items
+            WHERE ${conditions.join(" AND ")}
+            ORDER BY added_at, collection_id, item_id`,
+      args,
+    });
+
+    // The same evidence id can be referenced by several collections; resolve
+    // its provenance once per run.
+    const resolved = new Map<
+      string,
+      { url: string; title?: string | undefined; fetchedAt: string } | undefined
+    >();
+    let updated = 0;
+    let unresolved = 0;
+    for (const row of res.rows) {
+      const collectionId = str(row["collection_id"]);
+      const itemId = str(row["item_id"]);
+      let metadata = resolved.get(itemId);
+      if (!resolved.has(itemId)) {
+        metadata = await this.evidenceMetadata(itemId);
+        resolved.set(itemId, metadata);
+      }
+      if (metadata === undefined) {
+        unresolved++;
+        continue;
+      }
+      if (dryRun) {
+        updated++;
+        continue;
+      }
+      const write = await this.client.execute({
+        sql: `UPDATE collection_items
+              SET evidence_url = ?, evidence_title = ?, evidence_fetched_at = ?
+              WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
+                AND item_kind = 'evidence' AND item_id = ? AND evidence_url IS NULL`,
+        args: [
+          metadata.url,
+          metadata.title ?? null,
+          metadata.fetchedAt,
+          collectionId,
+          this.tenantId,
+          this.ownerId,
+          itemId,
+        ],
+      });
+      if (write.rowsAffected > 0) updated++;
+    }
+    return { scanned: res.rows.length, updated, unresolved, dryRun };
   }
 
   async removeItem(
