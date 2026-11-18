@@ -159,8 +159,8 @@ npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:
 npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
-npx tsx apps/cli/src/index.ts report answer --owner <id> --answer <id> [--format json|markdown|html|bibtex] [--include-question] [--out report.md] [--checksum] --db file:do-sift.db
-npx tsx apps/cli/src/index.ts report collection --owner <id> --collection <id> [--format json|markdown|html|bibtex] [--include-annotations] [--out report.md] [--checksum] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report answer --owner <id> --answer <id> [--format json|markdown|html|bibtex] [--include-question] [--out report.md] [--checksum] [--manifest] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report collection --owner <id> --collection <id> [--format json|markdown|html|bibtex] [--include-annotations] [--out report.md] [--checksum] [--manifest] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts report verify --in report.md [--sidecar report.md.sha256]
 npx tsx apps/cli/src/index.ts collections backfill --owner <id> [--collection <id>] [--dry-run] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--prune-collections] [--out receipt.json] --db file:do-sift.db
@@ -179,7 +179,11 @@ ceiling it exits `1` rather than truncating. It omits owner notes unless
 lowercase SHA-256 of the written bytes, and `--checksum` also writes
 `<out>.sha256` in `sha256sum` format (`<hex>  <basename>`). `--checksum`
 requires `--out`; if the sidecar cannot be written, the report remains and
-the command exits `1`. `report verify` defaults to `<in>.sha256` (or
+the command exits `1`. `--manifest` also requires `--out` and writes
+`<out>.manifest.json` with `manifestVersion`, `reportSchemaVersion`, `format`,
+`sha256`, `bytes`, `sourceCount`, `claimCount`, `annotationCount`, and
+`questionIncluded`; counts reflect privacy-filtered logical content (BibTeX may
+omit untitled sources). `report verify` defaults to `<in>.sha256` (or
 `--sidecar`), requires the sidecar filename to match the report basename, and
 exits `1` for a malformed or mismatched checksum; `collections backfill`
 snapshots provenance for evidence references attached before migration 0015;

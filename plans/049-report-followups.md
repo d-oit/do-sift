@@ -19,6 +19,7 @@ question stays private unless explicitly opted in.
 | RPT-15 | Carry a SHA-256 of the exact report artifact in the HTTP response and CLI receipt         | RPT-07/RPT-09; no report schema or formatter output change               |
 | RPT-16 | Durable `<out>.sha256` sidecar for CLI report exports, opt-in via `--checksum`            | RPT-15; existing `--out` behavior unchanged                              |
 | RPT-17 | `report verify` checks a report against its sidecar and fails closed on mismatch          | RPT-16; no storage or report formatter change                            |
+| RPT-18 | JSON manifest sidecar for CLI report exports, opt-in via `--manifest`                     | RPT-15/RPT-16; no report schema or formatter change                      |
 
 ## Boundaries
 
@@ -66,6 +67,11 @@ question stays private unless explicitly opted in.
   accepts only one `<64 lowercase hex>  <basename>` record. The named basename
   must equal the report's basename; mismatch, malformed input, or a missing
   file exits `1`. It reads no database rows and writes nothing.
+- `--manifest` is opt-in and requires `--out`. It writes
+  `<out>.manifest.json` with a fixed key order and `manifestVersion: 1`; counts
+  describe the privacy-filtered logical report, not format-specific entries
+  (BibTeX can omit untitled sources). The report and other sidecars are
+  written first, so a later manifest failure leaves them and exits `1`.
 - The console sends only an answer id; the server authenticates the owner and
   resolves the answer in that owner's tenant.
 - One formatter dispatcher (`renderReport`) is shared by the HTTP route and
@@ -105,6 +111,10 @@ question stays private unless explicitly opted in.
 - `report verify --in <report>` succeeds with exit `0` only when the sidecar
   names the report and its digest matches. A tampered report, misnamed sidecar,
   malformed sidecar, or missing `--in` fails without touching the files.
+- Both report commands write a manifest whose digest and byte count match the
+  rendered artifact, whose counts respect privacy options, and whose
+  `questionIncluded` reflects the opt-in. `--manifest` without `--out` is a
+  usage error (`2`); absent flags leave existing exports unchanged.
 - `npm run check` and `npm run signals -- verify --set verification` pass.
 
 ## Evidence (2026-11-18)
@@ -136,7 +146,11 @@ question stays private unless explicitly opted in.
 - RPT-17: `npx vitest run apps/cli/test/cli.test.ts` — PASS (42 tests).
   Default and explicit sidecars verify, while tampered bytes, a misnamed
   sidecar, a malformed sidecar, and a missing `--in` all fail without writing.
-- `npm run check` — PASS (12 steps, after RPT-17);
+- RPT-18: `npx vitest run apps/cli/test/cli.test.ts` — PASS (42 tests).
+  Both report commands write a manifest whose digest, byte count, privacy-
+  filtered counts, and question flag match the artifact; `--manifest` without
+  `--out` exits `2`.
+- `npm run check` — PASS (12 steps, after RPT-18);
   `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
   — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),

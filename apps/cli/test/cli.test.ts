@@ -501,6 +501,7 @@ describe("do-sift CLI (#67)", () => {
             "--out",
             out,
             "--checksum",
+            "--manifest",
           ],
           deps(),
         ),
@@ -509,6 +510,44 @@ describe("do-sift CLI (#67)", () => {
       const digest = createHash("sha256").update(content, "utf8").digest("hex");
       expect(stdout.join("\n")).toContain(`sha256 ${digest}`);
       expect(await readFile(`${out}.sha256`, "utf8")).toBe(`${digest}  report.json\n`);
+      expect(JSON.parse(await readFile(`${out}.manifest.json`, "utf8"))).toEqual({
+        manifestVersion: 1,
+        reportSchemaVersion: 1,
+        format: "json",
+        sha256: digest,
+        bytes: Buffer.byteLength(content, "utf8"),
+        sourceCount: 1,
+        claimCount: 2,
+        annotationCount: 0,
+        questionIncluded: false,
+      });
+      const quoted = join(dir, "quoted.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--include-question",
+            "--out",
+            quoted,
+            "--manifest",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      expect(
+        (
+          JSON.parse(await readFile(`${quoted}.manifest.json`, "utf8")) as {
+            questionIncluded: boolean;
+          }
+        ).questionIncluded,
+      ).toBe(true);
       const parsed = JSON.parse(content) as {
         question?: string;
         claims: Array<{ text: string; citations: string[] }>;
@@ -549,6 +588,15 @@ describe("do-sift CLI (#67)", () => {
         ),
       ).toBe(2);
       expect(stderr.join("\n")).toContain("--checksum requires --out");
+
+      stderr = [];
+      expect(
+        await runCli(
+          ["report", "answer", "--owner", "alice", "--answer", answerId, "--manifest"],
+          deps(),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("--manifest requires --out");
     });
 
     it("verifies a report against its generated sidecar or an explicit sidecar", async () => {
@@ -760,6 +808,7 @@ describe("do-sift CLI (#67)", () => {
             "--out",
             out,
             "--checksum",
+            "--manifest",
           ],
           deps(),
         ),
@@ -768,6 +817,17 @@ describe("do-sift CLI (#67)", () => {
       const digest = createHash("sha256").update(content, "utf8").digest("hex");
       expect(stdout.join("\n")).toContain(`sha256 ${digest}`);
       expect(await readFile(`${out}.sha256`, "utf8")).toBe(`${digest}  collection.json\n`);
+      expect(JSON.parse(await readFile(`${out}.manifest.json`, "utf8"))).toEqual({
+        manifestVersion: 1,
+        reportSchemaVersion: 1,
+        format: "json",
+        sha256: digest,
+        bytes: Buffer.byteLength(content, "utf8"),
+        sourceCount: 1,
+        claimCount: 0,
+        annotationCount: 1,
+        questionIncluded: false,
+      });
       const parsed = JSON.parse(content) as {
         collection?: { title: string; description?: string };
         sources: Array<{ id: string; url: string }>;

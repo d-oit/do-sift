@@ -20,12 +20,14 @@ import {
 import {
   MAX_COLLECTION_REPORT_ATTACHMENTS,
   REPORT_FORMATS,
+  REPORT_SCHEMA_VERSION,
   assertCollectionReportSize,
   buildAnswerReport,
   buildCollectionReport,
   isReportFormat,
   renderReport,
   type ReportFormat,
+  type ResearchReport,
 } from "@do-sift/contracts";
 
 export interface CliDeps {
@@ -47,8 +49,8 @@ const USAGE = `usage: do-sift-cli <command> [options]
   research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question] [--tenant <id>]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>] [--tenant <id>]
   analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
-  report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--checksum] [--tenant <id>]
-  report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--checksum] [--tenant <id>]
+  report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--checksum] [--manifest] [--tenant <id>]
+  report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--checksum] [--manifest] [--tenant <id>]
   report verify --in <report-file> [--sidecar <sha256-file>]
   collections backfill --owner <id> [--collection <id>] [--dry-run] [--tenant <id>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
@@ -64,6 +66,7 @@ const BOOLEAN_FLAGS = new Set([
   "include-question",
   "include-annotations",
   "checksum",
+  "manifest",
   "dry-run",
   "confirm",
   "prune-collections",
@@ -79,6 +82,45 @@ async function writeChecksumSidecar(
   body: string,
 ): Promise<void> {
   await write(`${out}.sha256`, `${sha256Hex(body)}  ${basename(out)}\n`);
+}
+
+interface ReportManifest {
+  manifestVersion: 1;
+  reportSchemaVersion: number;
+  format: ReportFormat;
+  sha256: string;
+  bytes: number;
+  sourceCount: number;
+  claimCount: number;
+  annotationCount: number;
+  questionIncluded: boolean;
+}
+
+function buildReportManifest(
+  report: ResearchReport,
+  body: string,
+  format: ReportFormat,
+  options: { includeQuestion: boolean; includeAnnotations: boolean },
+): ReportManifest {
+  return {
+    manifestVersion: 1,
+    reportSchemaVersion: REPORT_SCHEMA_VERSION,
+    format,
+    sha256: sha256Hex(body),
+    bytes: Buffer.byteLength(body, "utf8"),
+    sourceCount: report.sources.length,
+    claimCount: report.claims.length,
+    annotationCount: options.includeAnnotations ? report.annotations.length : 0,
+    questionIncluded: options.includeQuestion && report.question !== undefined,
+  };
+}
+
+async function writeManifestSidecar(
+  write: (path: string, content: string) => Promise<void>,
+  out: string,
+  manifest: ReportManifest,
+): Promise<void> {
+  await write(`${out}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 function reportFormat(flags: Map<string, string>): ReportFormat {
@@ -646,13 +688,27 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       });
       const out = flags.get("out");
       const writeChecksum = flags.get("checksum") === "true";
+      const writeManifest = flags.get("manifest") === "true";
       if (writeChecksum && (out === undefined || out === "")) {
         throw new CliUsageError("--checksum requires --out");
+      }
+      if (writeManifest && (out === undefined || out === "")) {
+        throw new CliUsageError("--manifest requires --out");
       }
       if (out !== undefined && out !== "") {
         const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
         await write(out, rendered.body);
         if (writeChecksum) await writeChecksumSidecar(write, out, rendered.body);
+        if (writeManifest) {
+          await writeManifestSidecar(
+            write,
+            out,
+            buildReportManifest(report, rendered.body, format, {
+              includeQuestion: flags.get("include-question") === "true",
+              includeAnnotations: false,
+            }),
+          );
+        }
         deps.out(
           `exported ${format} report for ${answerId} to ${out}; sha256 ${sha256Hex(rendered.body)}`,
         );
@@ -713,13 +769,27 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       });
       const out = flags.get("out");
       const writeChecksum = flags.get("checksum") === "true";
+      const writeManifest = flags.get("manifest") === "true";
       if (writeChecksum && (out === undefined || out === "")) {
         throw new CliUsageError("--checksum requires --out");
+      }
+      if (writeManifest && (out === undefined || out === "")) {
+        throw new CliUsageError("--manifest requires --out");
       }
       if (out !== undefined && out !== "") {
         const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
         await write(out, rendered.body);
         if (writeChecksum) await writeChecksumSidecar(write, out, rendered.body);
+        if (writeManifest) {
+          await writeManifestSidecar(
+            write,
+            out,
+            buildReportManifest(report, rendered.body, format, {
+              includeQuestion: false,
+              includeAnnotations: flags.get("include-annotations") === "true",
+            }),
+          );
+        }
         deps.out(
           `exported ${format} report for collection ${collectionId} to ${out}; sha256 ${sha256Hex(rendered.body)}`,
         );
