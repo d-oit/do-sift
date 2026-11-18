@@ -49,6 +49,7 @@ const USAGE = `usage: do-sift-cli <command> [options]
   analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
   report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--checksum] [--tenant <id>]
   report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--checksum] [--tenant <id>]
+  report verify --in <report-file> [--sidecar <sha256-file>]
   collections backfill --owner <id> [--collection <id>] [--dry-run] [--tenant <id>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
@@ -564,6 +565,45 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         return 0;
       }
       for (const line of body.trimEnd().split("\n")) deps.out(line);
+      return 0;
+    }
+    if (group === "report" && action === "verify") {
+      const input = flags.get("in");
+      if (input === undefined || input === "") {
+        throw new CliUsageError("--in is required");
+      }
+      const sidecarPath = flags.get("sidecar") ?? `${input}.sha256`;
+      let content: string;
+      let sidecar: string;
+      try {
+        content = readFileSync(input, "utf8");
+      } catch {
+        deps.err(`error: cannot read report ${input}`);
+        return 1;
+      }
+      try {
+        sidecar = readFileSync(sidecarPath, "utf8");
+      } catch {
+        deps.err(`error: cannot read checksum ${sidecarPath}`);
+        return 1;
+      }
+      const match = /^([0-9a-f]{64}) [ *](.+?)\r?\n?$/u.exec(sidecar);
+      if (match === null) {
+        deps.err("error: checksum file must be '<sha256>  <filename>'");
+        return 1;
+      }
+      const expected = match[1] ?? "";
+      const named = match[2] ?? "";
+      if (named !== basename(input)) {
+        deps.err(`error: checksum names ${named}, expected ${basename(input)}`);
+        return 1;
+      }
+      const actual = sha256Hex(content);
+      if (actual !== expected) {
+        deps.err(`error: checksum mismatch for ${input}`);
+        return 1;
+      }
+      deps.out(`verified ${input} sha256 ${actual}`);
       return 0;
     }
     if (group === "report" && action === "answer") {

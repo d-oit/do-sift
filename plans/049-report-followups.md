@@ -18,6 +18,7 @@ question stays private unless explicitly opted in.
 | RPT-14 | Bound stored collection report assembly; refuse an oversized export instead of truncating | RPT-11; report formatters and schema v1 unchanged                        |
 | RPT-15 | Carry a SHA-256 of the exact report artifact in the HTTP response and CLI receipt         | RPT-07/RPT-09; no report schema or formatter output change               |
 | RPT-16 | Durable `<out>.sha256` sidecar for CLI report exports, opt-in via `--checksum`            | RPT-15; existing `--out` behavior unchanged                              |
+| RPT-17 | `report verify` checks a report against its sidecar and fails closed on mismatch          | RPT-16; no storage or report formatter change                            |
 
 ## Boundaries
 
@@ -61,6 +62,10 @@ question stays private unless explicitly opted in.
   created as a new file, never overwritten. The report is written first, so a
   sidecar failure leaves the report and exits `1`. Without the flag, CLI
   output and files are byte-for-byte unchanged.
+- `report verify` reads the artifact and `<in>.sha256` (or `--sidecar`) and
+  accepts only one `<64 lowercase hex>  <basename>` record. The named basename
+  must equal the report's basename; mismatch, malformed input, or a missing
+  file exits `1`. It reads no database rows and writes nothing.
 - The console sends only an answer id; the server authenticates the owner and
   resolves the answer in that owner's tenant.
 - One formatter dispatcher (`renderReport`) is shared by the HTTP route and
@@ -93,10 +98,13 @@ question stays private unless explicitly opted in.
 - Every successful report export carries a lowercase 64-hex SHA-256 of the
   exact body. The HTTP header and the CLI `--out` receipt agree with a
   recomputation over the artifact for JSON, Markdown, HTML, and BibTeX.
-- `report answer --out ... --checksum` and `report collection --out ...
---checksum` write a sidecar whose contents are the digest, two spaces, and
-  the report basename. `--checksum` without `--out` is a usage error (`2`).
-  Existing `--out` exports remain unchanged when the flag is absent.
+- Both report commands accept `--checksum` with `--out` and write a sidecar
+  whose contents are the digest, two spaces, and the report basename.
+  `--checksum` without `--out` is a usage error (`2`). Existing `--out`
+  exports remain unchanged when the flag is absent.
+- `report verify --in <report>` succeeds with exit `0` only when the sidecar
+  names the report and its digest matches. A tampered report, misnamed sidecar,
+  malformed sidecar, or missing `--in` fails without touching the files.
 - `npm run check` and `npm run signals -- verify --set verification` pass.
 
 ## Evidence (2026-11-18)
@@ -125,7 +133,10 @@ question stays private unless explicitly opted in.
 - RPT-16: `npx vitest run apps/cli/test/cli.test.ts` — PASS (40 tests). Both
   report commands write `<digest>  <basename>\n` to `<out>.sha256`; `--checksum`
   without `--out` exits `2`, and exports without the flag remain unchanged.
-- `npm run check` — PASS (12 steps, after RPT-16);
+- RPT-17: `npx vitest run apps/cli/test/cli.test.ts` — PASS (42 tests).
+  Default and explicit sidecars verify, while tampered bytes, a misnamed
+  sidecar, a malformed sidecar, and a missing `--in` all fail without writing.
+- `npm run check` — PASS (12 steps, after RPT-17);
   `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
   — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),

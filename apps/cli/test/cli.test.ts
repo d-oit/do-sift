@@ -551,6 +551,88 @@ describe("do-sift CLI (#67)", () => {
       expect(stderr.join("\n")).toContain("--checksum requires --out");
     });
 
+    it("verifies a report against its generated sidecar or an explicit sidecar", async () => {
+      const answerId = await seedAnswer();
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-verify-report-"));
+      const out = join(dir, "verify.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--out",
+            out,
+            "--checksum",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const digest = createHash("sha256")
+        .update(await readFile(out, "utf8"), "utf8")
+        .digest("hex");
+
+      stdout = [];
+      expect(await runCli(["report", "verify", "--in", out], deps())).toBe(0);
+      expect(stdout.join("\n")).toBe(`verified ${out} sha256 ${digest}`);
+
+      const custom = join(dir, "custom.sha256");
+      await writeFile(custom, `${digest}  verify.json\n`);
+      stdout = [];
+      expect(await runCli(["report", "verify", "--in", out, "--sidecar", custom], deps())).toBe(0);
+      expect(stdout.join("\n")).toBe(`verified ${out} sha256 ${digest}`);
+    });
+
+    it("rejects a mismatched, misnamed, or missing checksum", async () => {
+      const answerId = await seedAnswer();
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-verify-report-"));
+      const out = join(dir, "verify.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--out",
+            out,
+            "--checksum",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const content = await readFile(out, "utf8");
+      const digest = createHash("sha256").update(content, "utf8").digest("hex");
+
+      await writeFile(out, `${content}\n`);
+      expect(await runCli(["report", "verify", "--in", out], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("checksum mismatch");
+
+      await writeFile(out, content);
+      await writeFile(`${out}.sha256`, `${digest}  other.json\n`);
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("checksum names other.json");
+
+      await writeFile(`${out}.sha256`, "not a checksum\n");
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("checksum file must be");
+
+      stderr = [];
+      expect(await runCli(["report", "verify"], deps())).toBe(2);
+      expect(stderr.join("\n")).toContain("--in is required");
+    });
+
     it("rejects unknown answers, other owners' answers, and unsupported formats", async () => {
       const answerId = await seedAnswer();
       expect(
