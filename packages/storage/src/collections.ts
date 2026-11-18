@@ -337,19 +337,8 @@ export class CollectionsRepository {
     return res.rowsAffected > 0;
   }
 
-  async items(collectionId: string, limit = COLLECTION_LIST_MAX): Promise<CollectionItemRow[]> {
-    if (!Number.isInteger(limit) || limit < 1 || limit > COLLECTION_LIST_MAX) {
-      throw new Error(`limit must be an integer from 1 to ${COLLECTION_LIST_MAX}`);
-    }
-    const res = await this.client.execute({
-      sql: `SELECT collection_id, item_kind, item_id, added_at,
-                   evidence_url, evidence_title, evidence_fetched_at
-            FROM collection_items
-            WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
-            ORDER BY added_at, item_kind, item_id LIMIT ?`,
-      args: [collectionId, this.tenantId, this.ownerId, limit],
-    });
-    return res.rows.map((row) => {
+  private itemRows(rows: readonly Record<string, unknown>[]): CollectionItemRow[] {
+    return rows.map((row) => {
       const evidenceUrl = strOrUndefined(row["evidence_url"]);
       const evidenceTitle = strOrUndefined(row["evidence_title"]);
       const evidenceFetchedAt = strOrUndefined(row["evidence_fetched_at"]);
@@ -363,6 +352,38 @@ export class CollectionsRepository {
         ...(evidenceFetchedAt === undefined ? {} : { evidenceFetchedAt }),
       };
     });
+  }
+
+  async items(collectionId: string, limit = COLLECTION_LIST_MAX): Promise<CollectionItemRow[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > COLLECTION_LIST_MAX) {
+      throw new Error(`limit must be an integer from 1 to ${COLLECTION_LIST_MAX}`);
+    }
+    const res = await this.client.execute({
+      sql: `SELECT collection_id, item_kind, item_id, added_at,
+                   evidence_url, evidence_title, evidence_fetched_at
+            FROM collection_items
+            WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
+            ORDER BY added_at, item_kind, item_id LIMIT ?`,
+      args: [collectionId, this.tenantId, this.ownerId, limit],
+    });
+    return this.itemRows(res.rows);
+  }
+
+  /**
+   * Every item reference in a collection, for report assembly. The collection
+   * detail view deliberately stops at `COLLECTION_LIST_MAX`; an export must
+   * not silently omit later attachments, so this read has no limit.
+   */
+  async allItems(collectionId: string): Promise<CollectionItemRow[]> {
+    const res = await this.client.execute({
+      sql: `SELECT collection_id, item_kind, item_id, added_at,
+                   evidence_url, evidence_title, evidence_fetched_at
+            FROM collection_items
+            WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
+            ORDER BY added_at, item_kind, item_id`,
+      args: [collectionId, this.tenantId, this.ownerId],
+    });
+    return this.itemRows(res.rows);
   }
 
   /** Owner-authored note; `authorId` may name a member, never an evidence row. */

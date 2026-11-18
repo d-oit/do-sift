@@ -235,9 +235,10 @@ stays source-only.
 
 `format` is `json`, `markdown`, `html`, or `bibtex`. The question and owner
 annotations (including collection notes) are omitted unless the corresponding
-flag is `true`. Collection
-bodies are bounded (100 sources/claims/annotations, 8,000 characters per
-claim or note, 512 KiB request body). Responses carry
+flag is `true`. Caller-supplied report bodies are bounded (100
+sources/claims/annotations, 8,000 characters per claim or note, 512 KiB request
+body). A stored collection export includes every attached reference, while the
+workspace detail view remains capped at 100 items. Responses carry
 `content-disposition: attachment`. A viewer role may export (read action);
 unauthenticated requests are `401`, malformed reports are `400`.
 

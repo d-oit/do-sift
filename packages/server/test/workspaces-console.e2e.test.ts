@@ -26,6 +26,10 @@ import {
 
 let client: Client;
 let server: Server;
+
+// Chromium launch competes with the rest of the suite; give this real-browser
+// hook more room than Vitest's 30s default while keeping it bounded.
+const BROWSER_HOOK_TIMEOUT_MS = 60_000;
 let port: number;
 let browser: Browser | undefined;
 let browserAnswerId: string;
@@ -199,7 +203,7 @@ beforeAll(async () => {
           const collection = await collections.get(collectionId);
           if (collection === undefined) return undefined;
           const [items, notes] = await Promise.all([
-            collections.items(collectionId),
+            collections.allItems(collectionId),
             collections.notes(collectionId),
           ]);
           return buildCollectionReport({
@@ -249,13 +253,17 @@ beforeAll(async () => {
     if ((process.env.DO_SIFT_ALLOW_BROWSER_SKIP ?? "").trim() === "1") return;
     throw error;
   }
-});
+}, BROWSER_HOOK_TIMEOUT_MS);
 
 afterAll(async () => {
   await browser?.close();
-  server?.close();
+  // Browser keep-alive sockets keep server.close() waiting; drop them before
+  // waiting for the listener so teardown stays bounded under a loaded pool.
+  const closable = server as unknown as { closeAllConnections?: () => void };
+  closable.closeAllConnections?.();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   client?.close();
-});
+}, BROWSER_HOOK_TIMEOUT_MS);
 
 describe("workspaces console (real browser)", () => {
   it("compares evidence, keeps a collection note, and downloads a report", async () => {

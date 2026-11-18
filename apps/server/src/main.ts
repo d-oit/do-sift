@@ -578,7 +578,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         const collection = await collections.get(collectionId);
         if (collection === undefined) return undefined;
         const [items, notes] = await Promise.all([
-          collections.items(collectionId),
+          collections.allItems(collectionId),
           collections.notes(collectionId),
         ]);
         return buildCollectionReport({

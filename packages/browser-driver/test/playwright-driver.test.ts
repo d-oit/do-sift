@@ -37,6 +37,10 @@ let policy: SiteAccessInstance;
 let harness: BrowserHarnessInstance;
 let browserAvailable = true;
 
+// A real Chromium launch takes ~3s alone but can starve behind the main test
+// pool on Windows; the default 30s hook budget is not enough under load.
+const BROWSER_HOOK_TIMEOUT_MS = 60_000;
+
 /**
  * The launch test needs a real chromium. It fails loudly when the browser is
  * missing rather than reporting a green pass in 0 ms (which is what a bare
@@ -100,7 +104,7 @@ beforeAll(async () => {
     config: { actionDelayMs: 5, typeDelayMs: 1 },
     events: { emit: () => {} },
   } as unknown as Parameters<BrowserHarnessInstance["activate"]>[0]);
-});
+}, BROWSER_HOOK_TIMEOUT_MS);
 
 afterAll(async () => {
   // Teardown must be unconditional: if deactivate() throws, chromium is never

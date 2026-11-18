@@ -614,7 +614,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         return 1;
       }
       const [items, notes] = await Promise.all([
-        repo.items(collectionId),
+        repo.allItems(collectionId),
         repo.notes(collectionId),
       ]);
       const report = buildCollectionReport({

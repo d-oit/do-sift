@@ -568,6 +568,47 @@ describe("do-sift CLI (#67)", () => {
       );
     }
 
+    it("exports every attachment beyond the 100-item detail cap", async () => {
+      await client.execute(
+        "INSERT INTO collections (id, tenant_id, owner_id, title, description, created_at, updated_at) VALUES ('colbig','default','alice','Large collection','','2026-10-01T00:00:00Z','2026-10-01T00:00:00Z')",
+      );
+      for (let i = 0; i < 105; i++) {
+        const id = `e${String(i).padStart(3, "0")}`;
+        await client.execute({
+          sql: `INSERT INTO collection_items
+                  (collection_id, tenant_id, owner_id, item_kind, item_id, added_at,
+                   evidence_url, evidence_title, evidence_fetched_at)
+                VALUES ('colbig','default','alice','evidence',?,?,?,?,?)`,
+          args: [
+            id,
+            `2026-10-02T00:00:${String(i % 60).padStart(2, "0")}Z`,
+            `https://big.test/${id}`,
+            id,
+            "2026-10-02T10:00:00Z",
+          ],
+        });
+      }
+
+      expect(
+        await runCli(
+          [
+            "report",
+            "collection",
+            "--owner",
+            "alice",
+            "--collection",
+            "colbig",
+            "--format",
+            "json",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const parsed = JSON.parse(stdout.join("\n")) as { sources: Array<{ id: string }> };
+      expect(parsed.sources).toHaveLength(105);
+      expect(parsed.sources.at(-1)?.id).toBe("e104");
+    });
+
     it("renders snapshotted sources and keeps owner notes private by default", async () => {
       await seedCollection();
       expect(

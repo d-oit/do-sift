@@ -73,6 +73,19 @@ describe("collections repository", () => {
     expect((await repo.items(collection.id)).map((i) => i.itemId)).toEqual(["run-1"]);
   });
 
+  it("reads every attachment for exports while the detail view stays capped", async () => {
+    const repo = new CollectionsRepository(client, "owner-a");
+    const collection = await repo.create("Large collection");
+    for (let i = 0; i < 101; i++) {
+      await repo.addItem(collection.id, "run", `run-${String(i).padStart(3, "0")}`);
+    }
+
+    expect(await repo.items(collection.id)).toHaveLength(100);
+    const all = await repo.allItems(collection.id);
+    expect(all).toHaveLength(101);
+    expect(all.at(-1)?.itemId).toBe("run-100");
+  });
+
   it("snapshots resolvable evidence provenance for report assembly", async () => {
     await client.execute({
       sql: `INSERT INTO documents (id, tenant_id, owner_id, canonical_url, original_url, content_hash, fetched_at, title, created_at)
