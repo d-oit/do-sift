@@ -81,9 +81,11 @@ describe("collections repository", () => {
     }
 
     expect(await repo.items(collection.id)).toHaveLength(100);
+    expect(await repo.countItems(collection.id)).toBe(101);
     const all = await repo.allItems(collection.id);
     expect(all).toHaveLength(101);
     expect(all.at(-1)?.itemId).toBe("run-100");
+    expect(await new CollectionsRepository(client, "owner-b").countItems(collection.id)).toBe(0);
   });
 
   it("snapshots resolvable evidence provenance for report assembly", async () => {

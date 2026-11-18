@@ -376,7 +376,12 @@ export const WORKSPACES_PAGE = `<!doctype html>
       const card = el("div");
       card.className = "card";
       card.appendChild(el("h3", data.collection.title));
-      const meta = el("div", "id " + data.collection.id + " · " + data.items.length + " item(s)");
+      const totalItems = typeof data.totalItems === "number" ? data.totalItems : data.items.length;
+      const itemCount =
+        data.items.length < totalItems
+          ? data.items.length + " of " + totalItems + " item(s) shown"
+          : totalItems + " item(s)";
+      const meta = el("div", "id " + data.collection.id + " · " + itemCount);
       meta.className = "meta";
       card.appendChild(meta);
 
@@ -402,6 +407,11 @@ export const WORKSPACES_PAGE = `<!doctype html>
       data.items.forEach((item) => items.appendChild(el("li", item.kind + " · " + item.id)));
       if (data.items.length === 0) items.appendChild(el("li", "No items yet."));
       card.appendChild(items);
+      if (data.items.length < totalItems) {
+        const hint = el("div", "Download the collection report to get every attachment.");
+        hint.className = "meta";
+        card.appendChild(hint);
+      }
 
       const itemForm = el("form");
       const itemInput = el("input");

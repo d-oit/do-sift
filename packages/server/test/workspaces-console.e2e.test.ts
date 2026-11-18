@@ -65,7 +65,11 @@ function collectionsFor(principal: {
     get: async (_ownerId, id) => {
       const collection = await repo.get(id);
       if (collection === undefined) return undefined;
-      const [items, notes] = await Promise.all([repo.items(id), repo.notes(id)]);
+      const [items, notes, totalItems] = await Promise.all([
+        repo.items(id),
+        repo.notes(id),
+        repo.countItems(id),
+      ]);
       return {
         collection,
         items: items.map((item) => ({
@@ -73,6 +77,7 @@ function collectionsFor(principal: {
           id: item.itemId,
           addedAt: item.addedAt,
         })),
+        totalItems,
         notes,
       };
     },
@@ -298,6 +303,7 @@ describe("workspaces console (real browser)", () => {
       .fill("doc-browser-a");
     await page.getByRole("button", { name: "Attach evidence" }).click();
     await waitForText(page, "#collection-detail", "doc-browser-a");
+    await waitForText(page, "#collection-detail", "1 item(s)");
 
     await page
       .locator("#collection-detail input[placeholder^='Owner note']")

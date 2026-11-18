@@ -5,13 +5,15 @@ named after RPT-07. Same boundaries: no network,
 no model call, owner/tenant scoping on every read and write, and the stored
 question stays private unless explicitly opted in.
 
-| ID     | Task                                                                                   | Precondition                                                          |
-| ------ | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| RPT-06 | Backfill evidence metadata for collection items attached before migration 0015         | Snapshot columns exist (0015); references stay owner-scoped           |
-| RPT-07 | Offline `report answer` CLI command: stored claims and citations, any supported format | `answers.reportInput` from RPT-04; pure formatters in contracts       |     | RPT-08 | Console export of a stored answer by id | `reportFor.fromAnswer` host wiring (RPT-04); console report helper (047) |
-| RPT-09 | Offline `report collection` CLI command: snapshotted sources and opt-in notes          | Collection snapshot (RPT-05/RPT-06); shared formatter (RPT-07)        |
-| RPT-10 | Collection identity in reports: optional title/description through every formatter     | RPT-09; report schema v1 remains backward-compatible (optional field) |
-| RPT-11 | Collection exports read every attachment; the detail view keeps its 100-item cap       | RPT-09; repository scope and snapshot rules unchanged                 |
+| ID     | Task                                                                                   | Precondition                                                             |
+| ------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| RPT-06 | Backfill evidence metadata for collection items attached before migration 0015         | Snapshot columns exist (0015); references stay owner-scoped              |
+| RPT-07 | Offline `report answer` CLI command: stored claims and citations, any supported format | `answers.reportInput` from RPT-04; pure formatters in contracts          |
+| RPT-08 | Console export of a stored answer by id                                                | `reportFor.fromAnswer` host wiring (RPT-04); console report helper (047) |
+| RPT-09 | Offline `report collection` CLI command: snapshotted sources and opt-in notes          | Collection snapshot (RPT-05/RPT-06); shared formatter (RPT-07)           |
+| RPT-10 | Collection identity in reports: optional title/description through every formatter     | RPT-09; report schema v1 remains backward-compatible (optional field)    |
+| RPT-11 | Collection exports read every attachment; the detail view keeps its 100-item cap       | RPT-09; repository scope and snapshot rules unchanged                    |
+| RPT-12 | Collection detail reports `totalItems`; the console shows shown-of-total when capped   | RPT-11; repository scope unchanged                                       |
 
 ## Boundaries
 
@@ -28,7 +30,10 @@ question stays private unless explicitly opted in.
   source-only. The field is optional, so schema v1 readers keep working.
 - Report assembly uses `allItems`, an owner/tenant-scoped read with no limit,
   so a collection larger than `COLLECTION_LIST_MAX` does not lose older
-  attachments. The workspace detail view still uses the capped `items` read.
+  attachments. The workspace detail view still uses the capped `items` read,
+  plus a scoped `countItems` so its response can expose the true `totalItems`.
+  The console renders `N of M item(s) shown` and points at the complete export
+  when the list is truncated.
 - The console sends only an answer id; the server authenticates the owner and
   resolves the answer in that owner's tenant.
 - One formatter dispatcher (`renderReport`) is shared by the HTTP route and
@@ -48,10 +53,22 @@ question stays private unless explicitly opted in.
   collection has more than 100 items.
 - The console downloads a stored answer's claims, citations, and sources; the
   stored question does not appear in the default Markdown.
+- A 101-item collection returns 100 `items` and `totalItems: 101`; a foreign
+  owner's count is zero. The console shows the full count and a truncation hint
+  instead of implying the first page is the whole collection.
 - `npm run check` and `npm run signals -- verify --set verification` pass.
 
 ## Evidence (2026-11-18)
 
+- `npx vitest run packages/storage/test/collections.test.ts packages/server/test/workspaces.test.ts`
+  — PASS (22 tests). RPT-12 adds a scoped count and a 101-item HTTP detail
+  assertion: 100 `items` plus `totalItems: 101`, while a foreign owner's count
+  is zero.
+- `npx vitest run packages/server/test/workspaces-console.e2e.test.ts` — PASS.
+  Real Chromium opens the collection and, after attaching one evidence row,
+  sees `1 item(s)` from the reported total.
+- `npm run check` — PASS (12 steps, after RPT-12);
+  `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
   — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),
   question privacy and opt-in, collection source snapshots, note opt-in,
@@ -66,8 +83,6 @@ question stays private unless explicitly opted in.
   — PASS (10 tests). Real Chromium downloads the stored answer report and
   confirms the claim, citation id, and source URL while the question stays out.
 - `npx tsc -p tsconfig.json --noEmit` — PASS.
-- `npm run check` — PASS (12 steps, after RPT-10 and RPT-11);
-  `npm run signals -- verify --set verification` — green.
 - Full-suite runs exposed a pre-existing browser-teardown hang: the console
   e2e left keep-alive sockets open, so `server.close()` exceeded the 30s hook
   budget after Chromium closed. Teardown now drops idle connections and the

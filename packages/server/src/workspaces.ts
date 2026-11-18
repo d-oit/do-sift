@@ -348,6 +348,7 @@ async function handleCollections(
         {
           collection: collectionView(detail.collection),
           items: detail.items,
+          totalItems: detail.totalItems ?? detail.items.length,
           notes: detail.notes.map(noteView),
         },
         httpRequestId,

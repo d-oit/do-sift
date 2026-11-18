@@ -19,6 +19,7 @@ import {
 import {
   createResearchServer,
   listen,
+  type CollectionDetailView,
   type CollectionView,
   type CollectionsHandlers,
   type CompareHandlers,
@@ -86,7 +87,11 @@ function collectionsFor(principal: {
     get: async (_ownerId, id) => {
       const collection = await repo.get(id);
       if (collection === undefined) return undefined;
-      const [items, notes] = await Promise.all([repo.items(id), repo.notes(id)]);
+      const [items, notes, totalItems] = await Promise.all([
+        repo.items(id),
+        repo.notes(id),
+        repo.countItems(id),
+      ]);
       return {
         collection,
         items: items.map((item) => ({
@@ -94,6 +99,7 @@ function collectionsFor(principal: {
           id: item.itemId,
           addedAt: item.addedAt,
         })),
+        totalItems,
         notes,
       };
     },
@@ -239,9 +245,11 @@ describe("collections routes (issue #168)", () => {
     ).json()) as {
       collection: CollectionView;
       items: Array<{ kind: string; id: string }>;
+      totalItems?: number | undefined;
       notes: Array<{ body: string; authorId: string }>;
     };
     expect(detail.items).toEqual([expect.objectContaining({ kind: "evidence", id: "psg-alpha" })]);
+    expect(detail.totalItems).toBe(1);
     expect(detail.notes[0]).toEqual(
       expect.objectContaining({
         body: "This disagrees with the other source.",
@@ -260,6 +268,20 @@ describe("collections routes (issue #168)", () => {
       200,
     );
     expect((await call("GET", "/api/collections", "token-member")).status).toBe(200);
+  });
+
+  it("reports the full attachment total while the listed items stay capped", async () => {
+    const collection = await createCollection("token-member", "Large collection");
+    const repo = new CollectionsRepository(client, "member-acme", "acme");
+    for (let i = 0; i < 101; i++) {
+      await repo.addItem(collection.id, "run", `run-${String(i).padStart(3, "0")}`);
+    }
+
+    const detail = (await (
+      await call("GET", `/api/collections/${collection.id}`, "token-member")
+    ).json()) as CollectionDetailView;
+    expect(detail.items).toHaveLength(100);
+    expect(detail.totalItems).toBe(101);
   });
 
   it("never exposes another owner's collection", async () => {

@@ -286,6 +286,12 @@ export interface CollectionView {
 export interface CollectionDetailView {
   collection: CollectionView;
   items: CollectionItemView[];
+  /**
+   * Total attachments in the collection. `items` is capped at
+   * `COLLECTION_LIST_MAX`, so a larger collection reports the true total here
+   * while listing only the first page. Optional for host compatibility.
+   */
+  totalItems?: number | undefined;
   notes: CollectionNoteView[];
 }
 

@@ -514,7 +514,11 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       get: async (ownerId, id) => {
         const collection = await repo.get(id);
         if (collection === undefined) return undefined;
-        const [items, notes] = await Promise.all([repo.items(id), repo.notes(id)]);
+        const [items, notes, totalItems] = await Promise.all([
+          repo.items(id),
+          repo.notes(id),
+          repo.countItems(id),
+        ]);
         return {
           collection,
           items: items.map((item) => ({
@@ -522,6 +526,7 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
             id: item.itemId,
             addedAt: item.addedAt,
           })),
+          totalItems,
           notes,
         };
       },

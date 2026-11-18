@@ -369,6 +369,17 @@ export class CollectionsRepository {
     return this.itemRows(res.rows);
   }
 
+  /** Total attachments in this scope, including rows beyond the detail cap. */
+  async countItems(collectionId: string): Promise<number> {
+    const res = await this.client.execute({
+      sql: `SELECT COUNT(*) AS total
+            FROM collection_items
+            WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?`,
+      args: [collectionId, this.tenantId, this.ownerId],
+    });
+    return Number(res.rows[0]?.["total"] ?? 0);
+  }
+
   /**
    * Every item reference in a collection, for report assembly. The collection
    * detail view deliberately stops at `COLLECTION_LIST_MAX`; an export must

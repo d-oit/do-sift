@@ -177,7 +177,9 @@ sources.
 - `GET /api/collections?limit=<1..100>&includeArchived=true|false` →
   `{ collections: [{ id, title, description, createdAt, updatedAt, archivedAt? }] }`
 - `POST /api/collections` with `{ title, description? }` → `201 { collection }`
-- `GET /api/collections/<id>` → `{ collection, items, notes }` (`404` if absent)
+- `GET /api/collections/<id>` → `{ collection, items, totalItems, notes }` (`404` if
+  absent). `items` is capped at 100; `totalItems` is the full attachment count,
+  so a larger collection is visibly truncated rather than silently cut.
 - `PATCH /api/collections/<id>` with `{ title?, description? }` → `{ updated: true }`
 - `DELETE /api/collections/<id>` archives it → `{ archived: true }`
 - `POST /api/collections/<id>/items` with `{ kind: "run"|"evidence", id }` → `204`;
@@ -238,7 +240,8 @@ annotations (including collection notes) are omitted unless the corresponding
 flag is `true`. Caller-supplied report bodies are bounded (100
 sources/claims/annotations, 8,000 characters per claim or note, 512 KiB request
 body). A stored collection export includes every attached reference, while the
-workspace detail view remains capped at 100 items. Responses carry
+workspace detail view remains capped at 100 items and reports the full count in
+`totalItems`. Responses carry
 `content-disposition: attachment`. A viewer role may export (read action);
 unauthenticated requests are `401`, malformed reports are `400`.
 
