@@ -16,6 +16,7 @@ question stays private unless explicitly opted in.
 | RPT-12 | Collection detail reports `totalItems`; the console shows shown-of-total when capped      | RPT-11; repository scope unchanged                                       |
 | RPT-13 | Cursor paging for collection items; the console loads pages beyond the first 100          | RPT-12; repository scope and snapshot rules unchanged                    |
 | RPT-14 | Bound stored collection report assembly; refuse an oversized export instead of truncating | RPT-11; report formatters and schema v1 unchanged                        |
+| RPT-15 | Carry a SHA-256 of the exact report artifact in the HTTP response and CLI receipt         | RPT-07/RPT-09; no report schema or formatter output change               |
 
 ## Boundaries
 
@@ -50,6 +51,10 @@ question stays private unless explicitly opted in.
   The detail response keeps its first page and exposes `nextCursor`; the
   separate `GET /api/collections/<id>/items` route serves subsequent pages, and
   the console appends them until `nextCursor` is absent.
+- Report exports expose a SHA-256 over the rendered bytes after privacy
+  options and sorting, not over the stored input. HTTP returns it as
+  `x-report-sha256`; CLI `--out` prints the same value. The digest is
+  metadata only: the report schema and formatter output stay unchanged.
 - The console sends only an answer id; the server authenticates the owner and
   resolves the answer in that owner's tenant.
 - One formatter dispatcher (`renderReport`) is shared by the HTTP route and
@@ -79,6 +84,9 @@ question stays private unless explicitly opted in.
 - A stored collection with 10,001 attachments is refused before formatting:
   the server returns `413`, and the CLI reports the same error with exit `1`.
   A collection at the ceiling still exports every attachment.
+- Every successful report export carries a lowercase 64-hex SHA-256 of the
+  exact body. The HTTP header and the CLI `--out` receipt agree with a
+  recomputation over the artifact for JSON, Markdown, HTML, and BibTeX.
 - `npm run check` and `npm run signals -- verify --set verification` pass.
 
 ## Evidence (2026-11-18)
@@ -100,7 +108,11 @@ question stays private unless explicitly opted in.
   — PASS (28 tests). The builder rejects 10,001 sources, the stored HTTP path
   answers `413`, `itemsUpTo` bounds the read and rejects a non-positive limit,
   and the real-browser collection flow still passes.
-- `npm run check` — PASS (12 steps, after RPT-14);
+- RPT-15: `npx vitest run packages/server/test/reports-export.test.ts apps/cli/test/cli.test.ts`
+  — PASS (51 tests). The HTTP `x-report-sha256` matches a recomputation over
+  the exact JSON, Markdown, HTML, and BibTeX bodies, and both CLI `--out`
+  paths print the same digest for the written file.
+- `npm run check` — PASS (12 steps, after RPT-15);
   `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
   — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),

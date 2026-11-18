@@ -9,6 +9,7 @@
  * or adds evidence. The question and annotations remain private unless the
  * request opts in, as with the CLI exporter.
  */
+import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DEFAULT_TENANT_ID, roleAllows } from "@do-sift/contracts";
 import {
@@ -259,10 +260,12 @@ export async function handleReportExport(
       includeQuestion: body["includeQuestion"] === true,
       includeAnnotations: body["includeAnnotations"] === true,
     });
+    const sha256 = createHash("sha256").update(rendered.body, "utf8").digest("hex");
     res.writeHead(200, {
       "content-type": rendered.contentType,
       "content-disposition": `attachment; filename="report.${rendered.extension}"`,
       "cache-control": "no-store",
+      "x-report-sha256": sha256,
       "x-request-id": httpRequestId,
     });
     res.end(rendered.body);

@@ -1,4 +1,5 @@
 import { createClient, type Client } from "@libsql/client";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -503,7 +504,11 @@ describe("do-sift CLI (#67)", () => {
           deps(),
         ),
       ).toBe(0);
-      const parsed = JSON.parse(await readFile(out, "utf8")) as {
+      const content = await readFile(out, "utf8");
+      expect(stdout.join("\n")).toContain(
+        `sha256 ${createHash("sha256").update(content, "utf8").digest("hex")}`,
+      );
+      const parsed = JSON.parse(content) as {
         question?: string;
         claims: Array<{ text: string; citations: string[] }>;
         sources: Array<{ url: string }>;
@@ -664,7 +669,11 @@ describe("do-sift CLI (#67)", () => {
           deps(),
         ),
       ).toBe(0);
-      const parsed = JSON.parse(await readFile(out, "utf8")) as {
+      const content = await readFile(out, "utf8");
+      expect(stdout.join("\n")).toContain(
+        `sha256 ${createHash("sha256").update(content, "utf8").digest("hex")}`,
+      );
+      const parsed = JSON.parse(content) as {
         collection?: { title: string; description?: string };
         sources: Array<{ id: string; url: string }>;
         annotations: Array<{ body: string }>;

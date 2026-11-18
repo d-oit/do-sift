@@ -3,6 +3,7 @@
  * report with the shared pure formatters; it reads no corpus rows, so these
  * tests use a bare server with a single authenticated owner.
  */
+import { createHash } from "node:crypto";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthError } from "@do-sift/auth";
@@ -113,9 +114,22 @@ describe("report export route (issue #170)", () => {
     expect(response.headers.get("content-type")).toContain("text/markdown");
     expect(response.headers.get("content-disposition")).toContain('filename="report.md"');
     const text = await response.text();
+    expect(response.headers.get("x-report-sha256")).toBe(
+      createHash("sha256").update(text, "utf8").digest("hex"),
+    );
     expect(text).toContain("https://example.test/page");
     expect(text).not.toContain("private research question");
     expect(text).not.toContain("private owner note");
+  });
+
+  it("carries the exact artifact digest for every format", async () => {
+    for (const format of ["json", "markdown", "html", "bibtex"] as const) {
+      const response = await post({ format, report: REPORT });
+      const text = await response.text();
+      expect(response.headers.get("x-report-sha256")).toBe(
+        createHash("sha256").update(text, "utf8").digest("hex"),
+      );
+    }
   });
 
   it("includes the question and annotations only when explicitly opted in", async () => {

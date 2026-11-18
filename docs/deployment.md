@@ -174,7 +174,8 @@ for `report answer`), and raw page contents (`documents.raw_text`) or passages a
 reference (not only the first 100 shown in the workspace view) up to the
 10,000-attachment safety ceiling, and only snapshotted evidence; above the
 ceiling it exits `1` rather than truncating. It omits owner notes unless
-`--include-annotations`; `collections backfill` snapshots provenance for evidence references attached before migration 0015;
+`--include-annotations`; when `--out` is used, the command prints the
+lowercase SHA-256 of the written bytes; `collections backfill` snapshots provenance for evidence references attached before migration 0015;
 `--dry-run` reports the counts without writing. Exit codes: `0` success, `2` usage error, `1` runtime error.
 
 ### Retention and maintenance policy

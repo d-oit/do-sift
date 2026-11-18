@@ -5,6 +5,7 @@
  * Every data command requires an explicit --owner, so ownership scoping is never implicit.
  */
 import type { Client } from "@libsql/client";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import {
@@ -64,6 +65,10 @@ const BOOLEAN_FLAGS = new Set([
   "confirm",
   "prune-collections",
 ]);
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
 
 function reportFormat(flags: Map<string, string>): ReportFormat {
   const format = flags.get("format") ?? "markdown";
@@ -593,7 +598,9 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       if (out !== undefined && out !== "") {
         const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
         await write(out, rendered.body);
-        deps.out(`exported ${format} report for ${answerId} to ${out}`);
+        deps.out(
+          `exported ${format} report for ${answerId} to ${out}; sha256 ${sha256Hex(rendered.body)}`,
+        );
         return 0;
       }
       deps.out(rendered.body.trimEnd());
@@ -653,7 +660,9 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       if (out !== undefined && out !== "") {
         const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
         await write(out, rendered.body);
-        deps.out(`exported ${format} report for collection ${collectionId} to ${out}`);
+        deps.out(
+          `exported ${format} report for collection ${collectionId} to ${out}; sha256 ${sha256Hex(rendered.body)}`,
+        );
         return 0;
       }
       deps.out(rendered.body.trimEnd());

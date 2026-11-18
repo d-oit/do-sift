@@ -248,7 +248,8 @@ body). A stored collection export includes every attached reference up to the
 10,000-attachment safety ceiling; a larger collection answers `413` rather
 than truncating. The workspace detail view remains capped at 100 items and
 reports the full count in `totalItems`. Responses carry
-`content-disposition: attachment`. A viewer role may export (read action);
+`content-disposition: attachment` and `x-report-sha256`, the lowercase
+SHA-256 of the exact response body. A viewer role may export (read action);
 unauthenticated requests are `401`, malformed reports are `400`.
 
 ## Health
