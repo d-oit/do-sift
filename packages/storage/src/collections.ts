@@ -37,6 +37,17 @@ export interface CollectionItemRow {
   evidenceFetchedAt?: string | undefined;
 }
 
+export interface CollectionItemCursor {
+  addedAt: string;
+  itemKind: CollectionItemKind;
+  itemId: string;
+}
+
+export interface CollectionItemPage {
+  items: CollectionItemRow[];
+  hasMore: boolean;
+}
+
 export interface CollectionBackfillReceipt {
   /** Evidence references with no stored URL snapshot at scan time. */
   scanned: number;
@@ -354,19 +365,52 @@ export class CollectionsRepository {
     });
   }
 
-  async items(collectionId: string, limit = COLLECTION_LIST_MAX): Promise<CollectionItemRow[]> {
+  private assertItemLimit(limit: number): void {
     if (!Number.isInteger(limit) || limit < 1 || limit > COLLECTION_LIST_MAX) {
       throw new Error(`limit must be an integer from 1 to ${COLLECTION_LIST_MAX}`);
     }
-    const res = await this.client.execute({
-      sql: `SELECT collection_id, item_kind, item_id, added_at,
-                   evidence_url, evidence_title, evidence_fetched_at
-            FROM collection_items
-            WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
-            ORDER BY added_at, item_kind, item_id LIMIT ?`,
-      args: [collectionId, this.tenantId, this.ownerId, limit],
-    });
+  }
+
+  private async selectItems(
+    collectionId: string,
+    limit?: number,
+    after?: CollectionItemCursor,
+  ): Promise<CollectionItemRow[]> {
+    const conditions = ["collection_id = ?", "tenant_id = ?", "owner_id = ?"];
+    const args: Array<string | number> = [collectionId, this.tenantId, this.ownerId];
+    if (after !== undefined) {
+      conditions.push(
+        "(added_at > ? OR (added_at = ? AND (item_kind > ? OR (item_kind = ? AND item_id > ?))))",
+      );
+      args.push(after.addedAt, after.addedAt, after.itemKind, after.itemKind, after.itemId);
+    }
+    let sql = `SELECT collection_id, item_kind, item_id, added_at,
+                      evidence_url, evidence_title, evidence_fetched_at
+               FROM collection_items
+               WHERE ${conditions.join(" AND ")}
+               ORDER BY added_at, item_kind, item_id`;
+    if (limit !== undefined) {
+      sql += " LIMIT ?";
+      args.push(limit);
+    }
+    const res = await this.client.execute({ sql, args });
     return this.itemRows(res.rows);
+  }
+
+  async items(collectionId: string, limit = COLLECTION_LIST_MAX): Promise<CollectionItemRow[]> {
+    this.assertItemLimit(limit);
+    return this.selectItems(collectionId, limit);
+  }
+
+  /** One stable page after the caller's last `(addedAt, kind, id)` attachment. */
+  async itemsPage(
+    collectionId: string,
+    limit = COLLECTION_LIST_MAX,
+    after?: CollectionItemCursor,
+  ): Promise<CollectionItemPage> {
+    this.assertItemLimit(limit);
+    const rows = await this.selectItems(collectionId, limit + 1, after);
+    return { items: rows.slice(0, limit), hasMore: rows.length > limit };
   }
 
   /** Total attachments in this scope, including rows beyond the detail cap. */
@@ -386,15 +430,7 @@ export class CollectionsRepository {
    * not silently omit later attachments, so this read has no limit.
    */
   async allItems(collectionId: string): Promise<CollectionItemRow[]> {
-    const res = await this.client.execute({
-      sql: `SELECT collection_id, item_kind, item_id, added_at,
-                   evidence_url, evidence_title, evidence_fetched_at
-            FROM collection_items
-            WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
-            ORDER BY added_at, item_kind, item_id`,
-      args: [collectionId, this.tenantId, this.ownerId],
-    });
-    return this.itemRows(res.rows);
+    return this.selectItems(collectionId);
   }
 
   /** Owner-authored note; `authorId` may name a member, never an evidence row. */

@@ -36,7 +36,7 @@ Failed authentication returns `401` with a JSON error. Owners outside
 | GET              | `/api/evidence`                               | Newest stored sources of the caller's own corpus           |     | GET  | `/api/answers` | Newest stored answers of the caller's own corpus         |
 | GET/POST         | `/api/collections`                            | List or create the caller's collections                    |
 | GET/PATCH/DELETE | `/api/collections/<id>`                       | Read, rename, or archive one collection                    |
-| POST             | `/api/collections/<id>/items`                 | Reference an existing run or evidence id                   |
+| GET/POST         | `/api/collections/<id>/items`                 | Page or reference collection attachments                   |
 | DELETE           | `/api/collections/<id>/items/<kind>/<itemId>` | Drop a reference                                           |
 | GET/POST         | `/api/collections/<id>/notes`                 | List or add owner-authored notes                           |
 | DELETE           | `/api/collections/<id>/notes/<noteId>`        | Delete a note                                              |     | POST | `/api/compare` | Deterministic side-by-side comparison of stored passages |     | GET | `/workspaces` | Static workspaces console (served only when the workspace routes are configured) |
@@ -177,11 +177,16 @@ sources.
 - `GET /api/collections?limit=<1..100>&includeArchived=true|false` →
   `{ collections: [{ id, title, description, createdAt, updatedAt, archivedAt? }] }`
 - `POST /api/collections` with `{ title, description? }` → `201 { collection }`
-- `GET /api/collections/<id>` → `{ collection, items, totalItems, notes }` (`404` if
-  absent). `items` is capped at 100; `totalItems` is the full attachment count,
-  so a larger collection is visibly truncated rather than silently cut.
+- `GET /api/collections/<id>` → `{ collection, items, totalItems, nextCursor?, notes }`
+  (`404` if absent). `items` is capped at 100; `totalItems` is the full
+  attachment count, and `nextCursor` continues the list when it is truncated.
 - `PATCH /api/collections/<id>` with `{ title?, description? }` → `{ updated: true }`
 - `DELETE /api/collections/<id>` archives it → `{ archived: true }`
+- `GET /api/collections/<id>/items?limit=<1..100>&cursor=<opaque>` →
+  `{ items, totalItems, nextCursor? }` (`404` if absent). The cursor is issued
+  by the server, carries no authority, and only moves within the caller's own
+  collection; a malformed cursor is `400`. Items are ordered by attachment
+  time, kind, and id, so ties page without repeats or gaps.
 - `POST /api/collections/<id>/items` with `{ kind: "run"|"evidence", id }` → `204`;
   `409` when the collection is archived
 - `DELETE /api/collections/<id>/items/<kind>/<itemId>` → `204` or `404`

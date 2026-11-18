@@ -14,6 +14,7 @@ question stays private unless explicitly opted in.
 | RPT-10 | Collection identity in reports: optional title/description through every formatter     | RPT-09; report schema v1 remains backward-compatible (optional field)    |
 | RPT-11 | Collection exports read every attachment; the detail view keeps its 100-item cap       | RPT-09; repository scope and snapshot rules unchanged                    |
 | RPT-12 | Collection detail reports `totalItems`; the console shows shown-of-total when capped   | RPT-11; repository scope unchanged                                       |
+| RPT-13 | Cursor paging for collection items; the console loads pages beyond the first 100       | RPT-12; repository scope and snapshot rules unchanged                    |
 
 ## Boundaries
 
@@ -34,6 +35,13 @@ question stays private unless explicitly opted in.
   plus a scoped `countItems` so its response can expose the true `totalItems`.
   The console renders `N of M item(s) shown` and points at the complete export
   when the list is truncated.
+- `itemsPage` orders by `(added_at, item_kind, item_id)` and pages strictly
+  after the caller's last tuple, so equal timestamps neither repeat nor skip.
+  It reads one extra row to decide `hasMore`; the five-field cursor is opaque,
+  scoped by the repository's `(tenant, owner)`, and malformed input is a 400.
+  The detail response keeps its first page and exposes `nextCursor`; the
+  separate `GET /api/collections/<id>/items` route serves subsequent pages, and
+  the console appends them until `nextCursor` is absent.
 - The console sends only an answer id; the server authenticates the owner and
   resolves the answer in that owner's tenant.
 - One formatter dispatcher (`renderReport`) is shared by the HTTP route and
@@ -56,6 +64,10 @@ question stays private unless explicitly opted in.
 - A 101-item collection returns 100 `items` and `totalItems: 101`; a foreign
   owner's count is zero. The console shows the full count and a truncation hint
   instead of implying the first page is the whole collection.
+- The follow-up items page returns the 101st attachment and no `nextCursor`;
+  a malformed cursor or invalid limit is `400`, and an unknown/foreign
+  collection is `404`. The console's **Load more** control appends the page,
+  updates the count to `101 item(s)`, and disappears when complete.
 - `npm run check` and `npm run signals -- verify --set verification` pass.
 
 ## Evidence (2026-11-18)
@@ -68,7 +80,12 @@ question stays private unless explicitly opted in.
   Real Chromium opens the collection and, after attaching one evidence row,
   sees `1 item(s)` from the reported total; a second collection with 101
   references renders `100 of 101 item(s) shown` plus the export hint.
-- `npm run check` — PASS (12 steps, after RPT-12);
+- RPT-13: `npx vitest run packages/storage/test/collections.test.ts packages/server/test/workspaces.test.ts packages/server/test/workspaces-console.e2e.test.ts`
+  — PASS (23 tests). The cursor pages 101 items as 100 + 1 with no repeat,
+  malformed cursors and invalid limits answer `400`, a foreign owner answers
+  `404`, and the console's **Load more** appends `run-large-100`, updates the
+  count to `101 item(s)`, and hides the control.
+- `npm run check` — PASS (12 steps, after RPT-13);
   `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
   — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),

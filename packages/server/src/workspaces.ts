@@ -168,6 +168,44 @@ function parseLimit(rawUrl: string | undefined, fallback: number, max: number): 
   return limit;
 }
 
+function encodeItemCursor(item: { addedAt: string; kind: "run" | "evidence"; id: string }): string {
+  return Buffer.from(JSON.stringify([item.addedAt, item.kind, item.id]), "utf8").toString(
+    "base64url",
+  );
+}
+
+/** Decode an opaque item cursor; malformed input is a 400, never ignored. */
+function parseItemCursor(
+  rawUrl: string | undefined,
+): { addedAt: string; kind: "run" | "evidence"; id: string } | undefined {
+  if (rawUrl === undefined) return undefined;
+  const raw = new URL(rawUrl, "http://localhost").searchParams.get("cursor");
+  if (raw === null || raw === "") return undefined;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as unknown;
+  } catch {
+    throw new HttpRequestError(400, "cursor is not a value this server issued");
+  }
+  if (!Array.isArray(decoded) || decoded.length !== 3) {
+    throw new HttpRequestError(400, "cursor is not a value this server issued");
+  }
+  const [addedAt, kind, id] = decoded as unknown[];
+  if (
+    typeof addedAt !== "string" ||
+    addedAt === "" ||
+    addedAt.length > 64 ||
+    typeof kind !== "string" ||
+    !(ITEM_KINDS as readonly string[]).includes(kind) ||
+    typeof id !== "string" ||
+    id === "" ||
+    id.length > 128
+  ) {
+    throw new HttpRequestError(400, "cursor is not a value this server issued");
+  }
+  return { addedAt, kind: kind as "run" | "evidence", id };
+}
+
 function requireId(raw: string | undefined, label: string): string {
   if (raw === undefined || !ID.test(raw)) {
     throw new HttpRequestError(400, `${label} is not a valid id`);
@@ -342,13 +380,18 @@ async function handleCollections(
         jsonError(res, 404, "not found", httpRequestId, req);
         return;
       }
+      const totalItems = detail.totalItems ?? detail.items.length;
+      const last = detail.items[detail.items.length - 1];
+      const nextCursor =
+        detail.items.length < totalItems && last !== undefined ? encodeItemCursor(last) : undefined;
       json(
         res,
         200,
         {
           collection: collectionView(detail.collection),
           items: detail.items,
-          totalItems: detail.totalItems ?? detail.items.length,
+          totalItems,
+          ...(nextCursor === undefined ? {} : { nextCursor }),
           notes: detail.notes.map(noteView),
         },
         httpRequestId,
@@ -390,8 +433,34 @@ async function handleCollections(
   }
 
   if (route.kind === "items") {
+    if (req.method === "GET") {
+      if (rejectBodyOnBodylessRoute(req, res, httpRequestId)) return;
+      const limit = parseLimit(req.url, 50, 100);
+      const cursor = parseItemCursor(req.url);
+      const page = await handlers.items(ownerId, route.id, {
+        limit,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      if (page === undefined) {
+        jsonError(res, 404, "not found", httpRequestId, req);
+        return;
+      }
+      const last = page.items[page.items.length - 1];
+      const nextCursor = page.hasMore && last !== undefined ? encodeItemCursor(last) : undefined;
+      json(
+        res,
+        200,
+        {
+          items: page.items,
+          totalItems: page.totalItems,
+          ...(nextCursor === undefined ? {} : { nextCursor }),
+        },
+        httpRequestId,
+      );
+      return;
+    }
     if (req.method !== "POST") {
-      allow(res, ["POST"]);
+      allow(res, ["GET", "POST"]);
       jsonError(res, 405, "method not allowed", httpRequestId, req);
       return;
     }

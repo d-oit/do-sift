@@ -81,6 +81,31 @@ function collectionsFor(principal: {
         notes,
       };
     },
+    items: async (_ownerId, id, options) => {
+      const collection = await repo.get(id);
+      if (collection === undefined) return undefined;
+      const after =
+        options.cursor === undefined
+          ? undefined
+          : {
+              addedAt: options.cursor.addedAt,
+              itemKind: options.cursor.kind,
+              itemId: options.cursor.id,
+            };
+      const [page, totalItems] = await Promise.all([
+        repo.itemsPage(id, options.limit, after),
+        repo.countItems(id),
+      ]);
+      return {
+        items: page.items.map((item) => ({
+          kind: item.itemKind,
+          id: item.itemId,
+          addedAt: item.addedAt,
+        })),
+        totalItems,
+        hasMore: page.hasMore,
+      };
+    },
     update: (_ownerId, id, changes) => {
       const next: { title?: string; description?: string } = {};
       if (changes.title !== undefined) next.title = changes.title;
@@ -360,6 +385,12 @@ describe("workspaces console (real browser)", () => {
       .click();
     await waitForText(page, "#collection-detail", "100 of 101 item(s) shown");
     await waitForText(page, "#collection-detail", "Download the collection report");
+    await page.getByRole("button", { name: "Load more" }).click();
+    await waitForText(page, "#collection-detail", "run-large-100");
+    await page.waitForFunction(
+      'document.querySelector("#collection-detail .meta")?.textContent?.includes("· 101 item(s)") === true',
+    );
+    await page.getByRole("button", { name: "Load more" }).waitFor({ state: "hidden" });
 
     expect(errors).toEqual([]);
     await page.close();

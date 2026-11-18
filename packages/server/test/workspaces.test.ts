@@ -103,6 +103,31 @@ function collectionsFor(principal: {
         notes,
       };
     },
+    items: async (_ownerId, id, options) => {
+      const collection = await repo.get(id);
+      if (collection === undefined) return undefined;
+      const after =
+        options.cursor === undefined
+          ? undefined
+          : {
+              addedAt: options.cursor.addedAt,
+              itemKind: options.cursor.kind,
+              itemId: options.cursor.id,
+            };
+      const [page, totalItems] = await Promise.all([
+        repo.itemsPage(id, options.limit, after),
+        repo.countItems(id),
+      ]);
+      return {
+        items: page.items.map((item) => ({
+          kind: item.itemKind,
+          id: item.itemId,
+          addedAt: item.addedAt,
+        })),
+        totalItems,
+        hasMore: page.hasMore,
+      };
+    },
     update: (_ownerId, id, changes) => {
       const next: { title?: string; description?: string } = {};
       if (changes.title !== undefined) next.title = changes.title;
@@ -279,9 +304,49 @@ describe("collections routes (issue #168)", () => {
 
     const detail = (await (
       await call("GET", `/api/collections/${collection.id}`, "token-member")
-    ).json()) as CollectionDetailView;
+    ).json()) as CollectionDetailView & { nextCursor?: string | undefined };
     expect(detail.items).toHaveLength(100);
     expect(detail.totalItems).toBe(101);
+    expect(detail.nextCursor).toEqual(expect.any(String));
+
+    const firstPage = (await (
+      await call("GET", `/api/collections/${collection.id}/items?limit=100`, "token-member")
+    ).json()) as {
+      items: Array<{ kind: string; id: string }>;
+      totalItems: number;
+      nextCursor?: string | undefined;
+    };
+    expect(firstPage.items).toHaveLength(100);
+    expect(firstPage.totalItems).toBe(101);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+
+    const secondPage = (await (
+      await call(
+        "GET",
+        `/api/collections/${collection.id}/items?limit=100&cursor=${encodeURIComponent(firstPage.nextCursor ?? "")}`,
+        "token-member",
+      )
+    ).json()) as {
+      items: Array<{ kind: string; id: string }>;
+      totalItems: number;
+      nextCursor?: string | undefined;
+    };
+    expect(secondPage.items).toEqual([expect.objectContaining({ kind: "run", id: "run-100" })]);
+    expect(secondPage.totalItems).toBe(101);
+    expect(secondPage.nextCursor).toBeUndefined();
+
+    expect(
+      (await call("GET", `/api/collections/${collection.id}/items?limit=0`, "token-member")).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(
+          "GET",
+          `/api/collections/${collection.id}/items?cursor=not-a-cursor`,
+          "token-member",
+        )
+      ).status,
+    ).toBe(400);
   });
 
   it("never exposes another owner's collection", async () => {
@@ -293,6 +358,9 @@ describe("collections routes (issue #168)", () => {
     expect((await call("GET", `/api/collections/${collection.id}`, "token-other")).status).toBe(
       404,
     );
+    expect(
+      (await call("GET", `/api/collections/${collection.id}/items`, "token-other")).status,
+    ).toBe(404);
     expect(
       (
         await call("PATCH", `/api/collections/${collection.id}`, "token-other", {

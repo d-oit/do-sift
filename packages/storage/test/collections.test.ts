@@ -86,6 +86,19 @@ describe("collections repository", () => {
     expect(all).toHaveLength(101);
     expect(all.at(-1)?.itemId).toBe("run-100");
     expect(await new CollectionsRepository(client, "owner-b").countItems(collection.id)).toBe(0);
+
+    const first = await repo.itemsPage(collection.id, 100);
+    expect(first.items).toHaveLength(100);
+    expect(first.hasMore).toBe(true);
+    const last = first.items.at(-1);
+    if (last === undefined) throw new Error("expected a first-page item");
+    const second = await repo.itemsPage(collection.id, 100, {
+      addedAt: last.addedAt,
+      itemKind: last.itemKind,
+      itemId: last.itemId,
+    });
+    expect(second.items.map((item) => item.itemId)).toEqual(["run-100"]);
+    expect(second.hasMore).toBe(false);
   });
 
   it("snapshots resolvable evidence provenance for report assembly", async () => {
@@ -183,6 +196,7 @@ describe("collections repository", () => {
     const collection = await repo.create("ok");
     await expect(repo.addNote(collection.id, "x".repeat(8001))).rejects.toThrow(/note body/u);
     await expect(repo.list({ limit: 0 })).rejects.toThrow(/limit/u);
+    await expect(repo.itemsPage(collection.id, 0)).rejects.toThrow(/limit/u);
     await expect(repo.create("archived")).resolves.toBeDefined();
     const archived = await repo.create("archived-2");
     await repo.archive(archived.id);

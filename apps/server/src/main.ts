@@ -530,6 +530,31 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
           notes,
         };
       },
+      items: async (ownerId, id, options) => {
+        const collection = await repo.get(id);
+        if (collection === undefined) return undefined;
+        const after =
+          options.cursor === undefined
+            ? undefined
+            : {
+                addedAt: options.cursor.addedAt,
+                itemKind: options.cursor.kind,
+                itemId: options.cursor.id,
+              };
+        const [page, totalItems] = await Promise.all([
+          repo.itemsPage(id, options.limit, after),
+          repo.countItems(id),
+        ]);
+        return {
+          items: page.items.map((item) => ({
+            kind: item.itemKind,
+            id: item.itemId,
+            addedAt: item.addedAt,
+          })),
+          totalItems,
+          hasMore: page.hasMore,
+        };
+      },
       update: (ownerId, id, changes) => {
         const next: { title?: string; description?: string } = {};
         if (changes.title !== undefined) next.title = changes.title;
