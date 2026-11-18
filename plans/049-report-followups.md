@@ -46,3 +46,9 @@ question stays private unless explicitly opted in.
 - `npx tsc -p tsconfig.json --noEmit` — PASS.
 - `npm run check` — PASS (12 steps); `npm run signals -- verify --set verification`
   — green.
+- Remote CI on PR #179: Windows and macOS check/analytics jobs pass. Linux check
+  and analytics jobs plus the container job stop in `npm ci` before building:
+  onnxruntime-node 1.21.0 returns 404 for both Linux release tarballs. The
+  latest `main` run fails identically, so this is an external dependency
+  outage, not this change. No workflow was modified; rerun after the binaries
+  are reachable again.
