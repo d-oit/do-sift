@@ -8,6 +8,7 @@ import type { Client } from "@libsql/client";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import {
   DEFAULT_TENANT_ID,
   MIN_MEMBER_CHANGE_RETENTION_DAYS,
@@ -46,8 +47,8 @@ const USAGE = `usage: do-sift-cli <command> [options]
   research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question] [--tenant <id>]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>] [--tenant <id>]
   analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
-  report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--tenant <id>]
-  report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--tenant <id>]
+  report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--checksum] [--tenant <id>]
+  report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--checksum] [--tenant <id>]
   collections backfill --owner <id> [--collection <id>] [--dry-run] [--tenant <id>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
@@ -61,6 +62,7 @@ const BOOLEAN_FLAGS = new Set([
   "show-question",
   "include-question",
   "include-annotations",
+  "checksum",
   "dry-run",
   "confirm",
   "prune-collections",
@@ -68,6 +70,14 @@ const BOOLEAN_FLAGS = new Set([
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+async function writeChecksumSidecar(
+  write: (path: string, content: string) => Promise<void>,
+  out: string,
+  body: string,
+): Promise<void> {
+  await write(`${out}.sha256`, `${sha256Hex(body)}  ${basename(out)}\n`);
 }
 
 function reportFormat(flags: Map<string, string>): ReportFormat {
@@ -595,9 +605,14 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         includeAnnotations: false,
       });
       const out = flags.get("out");
+      const writeChecksum = flags.get("checksum") === "true";
+      if (writeChecksum && (out === undefined || out === "")) {
+        throw new CliUsageError("--checksum requires --out");
+      }
       if (out !== undefined && out !== "") {
         const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
         await write(out, rendered.body);
+        if (writeChecksum) await writeChecksumSidecar(write, out, rendered.body);
         deps.out(
           `exported ${format} report for ${answerId} to ${out}; sha256 ${sha256Hex(rendered.body)}`,
         );
@@ -657,9 +672,14 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         includeAnnotations: flags.get("include-annotations") === "true",
       });
       const out = flags.get("out");
+      const writeChecksum = flags.get("checksum") === "true";
+      if (writeChecksum && (out === undefined || out === "")) {
+        throw new CliUsageError("--checksum requires --out");
+      }
       if (out !== undefined && out !== "") {
         const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
         await write(out, rendered.body);
+        if (writeChecksum) await writeChecksumSidecar(write, out, rendered.body);
         deps.out(
           `exported ${format} report for collection ${collectionId} to ${out}; sha256 ${sha256Hex(rendered.body)}`,
         );

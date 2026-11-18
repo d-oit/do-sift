@@ -500,14 +500,15 @@ describe("do-sift CLI (#67)", () => {
             "json",
             "--out",
             out,
+            "--checksum",
           ],
           deps(),
         ),
       ).toBe(0);
       const content = await readFile(out, "utf8");
-      expect(stdout.join("\n")).toContain(
-        `sha256 ${createHash("sha256").update(content, "utf8").digest("hex")}`,
-      );
+      const digest = createHash("sha256").update(content, "utf8").digest("hex");
+      expect(stdout.join("\n")).toContain(`sha256 ${digest}`);
+      expect(await readFile(`${out}.sha256`, "utf8")).toBe(`${digest}  report.json\n`);
       const parsed = JSON.parse(content) as {
         question?: string;
         claims: Array<{ text: string; citations: string[] }>;
@@ -537,6 +538,17 @@ describe("do-sift CLI (#67)", () => {
           deps(),
         ),
       ).toBe(1);
+    });
+
+    it("requires --out when --checksum is requested", async () => {
+      const answerId = await seedAnswer();
+      expect(
+        await runCli(
+          ["report", "answer", "--owner", "alice", "--answer", answerId, "--checksum"],
+          deps(),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("--checksum requires --out");
     });
 
     it("rejects unknown answers, other owners' answers, and unsupported formats", async () => {
@@ -665,14 +677,15 @@ describe("do-sift CLI (#67)", () => {
             "--include-annotations",
             "--out",
             out,
+            "--checksum",
           ],
           deps(),
         ),
       ).toBe(0);
       const content = await readFile(out, "utf8");
-      expect(stdout.join("\n")).toContain(
-        `sha256 ${createHash("sha256").update(content, "utf8").digest("hex")}`,
-      );
+      const digest = createHash("sha256").update(content, "utf8").digest("hex");
+      expect(stdout.join("\n")).toContain(`sha256 ${digest}`);
+      expect(await readFile(`${out}.sha256`, "utf8")).toBe(`${digest}  collection.json\n`);
       const parsed = JSON.parse(content) as {
         collection?: { title: string; description?: string };
         sources: Array<{ id: string; url: string }>;

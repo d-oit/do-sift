@@ -159,8 +159,8 @@ npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:
 npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
-npx tsx apps/cli/src/index.ts report answer --owner <id> --answer <id> [--format json|markdown|html|bibtex] [--include-question] [--out report.md] --db file:do-sift.db
-npx tsx apps/cli/src/index.ts report collection --owner <id> --collection <id> [--format json|markdown|html|bibtex] [--include-annotations] [--out report.md] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report answer --owner <id> --answer <id> [--format json|markdown|html|bibtex] [--include-question] [--out report.md] [--checksum] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report collection --owner <id> --collection <id> [--format json|markdown|html|bibtex] [--include-annotations] [--out report.md] [--checksum] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts collections backfill --owner <id> [--collection <id>] [--dry-run] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--prune-collections] [--out receipt.json] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
@@ -175,7 +175,10 @@ reference (not only the first 100 shown in the workspace view) up to the
 10,000-attachment safety ceiling, and only snapshotted evidence; above the
 ceiling it exits `1` rather than truncating. It omits owner notes unless
 `--include-annotations`; when `--out` is used, the command prints the
-lowercase SHA-256 of the written bytes; `collections backfill` snapshots provenance for evidence references attached before migration 0015;
+lowercase SHA-256 of the written bytes, and `--checksum` also writes
+`<out>.sha256` in `sha256sum` format (`<hex>  <basename>`). `--checksum`
+requires `--out`; if the sidecar cannot be written, the report remains and
+the command exits `1`; `collections backfill` snapshots provenance for evidence references attached before migration 0015;
 `--dry-run` reports the counts without writing. Exit codes: `0` success, `2` usage error, `1` runtime error.
 
 ### Retention and maintenance policy

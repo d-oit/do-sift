@@ -17,6 +17,7 @@ question stays private unless explicitly opted in.
 | RPT-13 | Cursor paging for collection items; the console loads pages beyond the first 100          | RPT-12; repository scope and snapshot rules unchanged                    |
 | RPT-14 | Bound stored collection report assembly; refuse an oversized export instead of truncating | RPT-11; report formatters and schema v1 unchanged                        |
 | RPT-15 | Carry a SHA-256 of the exact report artifact in the HTTP response and CLI receipt         | RPT-07/RPT-09; no report schema or formatter output change               |
+| RPT-16 | Durable `<out>.sha256` sidecar for CLI report exports, opt-in via `--checksum`            | RPT-15; existing `--out` behavior unchanged                              |
 
 ## Boundaries
 
@@ -55,6 +56,11 @@ question stays private unless explicitly opted in.
   options and sorting, not over the stored input. HTTP returns it as
   `x-report-sha256`; CLI `--out` prints the same value. The digest is
   metadata only: the report schema and formatter output stay unchanged.
+- `--checksum` is opt-in and requires `--out`. It writes
+  `<out>.sha256` as `<hex>  <basename>\n`, matching `sha256sum`; the sidecar is
+  created as a new file, never overwritten. The report is written first, so a
+  sidecar failure leaves the report and exits `1`. Without the flag, CLI
+  output and files are byte-for-byte unchanged.
 - The console sends only an answer id; the server authenticates the owner and
   resolves the answer in that owner's tenant.
 - One formatter dispatcher (`renderReport`) is shared by the HTTP route and
@@ -87,6 +93,10 @@ question stays private unless explicitly opted in.
 - Every successful report export carries a lowercase 64-hex SHA-256 of the
   exact body. The HTTP header and the CLI `--out` receipt agree with a
   recomputation over the artifact for JSON, Markdown, HTML, and BibTeX.
+- `report answer --out ... --checksum` and `report collection --out ...
+--checksum` write a sidecar whose contents are the digest, two spaces, and
+  the report basename. `--checksum` without `--out` is a usage error (`2`).
+  Existing `--out` exports remain unchanged when the flag is absent.
 - `npm run check` and `npm run signals -- verify --set verification` pass.
 
 ## Evidence (2026-11-18)
@@ -112,7 +122,10 @@ question stays private unless explicitly opted in.
   — PASS (51 tests). The HTTP `x-report-sha256` matches a recomputation over
   the exact JSON, Markdown, HTML, and BibTeX bodies, and both CLI `--out`
   paths print the same digest for the written file.
-- `npm run check` — PASS (12 steps, after RPT-15);
+- RPT-16: `npx vitest run apps/cli/test/cli.test.ts` — PASS (40 tests). Both
+  report commands write `<digest>  <basename>\n` to `<out>.sha256`; `--checksum`
+  without `--out` exits `2`, and exports without the flag remain unchanged.
+- `npm run check` — PASS (12 steps, after RPT-16);
   `npm run signals -- verify --set verification` — green.
 - `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
   — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),
