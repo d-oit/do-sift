@@ -1,6 +1,6 @@
 # Plan 051 — Remove the `minimatch` override (R-20)
 
-Status: in-progress (2026-11-19). Owner: maintainer.
+Status: done (2026-11-19). Owner: maintainer. Merged as #185; R-20 closed, `npm audit` clean.
 
 Plan 043 fixed Dependabot alert #18 (`minimatch` GHSA-g3hv-75wg-m249) with a
 temporary npm `overrides` entry (`minimatch: ^11.0.5`), because no
