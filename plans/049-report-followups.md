@@ -1,5 +1,8 @@
 # Plan 049 — report follow-ups (2026-11-18)
 
+Status: done (2026-11-19). Owner: maintainer. All RPT-06..RPT-20 landed on
+`feat/report-followups` (PR #179) with evidence below.
+
 Closes the follow-ups named after plan 048 plus the offline collection export
 named after RPT-07. Same boundaries: no network,
 no model call, owner/tenant scoping on every read and write, and the stored
@@ -195,3 +198,10 @@ question stays private unless explicitly opted in.
   latest `main` run fails identically, so this is an external dependency
   outage, not this change. No workflow was modified; rerun after the binaries
   are reachable again.
+- Closeout (2026-11-19): `npm run signals -- status` (verification set) —
+  green, no halts. `gh pr checks 179` — all pass (check linux 24/26, check
+  macos fast, check windows build+fast, analytics x4, container, CodeQL,
+  Codacy): the onnxruntime Linux outage above is resolved with no code change.
+  `git status` clean, branch in sync with origin, `mergeStateStatus: CLEAN`,
+  `mergeable: MERGEABLE`. Ready to squash-merge #179; no open tasks remain on
+  this plan.
