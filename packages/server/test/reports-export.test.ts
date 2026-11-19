@@ -3,9 +3,11 @@
  * report with the shared pure formatters; it reads no corpus rows, so these
  * tests use a bare server with a single authenticated owner.
  */
+import { createHash } from "node:crypto";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthError } from "@do-sift/auth";
+import { MAX_COLLECTION_REPORT_ATTACHMENTS } from "@do-sift/contracts";
 import { createResearchServer, listen, type ResearchServerOptions } from "../src/index.js";
 
 let server: Server;
@@ -59,6 +61,7 @@ const storedAnswer = {
 
 const storedCollection = {
   schemaVersion: 1,
+  collection: { title: "Stored collection", description: "Owner context" },
   sources: [{ id: "doc-1", url: "https://collection.test/a", fetchedAt: "2026-11-01T00:00:00Z" }],
   claims: [],
   annotations: [{ id: "note-1", body: "collection note", createdAt: "2026-11-01T00:00:01Z" }],
@@ -70,7 +73,20 @@ beforeAll(async () => {
     runResearch: emptyRun,
     reportFor: async () => ({
       fromAnswer: async (_ownerId, id) => (id === "ans-1" ? storedAnswer : undefined),
-      fromCollection: async (_ownerId, id) => (id === "col-1" ? storedCollection : undefined),
+      fromCollection: async (_ownerId, id) => {
+        if (id === "col-1") return storedCollection;
+        if (id === "col-large") {
+          return {
+            ...storedCollection,
+            sources: Array.from({ length: MAX_COLLECTION_REPORT_ATTACHMENTS + 1 }, (_, index) => ({
+              id: `doc-${index}`,
+              url: "https://collection.test/page",
+              fetchedAt: "2026-11-01T00:00:00Z",
+            })),
+          };
+        }
+        return undefined;
+      },
     }),
   });
   port = await listen(server);
@@ -98,9 +114,22 @@ describe("report export route (issue #170)", () => {
     expect(response.headers.get("content-type")).toContain("text/markdown");
     expect(response.headers.get("content-disposition")).toContain('filename="report.md"');
     const text = await response.text();
+    expect(response.headers.get("x-report-sha256")).toBe(
+      createHash("sha256").update(text, "utf8").digest("hex"),
+    );
     expect(text).toContain("https://example.test/page");
     expect(text).not.toContain("private research question");
     expect(text).not.toContain("private owner note");
+  });
+
+  it("carries the exact artifact digest for every format", async () => {
+    for (const format of ["json", "markdown", "html", "bibtex"] as const) {
+      const response = await post({ format, report: REPORT });
+      const text = await response.text();
+      expect(response.headers.get("x-report-sha256")).toBe(
+        createHash("sha256").update(text, "utf8").digest("hex"),
+      );
+    }
   });
 
   it("includes the question and annotations only when explicitly opted in", async () => {
@@ -125,6 +154,30 @@ describe("report export route (issue #170)", () => {
     const html = await response.text();
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("accepts bounded collection metadata in a caller-supplied report", async () => {
+    const response = await post({
+      format: "json",
+      report: { ...REPORT, collection: { title: "Caller collection", description: "Context" } },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      collection: { title: string; description: string };
+    };
+    expect(body.collection).toEqual({ title: "Caller collection", description: "Context" });
+
+    expect(
+      (
+        await post({
+          format: "json",
+          report: { ...REPORT, collection: { title: "x".repeat(201) } },
+        })
+      ).status,
+    ).toBe(400);
+    expect((await post({ format: "json", report: { ...REPORT, collection: [] } })).status).toBe(
+      400,
+    );
   });
 
   it("rejects unknown formats and reports from a different schema", async () => {
@@ -153,11 +206,19 @@ describe("report export route (issue #170)", () => {
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
+      collection?: { title: string; description?: string };
       sources: Array<{ url: string }>;
       annotations: Array<{ body: string }>;
     };
+    expect(body.collection).toEqual({ title: "Stored collection", description: "Owner context" });
     expect(body.sources[0]?.url).toBe("https://collection.test/a");
     expect(body.annotations[0]?.body).toBe("collection note");
+  });
+
+  it("refuses a stored collection above the attachment safety ceiling", async () => {
+    const response = await post({ format: "json", collectionId: "col-large" });
+    expect(response.status).toBe(413);
+    expect(await response.text()).toContain("too many attachments");
   });
 
   it("rejects ambiguous modes and unknown stored ids", async () => {

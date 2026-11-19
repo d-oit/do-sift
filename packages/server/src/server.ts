@@ -53,6 +53,8 @@ export type {
 export type { AnswerHttpResponse } from "./server-contracts.js";
 export type {
   CollectionDetailView,
+  CollectionItemCursor,
+  CollectionItemPageView,
   CollectionItemView,
   CollectionNoteView,
   CollectionView,

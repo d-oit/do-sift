@@ -1,9 +1,10 @@
 import { createClient, type Client } from "@libsql/client";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyMigrations, loadMigrations } from "@do-sift/storage";
+import { Repositories, applyMigrations, loadMigrations } from "@do-sift/storage";
 import { runCli } from "../src/cli.js";
 
 let client: Client;
@@ -418,6 +419,539 @@ describe("do-sift CLI (#67)", () => {
       };
       expect(parsed).toMatchObject({ tenantId: "acme", dryRun: true, candidates: 1, deleted: 0 });
       expect(parsed.success).toBe(true);
+    });
+  });
+
+  describe("report answer", () => {
+    async function seedAnswer(): Promise<string> {
+      const repos = new Repositories(client);
+      const requestId = await repos.requests.create("alice", "answer", "Private report question?");
+      return repos.answers.insert({
+        ownerId: "alice",
+        requestId,
+        blocks: [
+          { kind: "paragraph", text: "Stored claim about Alpha.", citations: ["p1"] },
+          { kind: "caveat", text: "Unresolved claim.", citations: [], unresolved: true },
+        ],
+        evidenceOnly: false,
+      });
+    }
+
+    it("renders stored claims and their cited evidence without the question", async () => {
+      const answerId = await seedAnswer();
+      expect(
+        await runCli(["report", "answer", "--owner", "alice", "--answer", answerId], deps()),
+      ).toBe(0);
+      const text = stdout.join("\n");
+      expect(text).toContain("Stored claim about Alpha");
+      expect(text).toContain("[p1]");
+      expect(text).toContain("https://a.test/x");
+      expect(text).toContain("Unresolved claim");
+      expect(text).toContain("unresolved citation");
+      expect(text).not.toContain("Private report question?");
+    });
+
+    it("renders HTML and BibTeX through the same formatter as the HTTP route", async () => {
+      const answerId = await seedAnswer();
+      expect(
+        await runCli(
+          ["report", "answer", "--owner", "alice", "--answer", answerId, "--format", "html"],
+          deps(),
+        ),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain("<h1>Research report</h1>");
+      expect(stdout.join("\n")).toContain("Stored claim about Alpha");
+
+      stdout = [];
+      expect(
+        await runCli(
+          ["report", "answer", "--owner", "alice", "--answer", answerId, "--format", "bibtex"],
+          deps(),
+        ),
+      ).toBe(0);
+      const bib = stdout.join("\n");
+      expect(bib).toContain("@misc{");
+      expect(bib).toContain("title = {Alpha}");
+      expect(bib).toContain("https://a.test/x");
+    });
+
+    it("includes the question only on request and writes any format to a new file", async () => {
+      const answerId = await seedAnswer();
+      expect(
+        await runCli(
+          ["report", "answer", "--owner", "alice", "--answer", answerId, "--include-question"],
+          deps(),
+        ),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain("Private report question?");
+
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-answer-report-"));
+      const out = join(dir, "report.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--out",
+            out,
+            "--checksum",
+            "--manifest",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const content = await readFile(out, "utf8");
+      const digest = createHash("sha256").update(content, "utf8").digest("hex");
+      expect(stdout.join("\n")).toContain(`sha256 ${digest}`);
+      expect(await readFile(`${out}.sha256`, "utf8")).toBe(`${digest}  report.json\n`);
+      expect(JSON.parse(await readFile(`${out}.manifest.json`, "utf8"))).toEqual({
+        manifestVersion: 1,
+        reportSchemaVersion: 1,
+        format: "json",
+        sha256: digest,
+        bytes: Buffer.byteLength(content, "utf8"),
+        sourceCount: 1,
+        claimCount: 2,
+        annotationCount: 0,
+        questionIncluded: false,
+      });
+      const quoted = join(dir, "quoted.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--include-question",
+            "--out",
+            quoted,
+            "--manifest",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      expect(
+        (
+          JSON.parse(await readFile(`${quoted}.manifest.json`, "utf8")) as {
+            questionIncluded: boolean;
+          }
+        ).questionIncluded,
+      ).toBe(true);
+      const parsed = JSON.parse(content) as {
+        question?: string;
+        claims: Array<{ text: string; citations: string[] }>;
+        sources: Array<{ url: string }>;
+      };
+      expect(parsed.question).toBeUndefined();
+      expect(parsed.claims[0]).toMatchObject({
+        text: "Stored claim about Alpha.",
+        citations: ["p1"],
+      });
+      expect(parsed.sources[0]?.url).toBe("https://a.test/x");
+
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--out",
+            out,
+          ],
+          deps(),
+        ),
+      ).toBe(1);
+    });
+
+    it("requires --out when --checksum is requested", async () => {
+      const answerId = await seedAnswer();
+      expect(
+        await runCli(
+          ["report", "answer", "--owner", "alice", "--answer", answerId, "--checksum"],
+          deps(),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("--checksum requires --out");
+
+      stderr = [];
+      expect(
+        await runCli(
+          ["report", "answer", "--owner", "alice", "--answer", answerId, "--manifest"],
+          deps(),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("--manifest requires --out");
+    });
+
+    it("verifies a report against its generated sidecar or an explicit sidecar", async () => {
+      const answerId = await seedAnswer();
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-verify-report-"));
+      const out = join(dir, "verify.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--out",
+            out,
+            "--checksum",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const digest = createHash("sha256")
+        .update(await readFile(out, "utf8"), "utf8")
+        .digest("hex");
+
+      stdout = [];
+      expect(await runCli(["report", "verify", "--in", out], deps())).toBe(0);
+      expect(stdout.join("\n")).toBe(`verified ${out} sha256 ${digest}`);
+
+      const custom = join(dir, "custom.sha256");
+      await writeFile(custom, `${digest}  verify.json\n`);
+      stdout = [];
+      expect(await runCli(["report", "verify", "--in", out, "--sidecar", custom], deps())).toBe(0);
+      expect(stdout.join("\n")).toBe(`verified ${out} sha256 ${digest}`);
+    });
+
+    it("validates the manifest sidecar", async () => {
+      const answerId = await seedAnswer();
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-verify-manifest-"));
+      const out = join(dir, "manifest.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--out",
+            out,
+            "--checksum",
+            "--manifest",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const manifestPath = `${out}.manifest.json`;
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+        sha256: string;
+        bytes: number;
+      };
+
+      stdout = [];
+      expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(0);
+      expect(stdout.join("\n")).toContain(`manifest ${manifestPath}`);
+
+      const customManifest = join(dir, "custom.manifest.json");
+      await writeFile(customManifest, JSON.stringify(manifest));
+      stdout = [];
+      expect(
+        await runCli(["report", "verify", "--in", out, "--manifest-file", customManifest], deps()),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain(`manifest ${customManifest}`);
+
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, sha256: "0".repeat(64) }));
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("manifest checksum mismatch");
+
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, bytes: manifest.bytes + 1 }));
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("manifest byte count mismatch");
+
+      await writeFile(manifestPath, "{}");
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out, "--manifest"], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("manifest does not match");
+    });
+
+    it("rejects a mismatched, misnamed, or missing checksum", async () => {
+      const answerId = await seedAnswer();
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-verify-report-"));
+      const out = join(dir, "verify.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "answer",
+            "--owner",
+            "alice",
+            "--answer",
+            answerId,
+            "--format",
+            "json",
+            "--out",
+            out,
+            "--checksum",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const content = await readFile(out, "utf8");
+      const digest = createHash("sha256").update(content, "utf8").digest("hex");
+
+      await writeFile(out, `${content}\n`);
+      expect(await runCli(["report", "verify", "--in", out], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("checksum mismatch");
+
+      await writeFile(out, content);
+      await writeFile(`${out}.sha256`, `${digest}  other.json\n`);
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("checksum names other.json");
+
+      await writeFile(`${out}.sha256`, "not a checksum\n");
+      stderr = [];
+      expect(await runCli(["report", "verify", "--in", out], deps())).toBe(1);
+      expect(stderr.join("\n")).toContain("checksum file must be");
+
+      stderr = [];
+      expect(await runCli(["report", "verify"], deps())).toBe(2);
+      expect(stderr.join("\n")).toContain("--in is required");
+    });
+
+    it("rejects unknown answers, other owners' answers, and unsupported formats", async () => {
+      const answerId = await seedAnswer();
+      expect(
+        await runCli(["report", "answer", "--owner", "bob", "--answer", answerId], deps()),
+      ).toBe(1);
+      expect(stderr.join("\n")).toContain(`answer ${answerId} not found for owner bob`);
+
+      stderr = [];
+      expect(
+        await runCli(
+          ["report", "answer", "--owner", "alice", "--answer", answerId, "--format", "pdf"],
+          deps(),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("--format must be one of: json, markdown, html, bibtex");
+    });
+  });
+
+  describe("report collection", () => {
+    async function seedCollection(): Promise<void> {
+      await client.execute(
+        "INSERT INTO collections (id, tenant_id, owner_id, title, description, created_at, updated_at) VALUES ('colrpt','default','alice','Reported collection','', '2026-10-01T00:00:00Z','2026-10-01T00:00:00Z')",
+      );
+      await client.execute(
+        `INSERT INTO collection_items (collection_id, tenant_id, owner_id, item_kind, item_id, added_at, evidence_url, evidence_title, evidence_fetched_at)
+         VALUES ('colrpt','default','alice','evidence','d1','2026-10-02T00:00:00Z','https://a.test/x','Alpha','2026-10-02T10:00:01Z'),
+                ('colrpt','default','alice','evidence','missing','2026-10-03T00:00:00Z',NULL,NULL,NULL),
+                ('colrpt','default','alice','run','req1','2026-10-04T00:00:00Z',NULL,NULL,NULL)`,
+      );
+      await client.execute(
+        "INSERT INTO collection_notes (id, collection_id, tenant_id, owner_id, author_id, body, created_at, updated_at) VALUES ('n1','colrpt','default','alice','alice','Owner note about Alpha.','2026-10-05T00:00:00Z','2026-10-05T00:00:00Z')",
+      );
+    }
+
+    it("exports every attachment beyond the 100-item detail cap", async () => {
+      await client.execute(
+        "INSERT INTO collections (id, tenant_id, owner_id, title, description, created_at, updated_at) VALUES ('colbig','default','alice','Large collection','','2026-10-01T00:00:00Z','2026-10-01T00:00:00Z')",
+      );
+      for (let i = 0; i < 105; i++) {
+        const id = `e${String(i).padStart(3, "0")}`;
+        await client.execute({
+          sql: `INSERT INTO collection_items
+                  (collection_id, tenant_id, owner_id, item_kind, item_id, added_at,
+                   evidence_url, evidence_title, evidence_fetched_at)
+                VALUES ('colbig','default','alice','evidence',?,?,?,?,?)`,
+          args: [
+            id,
+            `2026-10-02T00:00:${String(i % 60).padStart(2, "0")}Z`,
+            `https://big.test/${id}`,
+            id,
+            "2026-10-02T10:00:00Z",
+          ],
+        });
+      }
+
+      expect(
+        await runCli(
+          [
+            "report",
+            "collection",
+            "--owner",
+            "alice",
+            "--collection",
+            "colbig",
+            "--format",
+            "json",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const parsed = JSON.parse(stdout.join("\n")) as { sources: Array<{ id: string }> };
+      expect(parsed.sources).toHaveLength(105);
+      expect(parsed.sources.at(-1)?.id).toBe("e104");
+    });
+
+    it("renders snapshotted sources and keeps owner notes private by default", async () => {
+      await seedCollection();
+      expect(
+        await runCli(
+          ["report", "collection", "--owner", "alice", "--collection", "colrpt"],
+          deps(),
+        ),
+      ).toBe(0);
+      const text = stdout.join("\n");
+      expect(text).toContain("**Collection:** Reported collection");
+      expect(text).toContain("https://a.test/x");
+      expect(text).toContain("Alpha");
+      expect(text).not.toContain("Owner note about Alpha");
+
+      stdout = [];
+      expect(
+        await runCli(
+          [
+            "report",
+            "collection",
+            "--owner",
+            "alice",
+            "--collection",
+            "colrpt",
+            "--include-annotations",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      expect(stdout.join("\n")).toContain("Owner note about Alpha");
+      expect(stdout.join("\n")).toContain("Owner annotations");
+    });
+
+    it("writes JSON with resolved evidence only and rejects foreign ids", async () => {
+      await seedCollection();
+      const dir = await mkdtemp(join(tmpdir(), "do-sift-collection-report-"));
+      const out = join(dir, "collection.json");
+      expect(
+        await runCli(
+          [
+            "report",
+            "collection",
+            "--owner",
+            "alice",
+            "--collection",
+            "colrpt",
+            "--format",
+            "json",
+            "--include-annotations",
+            "--out",
+            out,
+            "--checksum",
+            "--manifest",
+          ],
+          deps(),
+        ),
+      ).toBe(0);
+      const content = await readFile(out, "utf8");
+      const digest = createHash("sha256").update(content, "utf8").digest("hex");
+      expect(stdout.join("\n")).toContain(`sha256 ${digest}`);
+      expect(await readFile(`${out}.sha256`, "utf8")).toBe(`${digest}  collection.json\n`);
+      expect(JSON.parse(await readFile(`${out}.manifest.json`, "utf8"))).toEqual({
+        manifestVersion: 1,
+        reportSchemaVersion: 1,
+        format: "json",
+        sha256: digest,
+        bytes: Buffer.byteLength(content, "utf8"),
+        sourceCount: 1,
+        claimCount: 0,
+        annotationCount: 1,
+        questionIncluded: false,
+      });
+      const parsed = JSON.parse(content) as {
+        collection?: { title: string; description?: string };
+        sources: Array<{ id: string; url: string }>;
+        annotations: Array<{ body: string }>;
+      };
+      expect(parsed.collection).toEqual({ title: "Reported collection" });
+      expect(parsed.sources).toEqual([
+        { id: "d1", url: "https://a.test/x", title: "Alpha", fetchedAt: "2026-10-02T10:00:01Z" },
+      ]);
+      expect(parsed.annotations[0]?.body).toBe("Owner note about Alpha.");
+
+      expect(
+        await runCli(["report", "collection", "--owner", "bob", "--collection", "colrpt"], deps()),
+      ).toBe(1);
+      expect(stderr.join("\n")).toContain("collection colrpt not found for owner bob");
+
+      stderr = [];
+      expect(
+        await runCli(
+          ["report", "collection", "--owner", "alice", "--collection", "colrpt", "--format", "pdf"],
+          deps(),
+        ),
+      ).toBe(2);
+      expect(stderr.join("\n")).toContain("--format must be one of");
+    });
+  });
+
+  describe("collections backfill", () => {
+    it("dry-runs and then snapshots only legacy evidence references", async () => {
+      await client.execute(
+        "INSERT INTO collections (id, tenant_id, owner_id, title, description, created_at, updated_at) VALUES ('col1','default','alice','Legacy','', '2026-10-01T00:00:00Z','2026-10-01T00:00:00Z')",
+      );
+      await client.execute(
+        `INSERT INTO collection_items (collection_id, tenant_id, owner_id, item_kind, item_id, added_at)
+         VALUES ('col1','default','alice','evidence','d1','2026-10-02T00:00:00Z'),
+                ('col1','default','alice','evidence','missing','2026-10-03T00:00:00Z')`,
+      );
+
+      expect(
+        await runCli(["collections", "backfill", "--owner", "alice", "--dry-run"], deps()),
+      ).toBe(0);
+      let text = stdout.join("\n");
+      expect(text).toContain("mode\tdry-run");
+      expect(text).toContain("scanned\t2");
+      expect(text).toContain("updated\t1");
+      expect(text).toContain("unresolved\t1");
+      expect(
+        (await client.execute("SELECT evidence_url FROM collection_items WHERE item_id='d1'"))
+          .rows[0]?.evidence_url,
+      ).toBeNull();
+
+      stdout = [];
+      expect(await runCli(["collections", "backfill", "--owner", "alice"], deps())).toBe(0);
+      text = stdout.join("\n");
+      expect(text).toContain("mode\tbackfill");
+      expect(text).toContain("updated\t1");
+      expect(
+        (await client.execute("SELECT evidence_url FROM collection_items WHERE item_id='d1'"))
+          .rows[0]?.evidence_url,
+      ).toBe("https://a.test/x");
+    });
+
+    it("refuses a collection outside the owner's scope", async () => {
+      expect(
+        await runCli(["collections", "backfill", "--owner", "bob", "--collection", "col1"], deps()),
+      ).toBe(1);
+      expect(stderr.join("\n")).toContain("not found for owner bob");
     });
   });
 

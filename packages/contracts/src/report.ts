@@ -8,6 +8,33 @@
  * an owner annotation.
  */
 export const REPORT_SCHEMA_VERSION = 1;
+/**
+ * Safety ceiling for a stored collection report. This is intentionally far
+ * above the 100-item detail page; a larger collection refuses rather than
+ * silently truncating or building an unbounded export.
+ */
+export const MAX_COLLECTION_REPORT_ATTACHMENTS = 10_000;
+export const REPORT_FORMATS = ["json", "markdown", "html", "bibtex"] as const;
+
+export class CollectionReportTooLargeError extends Error {
+  constructor(public readonly count: number) {
+    super(
+      `collection has too many attachments to export (${count}; limit ${MAX_COLLECTION_REPORT_ATTACHMENTS})`,
+    );
+    this.name = "CollectionReportTooLargeError";
+  }
+}
+
+export function assertCollectionReportSize(count: number): void {
+  if (count > MAX_COLLECTION_REPORT_ATTACHMENTS) {
+    throw new CollectionReportTooLargeError(count);
+  }
+}
+export type ReportFormat = (typeof REPORT_FORMATS)[number];
+
+export function isReportFormat(value: unknown): value is ReportFormat {
+  return typeof value === "string" && (REPORT_FORMATS as readonly string[]).includes(value);
+}
 
 export interface ReportSource {
   id: string;
@@ -35,9 +62,16 @@ export interface ReportAnnotation {
   createdAt: string;
 }
 
+export interface ReportCollection {
+  title: string;
+  description?: string;
+}
+
 export interface ResearchReport {
   schemaVersion: number;
   question?: string;
+  /** Present when the report was assembled from a collection. */
+  collection?: ReportCollection;
   sources: ReportSource[];
   claims: ReportClaim[];
   annotations: ReportAnnotation[];
@@ -96,6 +130,7 @@ function selected(report: ResearchReport, options: ReportExportOptions): Researc
     ...(options.includeQuestion === true && report.question !== undefined
       ? { question: report.question }
       : {}),
+    ...(report.collection === undefined ? {} : { collection: report.collection }),
     sources: [...report.sources].sort(bySourceId),
     claims: report.claims.map((claim) => ({
       kind: claim.kind,
@@ -134,8 +169,13 @@ export function buildAnswerReport(input: ReportAnswerInput): ResearchReport {
  * function never invents a URL or retrieved time.
  */
 export function buildCollectionReport(input: ReportCollectionInput): ResearchReport {
+  assertCollectionReportSize(input.sources.length);
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
+    collection: {
+      title: input.title,
+      ...(input.description === "" ? {} : { description: input.description }),
+    },
     sources: input.sources,
     claims: [],
     annotations: input.annotations,
@@ -172,6 +212,12 @@ export function toMarkdownReport(
 ): string {
   const data = selected(report, options);
   const lines: string[] = ["# Research report", ""];
+  if (data.collection !== undefined) {
+    lines.push(`**Collection:** ${escapeMarkdown(data.collection.title)}`, "");
+    if (data.collection.description !== undefined) {
+      lines.push(escapeMarkdown(data.collection.description), "");
+    }
+  }
   if (data.question !== undefined) {
     lines.push(`**Question:** ${escapeMarkdown(data.question)}`, "");
   }
@@ -231,6 +277,12 @@ export function toHtmlReport(report: ResearchReport, options: ReportExportOption
     "</head><body>",
     "<h1>Research report</h1>",
   ];
+  if (data.collection !== undefined) {
+    parts.push(`<p><strong>Collection:</strong> ${escapeHtml(data.collection.title)}</p>`);
+    if (data.collection.description !== undefined) {
+      parts.push(`<p>${escapeHtml(data.collection.description)}</p>`);
+    }
+  }
   if (data.question !== undefined) {
     parts.push(`<p><strong>Question:</strong> ${escapeHtml(data.question)}</p>`);
   }
@@ -322,4 +374,45 @@ export function toBibTeX(report: ResearchReport): string {
     entries.push(`@misc{${key},\n${fields.join(",\n")}\n}`);
   }
   return entries.length === 0 ? "" : `${entries.join("\n\n")}\n`;
+}
+
+export interface RenderedReport {
+  body: string;
+  contentType: string;
+  /** File extension without the leading dot. */
+  extension: string;
+}
+
+/** One formatter dispatch for both the HTTP route and the offline CLI. */
+export function renderReport(
+  report: ResearchReport,
+  format: ReportFormat,
+  options: ReportExportOptions = {},
+): RenderedReport {
+  switch (format) {
+    case "json":
+      return {
+        body: toJsonReport(report, options),
+        contentType: "application/json; charset=utf-8",
+        extension: "json",
+      };
+    case "markdown":
+      return {
+        body: toMarkdownReport(report, options),
+        contentType: "text/markdown; charset=utf-8",
+        extension: "md",
+      };
+    case "html":
+      return {
+        body: toHtmlReport(report, options),
+        contentType: "text/html; charset=utf-8",
+        extension: "html",
+      };
+    case "bibtex":
+      return {
+        body: toBibTeX(report),
+        contentType: "application/x-bibtex; charset=utf-8",
+        extension: "bib",
+      };
+  }
 }

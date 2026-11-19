@@ -78,6 +78,14 @@ export const WORKSPACES_PAGE = `<!doctype html>
       <button type="submit">Download report</button>
     </form>
     <p class="status" id="report-status"></p>
+
+    <h3>Stored answer</h3>
+    <p class="status">Export a stored answer's claims and citations by id. The question stays private.</p>
+    <form id="stored-answer-form">
+      <input id="stored-answer-id" placeholder="Stored answer id" required>
+      <button type="submit">Download stored answer report</button>
+    </form>
+    <p class="status" id="stored-answer-status"></p>
   </section>
 
   <section>
@@ -304,6 +312,22 @@ export const WORKSPACES_PAGE = `<!doctype html>
     }
   });
 
+  $("stored-answer-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const answerId = $("stored-answer-id").value.trim();
+    if (!answerId) {
+      setStatus("stored-answer-status", "Enter a stored answer id.", true);
+      return;
+    }
+    const format = $("report-format").value;
+    try {
+      await exportReport({ format: format, answerId: answerId }, format);
+      setStatus("stored-answer-status", "Downloaded stored answer report as " + format + ".");
+    } catch (error) {
+      setStatus("stored-answer-status", String(error.message), true);
+    }
+  });
+
   async function loadCollections() {
     const list = $("collection-list");
     list.replaceChildren();
@@ -352,8 +376,19 @@ export const WORKSPACES_PAGE = `<!doctype html>
       const card = el("div");
       card.className = "card";
       card.appendChild(el("h3", data.collection.title));
-      const meta = el("div", "id " + data.collection.id + " · " + data.items.length + " item(s)");
+      let totalItems = typeof data.totalItems === "number" ? data.totalItems : data.items.length;
+      let shown = data.items.length;
+      let nextCursor = typeof data.nextCursor === "string" ? data.nextCursor : undefined;
+      const meta = el("div");
       meta.className = "meta";
+      const renderCount = () => {
+        const itemCount =
+          shown < totalItems
+            ? shown + " of " + totalItems + " item(s) shown"
+            : totalItems + " item(s)";
+        meta.textContent = "id " + data.collection.id + " · " + itemCount;
+      };
+      renderCount();
       card.appendChild(meta);
 
       const reportButton = el("button", "Download collection report");
@@ -378,6 +413,41 @@ export const WORKSPACES_PAGE = `<!doctype html>
       data.items.forEach((item) => items.appendChild(el("li", item.kind + " · " + item.id)));
       if (data.items.length === 0) items.appendChild(el("li", "No items yet."));
       card.appendChild(items);
+      const hint = el("div", "Download the collection report to get every attachment.");
+      hint.className = "meta";
+      hint.hidden = shown >= totalItems;
+      card.appendChild(hint);
+
+      const loadMore = el("button", "Load more");
+      loadMore.type = "button";
+      loadMore.className = "secondary";
+      loadMore.hidden = nextCursor === undefined;
+      loadMore.addEventListener("click", async () => {
+        if (nextCursor === undefined) return;
+        loadMore.disabled = true;
+        try {
+          const page = await api(
+            "/api/collections/" +
+              encodeURIComponent(id) +
+              "/items?limit=100&cursor=" +
+              encodeURIComponent(nextCursor),
+          );
+          (page.items || []).forEach((item) =>
+            items.appendChild(el("li", item.kind + " · " + item.id)),
+          );
+          shown += (page.items || []).length;
+          if (typeof page.totalItems === "number") totalItems = page.totalItems;
+          nextCursor = typeof page.nextCursor === "string" ? page.nextCursor : undefined;
+          renderCount();
+          hint.hidden = shown >= totalItems;
+          loadMore.hidden = nextCursor === undefined;
+        } catch (error) {
+          setStatus("collection-status", String(error.message), true);
+        } finally {
+          loadMore.disabled = false;
+        }
+      });
+      card.appendChild(loadMore);
 
       const itemForm = el("form");
       const itemInput = el("input");

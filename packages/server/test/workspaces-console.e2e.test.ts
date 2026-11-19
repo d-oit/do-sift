@@ -9,7 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type Client } from "@libsql/client";
 import { chromium, type Browser, type Download, type Page } from "playwright";
 import { AuthError } from "@do-sift/auth";
-import { buildCollectionReport, type TenantRole } from "@do-sift/contracts";
+import {
+  MAX_COLLECTION_REPORT_ATTACHMENTS,
+  assertCollectionReportSize,
+  buildAnswerReport,
+  buildCollectionReport,
+  type TenantRole,
+} from "@do-sift/contracts";
 import {
   CollectionsRepository,
   Repositories,
@@ -26,8 +32,13 @@ import {
 
 let client: Client;
 let server: Server;
+
+// Chromium launch competes with the rest of the suite; give this real-browser
+// hook more room than Vitest's 30s default while keeping it bounded.
+const BROWSER_HOOK_TIMEOUT_MS = 60_000;
 let port: number;
 let browser: Browser | undefined;
+let browserAnswerId: string;
 
 const auth: ResearchServerOptions["auth"] = {
   authenticateOwner: async ({ token }) => {
@@ -60,7 +71,11 @@ function collectionsFor(principal: {
     get: async (_ownerId, id) => {
       const collection = await repo.get(id);
       if (collection === undefined) return undefined;
-      const [items, notes] = await Promise.all([repo.items(id), repo.notes(id)]);
+      const [items, notes, totalItems] = await Promise.all([
+        repo.items(id),
+        repo.notes(id),
+        repo.countItems(id),
+      ]);
       return {
         collection,
         items: items.map((item) => ({
@@ -68,7 +83,33 @@ function collectionsFor(principal: {
           id: item.itemId,
           addedAt: item.addedAt,
         })),
+        totalItems,
         notes,
+      };
+    },
+    items: async (_ownerId, id, options) => {
+      const collection = await repo.get(id);
+      if (collection === undefined) return undefined;
+      const after =
+        options.cursor === undefined
+          ? undefined
+          : {
+              addedAt: options.cursor.addedAt,
+              itemKind: options.cursor.kind,
+              itemId: options.cursor.id,
+            };
+      const [page, totalItems] = await Promise.all([
+        repo.itemsPage(id, options.limit, after),
+        repo.countItems(id),
+      ]);
+      return {
+        items: page.items.map((item) => ({
+          kind: item.itemKind,
+          id: item.itemId,
+          addedAt: item.addedAt,
+        })),
+        totalItems,
+        hasMore: page.hasMore,
       };
     },
     update: (_ownerId, id, changes) => {
@@ -143,6 +184,24 @@ beforeAll(async () => {
     sql: "INSERT INTO owners (id, tenant_id, display_name, created_at) VALUES ('browser-member', 'acme', 'Browser', '2026-01-01T00:00:00Z')",
   });
   await seedEvidence();
+  const seedRepos = new Repositories(client, "acme");
+  const requestId = await seedRepos.requests.create(
+    "browser-member",
+    "answer",
+    "What did the browser retrieve?",
+  );
+  browserAnswerId = await seedRepos.answers.insert({
+    ownerId: "browser-member",
+    requestId,
+    blocks: [
+      {
+        kind: "paragraph",
+        text: "Browser claim about alpha.",
+        citations: ["psg-browser-a"],
+      },
+    ],
+    evidenceOnly: false,
+  });
 
   server = createResearchServer({
     auth,
@@ -154,15 +213,36 @@ beforeAll(async () => {
     // serves, so the browser test exercises the real ids it compares.
     reportFor: (principal: { tenantId: string; userId: string }) => {
       const collections = new CollectionsRepository(client, principal.userId, principal.tenantId);
+      const repos = new Repositories(client, principal.tenantId);
       return Promise.resolve({
-        fromAnswer: async () => undefined,
+        fromAnswer: async (ownerId: string, answerId: string) => {
+          const input = await repos.answers.reportInput(ownerId, answerId);
+          if (input === undefined) return undefined;
+          return buildAnswerReport({
+            question: input.question,
+            createdAt: input.createdAt,
+            blocks: input.blocks.map((block) => ({
+              kind: block.kind,
+              text: block.text,
+              citations: block.citations,
+              ...(block.unresolved === true ? { unresolved: true } : {}),
+            })),
+            sources: input.sources.map((source) => ({
+              id: source.evidenceId,
+              url: source.url,
+              ...(source.title === undefined ? {} : { title: source.title }),
+              fetchedAt: source.retrievedAt,
+            })),
+          });
+        },
         fromCollection: async (_ownerId: string, collectionId: string) => {
           const collection = await collections.get(collectionId);
           if (collection === undefined) return undefined;
           const [items, notes] = await Promise.all([
-            collections.items(collectionId),
+            collections.itemsUpTo(collectionId, MAX_COLLECTION_REPORT_ATTACHMENTS + 1),
             collections.notes(collectionId),
           ]);
+          assertCollectionReportSize(items.length);
           return buildCollectionReport({
             title: collection.title,
             description: collection.description,
@@ -210,13 +290,17 @@ beforeAll(async () => {
     if ((process.env.DO_SIFT_ALLOW_BROWSER_SKIP ?? "").trim() === "1") return;
     throw error;
   }
-});
+}, BROWSER_HOOK_TIMEOUT_MS);
 
 afterAll(async () => {
   await browser?.close();
-  server?.close();
+  // Browser keep-alive sockets keep server.close() waiting; drop them before
+  // waiting for the listener so teardown stays bounded under a loaded pool.
+  const closable = server as unknown as { closeAllConnections?: () => void };
+  closable.closeAllConnections?.();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   client?.close();
-});
+}, BROWSER_HOOK_TIMEOUT_MS);
 
 describe("workspaces console (real browser)", () => {
   it("compares evidence, keeps a collection note, and downloads a report", async () => {
@@ -251,6 +335,7 @@ describe("workspaces console (real browser)", () => {
       .fill("doc-browser-a");
     await page.getByRole("button", { name: "Attach evidence" }).click();
     await waitForText(page, "#collection-detail", "doc-browser-a");
+    await waitForText(page, "#collection-detail", "1 item(s)");
 
     await page
       .locator("#collection-detail input[placeholder^='Owner note']")
@@ -265,8 +350,20 @@ describe("workspaces console (real browser)", () => {
     const collectionDownload = await collectionDownloadPromise;
     expect(collectionDownload.suggestedFilename()).toBe("report.md");
     const collectionMarkdown = await downloadText(collectionDownload);
+    expect(collectionMarkdown).toContain("**Collection:** Browser smoke");
     expect(collectionMarkdown).toContain("https://browser-a.test/page");
     expect(collectionMarkdown).toContain("note from browser");
+
+    await page.locator("#stored-answer-id").fill(browserAnswerId);
+    const answerDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download stored answer report" }).click();
+    const answerDownload = await answerDownloadPromise;
+    expect(answerDownload.suggestedFilename()).toBe("report.md");
+    const answerMarkdown = await downloadText(answerDownload);
+    expect(answerMarkdown).toContain("Browser claim about alpha");
+    expect(answerMarkdown).toContain("psg-browser-a");
+    expect(answerMarkdown).toContain("https://browser-a.test/page");
+    expect(answerMarkdown).not.toContain("What did the browser retrieve?");
 
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download report" }).click();
@@ -275,6 +372,32 @@ describe("workspaces console (real browser)", () => {
     const markdown = await downloadText(download);
     expect(markdown).toContain("https://browser-a.test/page");
     expect(markdown).toContain("https://browser-b.test/page");
+
+    // A capped list must say so: seed 101 references into a second collection
+    // and confirm the console reports the full total while listing the page.
+    await page.locator("#collection-title").fill("Browser large");
+    await page.getByRole("button", { name: "Create" }).click();
+    await waitForText(page, "#collection-status", "2 collection(s)");
+    const largeRepo = new CollectionsRepository(client, "browser-member", "acme");
+    const large = (await largeRepo.list()).find(
+      (collection) => collection.title === "Browser large",
+    );
+    if (large === undefined) throw new Error("large collection missing");
+    for (let i = 0; i < 101; i++) {
+      await largeRepo.addItem(large.id, "run", `run-large-${String(i).padStart(3, "0")}`);
+    }
+    await page
+      .locator(".card", { hasText: "Browser large" })
+      .getByRole("button", { name: "Open" })
+      .click();
+    await waitForText(page, "#collection-detail", "100 of 101 item(s) shown");
+    await waitForText(page, "#collection-detail", "Download the collection report");
+    await page.getByRole("button", { name: "Load more" }).click();
+    await waitForText(page, "#collection-detail", "run-large-100");
+    await page.waitForFunction(
+      'document.querySelector("#collection-detail .meta")?.textContent?.includes("· 101 item(s)") === true',
+    );
+    await page.getByRole("button", { name: "Load more" }).waitFor({ state: "hidden" });
 
     expect(errors).toEqual([]);
     await page.close();

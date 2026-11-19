@@ -12,7 +12,10 @@ export {
   CollectionsRepository,
 } from "./collections.js";
 export type {
+  CollectionBackfillReceipt,
+  CollectionItemCursor,
   CollectionItemKind,
+  CollectionItemPage,
   CollectionItemRow,
   CollectionNoteRow,
   CollectionRow,

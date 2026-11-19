@@ -1,0 +1,207 @@
+# Plan 049 — report follow-ups (2026-11-18)
+
+Status: done (2026-11-19). Owner: maintainer. All RPT-06..RPT-20 landed on
+`feat/report-followups` (PR #179) with evidence below.
+
+Closes the follow-ups named after plan 048 plus the offline collection export
+named after RPT-07. Same boundaries: no network,
+no model call, owner/tenant scoping on every read and write, and the stored
+question stays private unless explicitly opted in.
+
+| ID     | Task                                                                                      | Precondition                                                             |
+| ------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| RPT-06 | Backfill evidence metadata for collection items attached before migration 0015            | Snapshot columns exist (0015); references stay owner-scoped              |
+| RPT-07 | Offline `report answer` CLI command: stored claims and citations, any supported format    | `answers.reportInput` from RPT-04; pure formatters in contracts          |
+| RPT-08 | Console export of a stored answer by id                                                   | `reportFor.fromAnswer` host wiring (RPT-04); console report helper (047) |
+| RPT-09 | Offline `report collection` CLI command: snapshotted sources and opt-in notes             | Collection snapshot (RPT-05/RPT-06); shared formatter (RPT-07)           |
+| RPT-10 | Collection identity in reports: optional title/description through every formatter        | RPT-09; report schema v1 remains backward-compatible (optional field)    |
+| RPT-11 | Collection exports read every attachment; the detail view keeps its 100-item cap          | RPT-09; repository scope and snapshot rules unchanged                    |
+| RPT-12 | Collection detail reports `totalItems`; the console shows shown-of-total when capped      | RPT-11; repository scope unchanged                                       |
+| RPT-13 | Cursor paging for collection items; the console loads pages beyond the first 100          | RPT-12; repository scope and snapshot rules unchanged                    |
+| RPT-14 | Bound stored collection report assembly; refuse an oversized export instead of truncating | RPT-11; report formatters and schema v1 unchanged                        |
+| RPT-15 | Carry a SHA-256 of the exact report artifact in the HTTP response and CLI receipt         | RPT-07/RPT-09; no report schema or formatter output change               |
+| RPT-16 | Durable `<out>.sha256` sidecar for CLI report exports, opt-in via `--checksum`            | RPT-15; existing `--out` behavior unchanged                              |
+| RPT-17 | `report verify` checks a report against its sidecar and fails closed on mismatch          | RPT-16; no storage or report formatter change                            |
+| RPT-18 | JSON manifest sidecar for CLI report exports, opt-in via `--manifest`                     | RPT-15/RPT-16; no report schema or formatter change                      |
+| RPT-19 | `report verify --manifest` validates manifest shape, digest, and byte count               | RPT-17/RPT-18; counts remain metadata                                    |
+| RPT-20 | `--manifest-file` selects a non-default manifest for verification                         | RPT-19; no storage or formatter change                                   |
+
+## Boundaries
+
+- Backfill scans only `item_kind = 'evidence'` rows with a null `evidence_url`
+  in the repository's own `(tenant, owner)` scope. Existing snapshots are
+  never rewritten, and an id the corpus cannot resolve stays null.
+- `report answer` copies claim text and citation ids verbatim. The request
+  question is omitted unless `--include-question`, matching the HTTP route.
+- `report collection` reads only the owner's collection in the CLI's tenant.
+  Legacy references without a snapshot are omitted, and owner notes appear
+  only with `--include-annotations`, matching the HTTP route's default.
+- A collection report carries an optional `collection: { title, description? }`
+  identity. It is rendered in JSON, Markdown, and HTML; BibTeX remains
+  source-only. The field is optional, so schema v1 readers keep working.
+- Report assembly reads at most `MAX_COLLECTION_REPORT_ATTACHMENTS + 1` rows
+  through `itemsUpTo`, so a collection larger than `COLLECTION_LIST_MAX` does
+  not lose older attachments but a pathological collection cannot load an
+  unbounded result. Above 10,000 attachments the export refuses with a clear
+  error rather than truncating. The workspace detail view still uses the
+  capped `items` read, plus a scoped `countItems` so its response can expose
+  the true `totalItems`. The console renders `N of M item(s) shown` and points
+  at the complete export when the list is truncated.
+- Both stored-report entrypoints read at most 10,000 + 1 attachments and
+  reject overflow before mapping; the shared builder also rejects more than
+  10,000 sources. The server answers `413`, the CLI exits `1`, and neither path
+  truncates or emits a partial report. The overflow row is read only to
+  distinguish "exactly at the ceiling" from "too large".
+- `itemsPage` orders by `(added_at, item_kind, item_id)` and pages strictly
+  after the caller's last tuple, so equal timestamps neither repeat nor skip.
+  It reads one extra row to decide `hasMore`; the five-field cursor is opaque,
+  scoped by the repository's `(tenant, owner)`, and malformed input is a 400.
+  The detail response keeps its first page and exposes `nextCursor`; the
+  separate `GET /api/collections/<id>/items` route serves subsequent pages, and
+  the console appends them until `nextCursor` is absent.
+- Report exports expose a SHA-256 over the rendered bytes after privacy
+  options and sorting, not over the stored input. HTTP returns it as
+  `x-report-sha256`; CLI `--out` prints the same value. The digest is
+  metadata only: the report schema and formatter output stay unchanged.
+- `--checksum` is opt-in and requires `--out`. It writes
+  `<out>.sha256` as `<hex>  <basename>\n`, matching `sha256sum`; the sidecar is
+  created as a new file, never overwritten. The report is written first, so a
+  sidecar failure leaves the report and exits `1`. Without the flag, CLI
+  output and files are byte-for-byte unchanged.
+- `report verify` reads the artifact and `<in>.sha256` (or `--sidecar`) and
+  accepts only one `<64 lowercase hex>  <basename>` record. The named basename
+  must equal the report's basename; mismatch, malformed input, or a missing
+  file exits `1`. It reads no database rows and writes nothing.
+- `--manifest` is opt-in and requires `--out`. It writes
+  `<out>.manifest.json` with a fixed key order and `manifestVersion: 1`; counts
+  describe the privacy-filtered logical report, not format-specific entries
+  (BibTeX can omit untitled sources). The report and other sidecars are
+  written first, so a later manifest failure leaves them and exits `1`.
+- `report verify --manifest` reads `<in>.manifest.json`, requires the exact
+  manifest/report schema versions, a known format, a 64-hex digest, and
+  non-negative integer counts. It checks the digest and byte count against the
+  artifact. Counts are shape-checked only: verifying them would require the
+  source rows, which the offline command intentionally does not read.
+  `--manifest-file <path>` selects a different manifest and implies the same
+  validation.
+- The console sends only an answer id; the server authenticates the owner and
+  resolves the answer in that owner's tenant.
+- One formatter dispatcher (`renderReport`) is shared by the HTTP route and
+  the CLI so their bytes cannot drift.
+
+## Acceptance
+
+- `collections backfill --dry-run` writes nothing; a real run fills only the
+  resolvable legacy references and reports scanned/updated/unresolved counts.
+  Cross-owner and cross-tenant scopes see zero rows.
+- `report answer` prints or writes JSON/Markdown/HTML/BibTeX, refuses to
+  overwrite `--out`, and exits non-zero for unknown/foreign answers or an
+  unsupported format.
+- `report collection` does the same for a collection, emits only resolved
+  evidence snapshots, keeps collection notes out unless requested, names the
+  collection in JSON/Markdown/HTML, and exports every attachment up to the
+  10,000-attachment ceiling, including collections with more than 100 items.
+- The console downloads a stored answer's claims, citations, and sources; the
+  stored question does not appear in the default Markdown.
+- A 101-item collection returns 100 `items` and `totalItems: 101`; a foreign
+  owner's count is zero. The console shows the full count and a truncation hint
+  instead of implying the first page is the whole collection.
+- The follow-up items page returns the 101st attachment and no `nextCursor`;
+  a malformed cursor or invalid limit is `400`, and an unknown/foreign
+  collection is `404`. The console's **Load more** control appends the page,
+  updates the count to `101 item(s)`, and disappears when complete.
+- A stored collection with 10,001 attachments is refused before formatting:
+  the server returns `413`, and the CLI reports the same error with exit `1`.
+  A collection at the ceiling still exports every attachment.
+- Every successful report export carries a lowercase 64-hex SHA-256 of the
+  exact body. The HTTP header and the CLI `--out` receipt agree with a
+  recomputation over the artifact for JSON, Markdown, HTML, and BibTeX.
+- Both report commands accept `--checksum` with `--out` and write a sidecar
+  whose contents are the digest, two spaces, and the report basename.
+  `--checksum` without `--out` is a usage error (`2`). Existing `--out`
+  exports remain unchanged when the flag is absent.
+- `report verify --in <report>` succeeds with exit `0` only when the sidecar
+  names the report and its digest matches. A tampered report, misnamed sidecar,
+  malformed sidecar, or missing `--in` fails without touching the files.
+- Both report commands write a manifest whose digest and byte count match the
+  rendered artifact, whose counts respect privacy options, and whose
+  `questionIncluded` reflects the opt-in. `--manifest` without `--out` is a
+  usage error (`2`); absent flags leave existing exports unchanged.
+- `report verify --manifest` succeeds only when the manifest schema is valid
+  and its digest and byte count match the report. A stale digest, stale byte
+  count, malformed JSON, or malformed schema exits `1` without modifying files.
+  `--manifest-file` verifies the named path without requiring `--manifest`.
+- `npm run check` and `npm run signals -- verify --set verification` pass.
+
+## Evidence (2026-11-18)
+
+- `npx vitest run packages/storage/test/collections.test.ts packages/server/test/workspaces.test.ts`
+  — PASS (22 tests). RPT-12 adds a scoped count and a 101-item HTTP detail
+  assertion: 100 `items` plus `totalItems: 101`, while a foreign owner's count
+  is zero.
+- `npx vitest run packages/server/test/workspaces-console.e2e.test.ts` — PASS.
+  Real Chromium opens the collection and, after attaching one evidence row,
+  sees `1 item(s)` from the reported total; a second collection with 101
+  references renders `100 of 101 item(s) shown` plus the export hint.
+- RPT-13: `npx vitest run packages/storage/test/collections.test.ts packages/server/test/workspaces.test.ts packages/server/test/workspaces-console.e2e.test.ts`
+  — PASS (23 tests). The cursor pages 101 items as 100 + 1 with no repeat,
+  malformed cursors and invalid limits answer `400`, a foreign owner answers
+  `404`, and the console's **Load more** appends `run-large-100`, updates the
+  count to `101 item(s)`, and hides the control.
+- RPT-14: `npx vitest run packages/storage/test/collections.test.ts scripts/test/report.test.ts packages/server/test/reports-export.test.ts packages/server/test/workspaces-console.e2e.test.ts`
+  — PASS (28 tests). The builder rejects 10,001 sources, the stored HTTP path
+  answers `413`, `itemsUpTo` bounds the read and rejects a non-positive limit,
+  and the real-browser collection flow still passes.
+- RPT-15: `npx vitest run packages/server/test/reports-export.test.ts apps/cli/test/cli.test.ts`
+  — PASS (51 tests). The HTTP `x-report-sha256` matches a recomputation over
+  the exact JSON, Markdown, HTML, and BibTeX bodies, and both CLI `--out`
+  paths print the same digest for the written file.
+- RPT-16: `npx vitest run apps/cli/test/cli.test.ts` — PASS (40 tests). Both
+  report commands write `<digest>  <basename>\n` to `<out>.sha256`; `--checksum`
+  without `--out` exits `2`, and exports without the flag remain unchanged.
+- RPT-17: `npx vitest run apps/cli/test/cli.test.ts` — PASS (42 tests).
+  Default and explicit sidecars verify, while tampered bytes, a misnamed
+  sidecar, a malformed sidecar, and a missing `--in` all fail without writing.
+- RPT-18: `npx vitest run apps/cli/test/cli.test.ts` — PASS (42 tests).
+  Both report commands write a manifest whose digest, byte count, privacy-
+  filtered counts, and question flag match the artifact; `--manifest` without
+  `--out` exits `2`.
+- RPT-19: `npx vitest run apps/cli/test/cli.test.ts` — PASS (43 tests).
+  Manifest verification accepts a generated manifest and rejects stale digests,
+  stale byte counts, and schema-invalid manifests without modifying files.
+- RPT-20: `npx vitest run apps/cli/test/cli.test.ts` — PASS (43 tests).
+  `--manifest-file` verifies a custom manifest path without `--manifest`.
+- `npm run check` — PASS (12 steps, after RPT-20);
+  `npm run signals -- verify --set verification` — green.
+- `npx vitest run apps/cli/test/cli.test.ts packages/storage/test/collections.test.ts`
+  — PASS (48 tests). CLI covers all four formats (Markdown, JSON, HTML, BibTeX),
+  question privacy and opt-in, collection source snapshots, note opt-in,
+  collection identity, overwrite refusal, foreign owner, unsupported format,
+  and dry-run/real backfill counts. RPT-11 adds a 105-item export and a storage
+  test proving `items` stays capped while `allItems` returns all 101 rows.
+- `npx vitest run scripts/test/report.test.ts packages/server/test/reports-export.test.ts apps/cli/test/cli.test.ts packages/server/test/workspaces-console.e2e.test.ts`
+  — PASS (55 tests): escaped collection metadata in all formatters, bounded
+  caller-supplied metadata, and stored collection identity.
+- `npx tsc -p tsconfig.json --noEmit` — PASS.
+- `npx vitest run packages/server/test/reports-export.test.ts packages/server/test/workspaces-console.e2e.test.ts`
+  — PASS (10 tests). Real Chromium downloads the stored answer report and
+  confirms the claim, citation id, and source URL while the question stays out.
+- `npx tsc -p tsconfig.json --noEmit` — PASS.
+- Full-suite runs exposed a pre-existing browser-teardown hang: the console
+  e2e left keep-alive sockets open, so `server.close()` exceeded the 30s hook
+  budget after Chromium closed. Teardown now drops idle connections and the
+  two real-browser suites have a bounded 60s hook budget. No assertion or test
+  was skipped; the same suites pass alone and in the full check.
+- Remote CI on PR #179: Windows and macOS check/analytics jobs pass. Linux check
+  and analytics jobs plus the container job stop in `npm ci` before building:
+  onnxruntime-node 1.21.0 returns 404 for both Linux release tarballs. The
+  latest `main` run fails identically, so this is an external dependency
+  outage, not this change. No workflow was modified; rerun after the binaries
+  are reachable again.
+- Closeout (2026-11-19): `npm run signals -- status` (verification set) —
+  green, no halts. `gh pr checks 179` — all pass (check linux 24/26, check
+  macos fast, check windows build+fast, analytics x4, container, CodeQL,
+  Codacy): the onnxruntime Linux outage above is resolved with no code change.
+  `git status` clean, branch in sync with origin, `mergeStateStatus: CLEAN`,
+  `mergeable: MERGEABLE`. Ready to squash-merge #179; no open tasks remain on
+  this plan.

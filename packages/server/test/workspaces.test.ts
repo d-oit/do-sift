@@ -19,6 +19,7 @@ import {
 import {
   createResearchServer,
   listen,
+  type CollectionDetailView,
   type CollectionView,
   type CollectionsHandlers,
   type CompareHandlers,
@@ -86,7 +87,11 @@ function collectionsFor(principal: {
     get: async (_ownerId, id) => {
       const collection = await repo.get(id);
       if (collection === undefined) return undefined;
-      const [items, notes] = await Promise.all([repo.items(id), repo.notes(id)]);
+      const [items, notes, totalItems] = await Promise.all([
+        repo.items(id),
+        repo.notes(id),
+        repo.countItems(id),
+      ]);
       return {
         collection,
         items: items.map((item) => ({
@@ -94,7 +99,33 @@ function collectionsFor(principal: {
           id: item.itemId,
           addedAt: item.addedAt,
         })),
+        totalItems,
         notes,
+      };
+    },
+    items: async (_ownerId, id, options) => {
+      const collection = await repo.get(id);
+      if (collection === undefined) return undefined;
+      const after =
+        options.cursor === undefined
+          ? undefined
+          : {
+              addedAt: options.cursor.addedAt,
+              itemKind: options.cursor.kind,
+              itemId: options.cursor.id,
+            };
+      const [page, totalItems] = await Promise.all([
+        repo.itemsPage(id, options.limit, after),
+        repo.countItems(id),
+      ]);
+      return {
+        items: page.items.map((item) => ({
+          kind: item.itemKind,
+          id: item.itemId,
+          addedAt: item.addedAt,
+        })),
+        totalItems,
+        hasMore: page.hasMore,
       };
     },
     update: (_ownerId, id, changes) => {
@@ -239,9 +270,11 @@ describe("collections routes (issue #168)", () => {
     ).json()) as {
       collection: CollectionView;
       items: Array<{ kind: string; id: string }>;
+      totalItems?: number | undefined;
       notes: Array<{ body: string; authorId: string }>;
     };
     expect(detail.items).toEqual([expect.objectContaining({ kind: "evidence", id: "psg-alpha" })]);
+    expect(detail.totalItems).toBe(1);
     expect(detail.notes[0]).toEqual(
       expect.objectContaining({
         body: "This disagrees with the other source.",
@@ -262,6 +295,60 @@ describe("collections routes (issue #168)", () => {
     expect((await call("GET", "/api/collections", "token-member")).status).toBe(200);
   });
 
+  it("reports the full attachment total while the listed items stay capped", async () => {
+    const collection = await createCollection("token-member", "Large collection");
+    const repo = new CollectionsRepository(client, "member-acme", "acme");
+    for (let i = 0; i < 101; i++) {
+      await repo.addItem(collection.id, "run", `run-${String(i).padStart(3, "0")}`);
+    }
+
+    const detail = (await (
+      await call("GET", `/api/collections/${collection.id}`, "token-member")
+    ).json()) as CollectionDetailView & { nextCursor?: string | undefined };
+    expect(detail.items).toHaveLength(100);
+    expect(detail.totalItems).toBe(101);
+    expect(detail.nextCursor).toEqual(expect.any(String));
+
+    const firstPage = (await (
+      await call("GET", `/api/collections/${collection.id}/items?limit=100`, "token-member")
+    ).json()) as {
+      items: Array<{ kind: string; id: string }>;
+      totalItems: number;
+      nextCursor?: string | undefined;
+    };
+    expect(firstPage.items).toHaveLength(100);
+    expect(firstPage.totalItems).toBe(101);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+
+    const secondPage = (await (
+      await call(
+        "GET",
+        `/api/collections/${collection.id}/items?limit=100&cursor=${encodeURIComponent(firstPage.nextCursor ?? "")}`,
+        "token-member",
+      )
+    ).json()) as {
+      items: Array<{ kind: string; id: string }>;
+      totalItems: number;
+      nextCursor?: string | undefined;
+    };
+    expect(secondPage.items).toEqual([expect.objectContaining({ kind: "run", id: "run-100" })]);
+    expect(secondPage.totalItems).toBe(101);
+    expect(secondPage.nextCursor).toBeUndefined();
+
+    expect(
+      (await call("GET", `/api/collections/${collection.id}/items?limit=0`, "token-member")).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(
+          "GET",
+          `/api/collections/${collection.id}/items?cursor=not-a-cursor`,
+          "token-member",
+        )
+      ).status,
+    ).toBe(400);
+  });
+
   it("never exposes another owner's collection", async () => {
     const collection = await createCollection("token-member", "Private");
     const otherList = (await (await call("GET", "/api/collections", "token-other")).json()) as {
@@ -271,6 +358,9 @@ describe("collections routes (issue #168)", () => {
     expect((await call("GET", `/api/collections/${collection.id}`, "token-other")).status).toBe(
       404,
     );
+    expect(
+      (await call("GET", `/api/collections/${collection.id}/items`, "token-other")).status,
+    ).toBe(404);
     expect(
       (
         await call("PATCH", `/api/collections/${collection.id}`, "token-other", {

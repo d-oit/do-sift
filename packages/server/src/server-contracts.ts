@@ -266,6 +266,19 @@ export interface CollectionItemView {
   addedAt: string;
 }
 
+/** Opaque paging key for one collection item; owner scope is still enforced. */
+export interface CollectionItemCursor {
+  addedAt: string;
+  kind: "run" | "evidence";
+  id: string;
+}
+
+export interface CollectionItemPageView {
+  items: CollectionItemView[];
+  totalItems: number;
+  hasMore: boolean;
+}
+
 export interface CollectionNoteView {
   id: string;
   body: string;
@@ -286,6 +299,14 @@ export interface CollectionView {
 export interface CollectionDetailView {
   collection: CollectionView;
   items: CollectionItemView[];
+  /**
+   * Total attachments in the collection. `items` is capped at
+   * `COLLECTION_LIST_MAX`, so a larger collection reports the true total here
+   * while listing only the first page. Optional for host compatibility.
+   */
+  totalItems?: number | undefined;
+  /** Opaque cursor for the next item page; absent when the list is complete. */
+  nextCursor?: string | undefined;
   notes: CollectionNoteView[];
 }
 
@@ -301,6 +322,11 @@ export interface CollectionsHandlers {
   ): Promise<CollectionView[]>;
   create(ownerId: string, input: { title: string; description: string }): Promise<CollectionView>;
   get(ownerId: string, id: string): Promise<CollectionDetailView | undefined>;
+  items(
+    ownerId: string,
+    id: string,
+    options: { limit: number; cursor?: CollectionItemCursor | undefined },
+  ): Promise<CollectionItemPageView | undefined>;
   update(
     ownerId: string,
     id: string,

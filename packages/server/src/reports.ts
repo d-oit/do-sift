@@ -9,14 +9,16 @@
  * or adds evidence. The question and annotations remain private unless the
  * request opts in, as with the CLI exporter.
  */
+import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DEFAULT_TENANT_ID, roleAllows } from "@do-sift/contracts";
 import {
+  CollectionReportTooLargeError,
+  REPORT_FORMATS,
   REPORT_SCHEMA_VERSION,
-  toBibTeX,
-  toHtmlReport,
-  toJsonReport,
-  toMarkdownReport,
+  assertCollectionReportSize,
+  isReportFormat,
+  renderReport,
   type ResearchReport,
   type ReportAnnotation,
   type ReportClaim,
@@ -33,11 +35,10 @@ import {
 
 export const REPORT_EXPORT_PATH = "/api/reports/export";
 
-const FORMATS = ["json", "markdown", "html", "bibtex"] as const;
-type Format = (typeof FORMATS)[number];
-
 const LIMITS = {
   question: 2_000,
+  collectionTitle: 200,
+  collectionDescription: 2_000,
   sources: 100,
   claims: 100,
   annotations: 100,
@@ -46,10 +47,6 @@ const LIMITS = {
   id: 128,
   citations: 50,
 } as const;
-
-function isFormat(value: unknown): value is Format {
-  return typeof value === "string" && (FORMATS as readonly string[]).includes(value);
-}
 
 function text(value: unknown, name: string, max: number): string {
   if (typeof value !== "string") throw new HttpRequestError(400, `${name} must be a string`);
@@ -155,43 +152,23 @@ function parseReport(raw: unknown): ResearchReport {
   };
   const question = optionalText(value["question"], "report.question", LIMITS.question);
   if (question !== undefined) report.question = question;
-  return report;
-}
-
-function render(
-  report: ResearchReport,
-  format: Format,
-  options: {
-    includeQuestion: boolean;
-    includeAnnotations: boolean;
-  },
-): { body: string; contentType: string; extension: string } {
-  switch (format) {
-    case "json":
-      return {
-        body: toJsonReport(report, options),
-        contentType: "application/json; charset=utf-8",
-        extension: "json",
-      };
-    case "markdown":
-      return {
-        body: toMarkdownReport(report, options),
-        contentType: "text/markdown; charset=utf-8",
-        extension: "md",
-      };
-    case "html":
-      return {
-        body: toHtmlReport(report, options),
-        contentType: "text/html; charset=utf-8",
-        extension: "html",
-      };
-    case "bibtex":
-      return {
-        body: toBibTeX(report),
-        contentType: "application/x-bibtex; charset=utf-8",
-        extension: "bib",
-      };
+  const rawCollection = value["collection"];
+  if (rawCollection !== undefined) {
+    const collection = rawCollection as Record<string, unknown>;
+    if (typeof collection !== "object" || collection === null || Array.isArray(collection)) {
+      throw new HttpRequestError(400, "report.collection must be an object");
+    }
+    const description = optionalText(
+      collection["description"],
+      "report.collection.description",
+      LIMITS.collectionDescription,
+    );
+    report.collection = {
+      title: text(collection["title"], "report.collection.title", LIMITS.collectionTitle),
+      ...(description === undefined ? {} : { description }),
+    };
   }
+  return report;
 }
 
 export async function handleReportExport(
@@ -245,8 +222,8 @@ export async function handleReportExport(
     if (typeof body !== "object" || body === null || Array.isArray(body)) {
       throw new HttpRequestError(400, "request body must be a JSON object");
     }
-    if (!isFormat(body["format"])) {
-      throw new HttpRequestError(400, `format must be one of: ${FORMATS.join(", ")}`);
+    if (!isReportFormat(body["format"])) {
+      throw new HttpRequestError(400, `format must be one of: ${REPORT_FORMATS.join(", ")}`);
     }
     const answerId = optionalText(body["answerId"], "answerId", LIMITS.id);
     const collectionId = optionalText(body["collectionId"], "collectionId", LIMITS.id);
@@ -274,22 +251,31 @@ export async function handleReportExport(
           ? await handlers.fromAnswer(owner.ownerId, answerId)
           : await handlers.fromCollection(owner.ownerId, collectionId ?? "");
       if (stored === undefined) throw new HttpRequestError(404, "report source not found");
+      // A host implementation may assemble the report itself; enforce the
+      // collection ceiling here as well as in the shared builder.
+      if (stored.collection !== undefined) assertCollectionReportSize(stored.sources.length);
       report = stored;
     }
-    const rendered = render(report, body["format"], {
+    const rendered = renderReport(report, body["format"], {
       includeQuestion: body["includeQuestion"] === true,
       includeAnnotations: body["includeAnnotations"] === true,
     });
+    const sha256 = createHash("sha256").update(rendered.body, "utf8").digest("hex");
     res.writeHead(200, {
       "content-type": rendered.contentType,
       "content-disposition": `attachment; filename="report.${rendered.extension}"`,
       "cache-control": "no-store",
+      "x-report-sha256": sha256,
       "x-request-id": httpRequestId,
     });
     res.end(rendered.body);
   } catch (error) {
     if (error instanceof HttpRequestError) {
       jsonError(res, error.status, error.message, httpRequestId, req);
+      return;
+    }
+    if (error instanceof CollectionReportTooLargeError) {
+      jsonError(res, 413, error.message, httpRequestId, req);
       return;
     }
     console.error(`[${httpRequestId}] report export failed: ${String(error)}`);

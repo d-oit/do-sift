@@ -37,6 +37,27 @@ export interface CollectionItemRow {
   evidenceFetchedAt?: string | undefined;
 }
 
+export interface CollectionItemCursor {
+  addedAt: string;
+  itemKind: CollectionItemKind;
+  itemId: string;
+}
+
+export interface CollectionItemPage {
+  items: CollectionItemRow[];
+  hasMore: boolean;
+}
+
+export interface CollectionBackfillReceipt {
+  /** Evidence references with no stored URL snapshot at scan time. */
+  scanned: number;
+  /** References whose metadata resolved and was (or would be) written. */
+  updated: number;
+  /** References the owner's corpus still cannot resolve. */
+  unresolved: number;
+  dryRun: boolean;
+}
+
 export interface CollectionNoteRow {
   id: string;
   collectionId: string;
@@ -243,6 +264,78 @@ export class CollectionsRepository {
     };
   }
 
+  /**
+   * Snapshot provenance for evidence references attached before migration
+   * 0015 (or before the id resolved). Only rows with a null `evidence_url`
+   * are touched; existing snapshots are never rewritten. With `dryRun` the
+   * counts are computed and nothing is written.
+   */
+  async backfillEvidenceMetadata(
+    options: { collectionId?: string; dryRun?: boolean } = {},
+  ): Promise<CollectionBackfillReceipt> {
+    const dryRun = options.dryRun === true;
+    const conditions = [
+      "tenant_id = ?",
+      "owner_id = ?",
+      "item_kind = 'evidence'",
+      "evidence_url IS NULL",
+    ];
+    const args: string[] = [this.tenantId, this.ownerId];
+    if (options.collectionId !== undefined) {
+      conditions.push("collection_id = ?");
+      args.push(options.collectionId);
+    }
+    const res = await this.client.execute({
+      sql: `SELECT collection_id, item_id FROM collection_items
+            WHERE ${conditions.join(" AND ")}
+            ORDER BY added_at, collection_id, item_id`,
+      args,
+    });
+
+    // The same evidence id can be referenced by several collections; resolve
+    // its provenance once per run.
+    const resolved = new Map<
+      string,
+      { url: string; title?: string | undefined; fetchedAt: string } | undefined
+    >();
+    let updated = 0;
+    let unresolved = 0;
+    for (const row of res.rows) {
+      const collectionId = str(row["collection_id"]);
+      const itemId = str(row["item_id"]);
+      let metadata = resolved.get(itemId);
+      if (!resolved.has(itemId)) {
+        metadata = await this.evidenceMetadata(itemId);
+        resolved.set(itemId, metadata);
+      }
+      if (metadata === undefined) {
+        unresolved++;
+        continue;
+      }
+      if (dryRun) {
+        updated++;
+        continue;
+      }
+      const write = await this.client.execute({
+        sql: `UPDATE collection_items
+              SET evidence_url = ?, evidence_title = ?, evidence_fetched_at = ?
+              WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
+                AND item_kind = 'evidence' AND item_id = ? AND evidence_url IS NULL`,
+        args: [
+          metadata.url,
+          metadata.title ?? null,
+          metadata.fetchedAt,
+          collectionId,
+          this.tenantId,
+          this.ownerId,
+          itemId,
+        ],
+      });
+      if (write.rowsAffected > 0) updated++;
+    }
+    return { scanned: res.rows.length, updated, unresolved, dryRun };
+  }
+
   async removeItem(
     collectionId: string,
     kind: CollectionItemKind,
@@ -255,19 +348,8 @@ export class CollectionsRepository {
     return res.rowsAffected > 0;
   }
 
-  async items(collectionId: string, limit = COLLECTION_LIST_MAX): Promise<CollectionItemRow[]> {
-    if (!Number.isInteger(limit) || limit < 1 || limit > COLLECTION_LIST_MAX) {
-      throw new Error(`limit must be an integer from 1 to ${COLLECTION_LIST_MAX}`);
-    }
-    const res = await this.client.execute({
-      sql: `SELECT collection_id, item_kind, item_id, added_at,
-                   evidence_url, evidence_title, evidence_fetched_at
-            FROM collection_items
-            WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?
-            ORDER BY added_at, item_kind, item_id LIMIT ?`,
-      args: [collectionId, this.tenantId, this.ownerId, limit],
-    });
-    return res.rows.map((row) => {
+  private itemRows(rows: readonly Record<string, unknown>[]): CollectionItemRow[] {
+    return rows.map((row) => {
       const evidenceUrl = strOrUndefined(row["evidence_url"]);
       const evidenceTitle = strOrUndefined(row["evidence_title"]);
       const evidenceFetchedAt = strOrUndefined(row["evidence_fetched_at"]);
@@ -281,6 +363,82 @@ export class CollectionsRepository {
         ...(evidenceFetchedAt === undefined ? {} : { evidenceFetchedAt }),
       };
     });
+  }
+
+  private assertItemLimit(limit: number): void {
+    if (!Number.isInteger(limit) || limit < 1 || limit > COLLECTION_LIST_MAX) {
+      throw new Error(`limit must be an integer from 1 to ${COLLECTION_LIST_MAX}`);
+    }
+  }
+
+  private async selectItems(
+    collectionId: string,
+    limit?: number,
+    after?: CollectionItemCursor,
+  ): Promise<CollectionItemRow[]> {
+    const conditions = ["collection_id = ?", "tenant_id = ?", "owner_id = ?"];
+    const args: Array<string | number> = [collectionId, this.tenantId, this.ownerId];
+    if (after !== undefined) {
+      conditions.push(
+        "(added_at > ? OR (added_at = ? AND (item_kind > ? OR (item_kind = ? AND item_id > ?))))",
+      );
+      args.push(after.addedAt, after.addedAt, after.itemKind, after.itemKind, after.itemId);
+    }
+    let sql = `SELECT collection_id, item_kind, item_id, added_at,
+                      evidence_url, evidence_title, evidence_fetched_at
+               FROM collection_items
+               WHERE ${conditions.join(" AND ")}
+               ORDER BY added_at, item_kind, item_id`;
+    if (limit !== undefined) {
+      sql += " LIMIT ?";
+      args.push(limit);
+    }
+    const res = await this.client.execute({ sql, args });
+    return this.itemRows(res.rows);
+  }
+
+  async items(collectionId: string, limit = COLLECTION_LIST_MAX): Promise<CollectionItemRow[]> {
+    this.assertItemLimit(limit);
+    return this.selectItems(collectionId, limit);
+  }
+
+  /** One stable page after the caller's last `(addedAt, kind, id)` attachment. */
+  async itemsPage(
+    collectionId: string,
+    limit = COLLECTION_LIST_MAX,
+    after?: CollectionItemCursor,
+  ): Promise<CollectionItemPage> {
+    this.assertItemLimit(limit);
+    const rows = await this.selectItems(collectionId, limit + 1, after);
+    return { items: rows.slice(0, limit), hasMore: rows.length > limit };
+  }
+
+  /** Total attachments in this scope, including rows beyond the detail cap. */
+  async countItems(collectionId: string): Promise<number> {
+    const res = await this.client.execute({
+      sql: `SELECT COUNT(*) AS total
+            FROM collection_items
+            WHERE collection_id = ? AND tenant_id = ? AND owner_id = ?`,
+      args: [collectionId, this.tenantId, this.ownerId],
+    });
+    return Number(res.rows[0]?.["total"] ?? 0);
+  }
+
+  /**
+   * Every item reference in a collection, for unbounded reads. Report
+   * assembly uses `itemsUpTo` so a pathological collection cannot load an
+   * unbounded result before the report ceiling is checked.
+   */
+  async allItems(collectionId: string): Promise<CollectionItemRow[]> {
+    return this.selectItems(collectionId);
+  }
+
+  /** At most `limit` rows; callers choose the ceiling and reject overflow. */
+  async itemsUpTo(collectionId: string, limit: number): Promise<CollectionItemRow[]> {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error("limit must be a positive integer");
+    }
+    return this.selectItems(collectionId, limit);
   }
 
   /** Owner-authored note; `authorId` may name a member, never an evidence row. */

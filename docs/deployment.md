@@ -146,10 +146,11 @@ process restart; scrape them from a single instance or aggregate with
 ### Owner and evidence CLI (#67)
 
 `apps/cli` reads the same libSQL database as the server. Every command except
-the two confirmation-gated `retention prune*` maintenance commands is
-read-only; neither migrates or creates schema. Pass the database with
-`--db` or `DO_SIFT_DB_URL`; the CLI does not read any auth token from the
-environment.
+the two confirmation-gated `retention prune*` commands and `collections
+backfill` is read-only; neither migrates or creates schema. `collections
+backfill` only fills null evidence metadata snapshots and never rewrites an
+existing one. Pass the database with `--db` or `DO_SIFT_DB_URL`; the CLI does
+not read any auth token from the environment.
 
 ```bash
 npx tsx apps/cli/src/index.ts owners list --db file:do-sift.db
@@ -158,12 +159,38 @@ npx tsx apps/cli/src/index.ts evidence list --owner <id> [--limit 50] --db file:
 npx tsx apps/cli/src/index.ts evidence export --owner <id> --out evidence.json --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research list --owner <id> [--limit 50] [--since YYYY-MM-DD|ISO] [--until YYYY-MM-DD|ISO] [--status completed|failed|pending|degraded] [--show-question] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts research show --owner <id> --request <id> [--show-question] [--out receipt.json] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report answer --owner <id> --answer <id> [--format json|markdown|html|bibtex] [--include-question] [--out report.md] [--checksum] [--manifest] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report collection --owner <id> --collection <id> [--format json|markdown|html|bibtex] [--include-annotations] [--out report.md] [--checksum] [--manifest] --db file:do-sift.db
+npx tsx apps/cli/src/index.ts report verify --in report.md [--sidecar report.md.sha256] [--manifest] [--manifest-file manifest.json]
+npx tsx apps/cli/src/index.ts collections backfill --owner <id> [--collection <id>] [--dry-run] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--prune-collections] [--out receipt.json] --db file:do-sift.db
 npx tsx apps/cli/src/index.ts retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out receipt.json] --db file:do-sift.db
 ```
 
-Every data command requires an explicit `--owner`. `evidence export` and `research show --out` write a
-new file and fail if the path already exists. Sensitive question text is redacted as `[REDACTED]` by default unless `--show-question` is provided, and raw page contents (`documents.raw_text`) or passages are never exposed. Exit codes: `0` success, `2` usage error, `1` runtime error.
+Every data command requires an explicit `--owner`. `evidence export`, `research show --out`, and
+`report answer --out` write a new file and fail if the path already exists. Sensitive question text
+is redacted as `[REDACTED]` by default unless `--show-question` is provided (or `--include-question`
+for `report answer`), and raw page contents (`documents.raw_text`) or passages are never exposed.
+`report collection` renders the collection title/description, every attached
+reference (not only the first 100 shown in the workspace view) up to the
+10,000-attachment safety ceiling, and only snapshotted evidence; above the
+ceiling it exits `1` rather than truncating. It omits owner notes unless
+`--include-annotations`; when `--out` is used, the command prints the
+lowercase SHA-256 of the written bytes, and `--checksum` also writes
+`<out>.sha256` in `sha256sum` format (`<hex>  <basename>`). `--checksum`
+requires `--out`; if the sidecar cannot be written, the report remains and
+the command exits `1`. `--manifest` also requires `--out` and writes
+`<out>.manifest.json` with `manifestVersion`, `reportSchemaVersion`, `format`,
+`sha256`, `bytes`, `sourceCount`, `claimCount`, `annotationCount`, and
+`questionIncluded`; counts reflect privacy-filtered logical content (BibTeX may
+omit untitled sources). `report verify` defaults to `<in>.sha256` (or
+`--sidecar`), requires the sidecar filename to match the report basename, and
+exits `1` for a malformed or mismatched checksum. With `--manifest`, it also
+validates `<in>.manifest.json` for schema shape, artifact digest, and byte
+count; counts are shape-checked but not recomputed. `--manifest-file <path>`
+selects a different manifest and implies validation. `collections backfill`
+snapshots provenance for evidence references attached before migration 0015;
+`--dry-run` reports the counts without writing. Exit codes: `0` success, `2` usage error, `1` runtime error.
 
 ### Retention and maintenance policy
 

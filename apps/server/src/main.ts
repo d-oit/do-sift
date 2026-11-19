@@ -8,6 +8,8 @@ import {
   type OidcVerifier,
 } from "@do-sift/auth";
 import {
+  MAX_COLLECTION_REPORT_ATTACHMENTS,
+  assertCollectionReportSize,
   buildAnswerReport,
   buildCollectionReport,
   type ModelProvider,
@@ -514,7 +516,11 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
       get: async (ownerId, id) => {
         const collection = await repo.get(id);
         if (collection === undefined) return undefined;
-        const [items, notes] = await Promise.all([repo.items(id), repo.notes(id)]);
+        const [items, notes, totalItems] = await Promise.all([
+          repo.items(id),
+          repo.notes(id),
+          repo.countItems(id),
+        ]);
         return {
           collection,
           items: items.map((item) => ({
@@ -522,7 +528,33 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
             id: item.itemId,
             addedAt: item.addedAt,
           })),
+          totalItems,
           notes,
+        };
+      },
+      items: async (ownerId, id, options) => {
+        const collection = await repo.get(id);
+        if (collection === undefined) return undefined;
+        const after =
+          options.cursor === undefined
+            ? undefined
+            : {
+                addedAt: options.cursor.addedAt,
+                itemKind: options.cursor.kind,
+                itemId: options.cursor.id,
+              };
+        const [page, totalItems] = await Promise.all([
+          repo.itemsPage(id, options.limit, after),
+          repo.countItems(id),
+        ]);
+        return {
+          items: page.items.map((item) => ({
+            kind: item.itemKind,
+            id: item.itemId,
+            addedAt: item.addedAt,
+          })),
+          totalItems,
+          hasMore: page.hasMore,
         };
       },
       update: (ownerId, id, changes) => {
@@ -578,9 +610,10 @@ export async function composeApp(config: AppConfig, deps: ComposeDeps = {}): Pro
         const collection = await collections.get(collectionId);
         if (collection === undefined) return undefined;
         const [items, notes] = await Promise.all([
-          collections.items(collectionId),
+          collections.itemsUpTo(collectionId, MAX_COLLECTION_REPORT_ATTACHMENTS + 1),
           collections.notes(collectionId),
         ]);
+        assertCollectionReportSize(items.length);
         return buildCollectionReport({
           title: collection.title,
           description: collection.description,

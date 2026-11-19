@@ -20,6 +20,8 @@ export {
 } from "./workspaces.js";
 export type {
   CollectionDetailView,
+  CollectionItemCursor,
+  CollectionItemPageView,
   CollectionItemView,
   CollectionNoteView,
   CollectionView,

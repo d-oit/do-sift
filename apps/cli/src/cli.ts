@@ -5,14 +5,30 @@
  * Every data command requires an explicit --owner, so ownership scoping is never implicit.
  */
 import type { Client } from "@libsql/client";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import {
   DEFAULT_TENANT_ID,
   MIN_MEMBER_CHANGE_RETENTION_DAYS,
+  CollectionsRepository,
+  Repositories,
   executeOwnerRetention,
   pruneMemberChangeLog,
 } from "@do-sift/storage";
+import {
+  MAX_COLLECTION_REPORT_ATTACHMENTS,
+  REPORT_FORMATS,
+  REPORT_SCHEMA_VERSION,
+  assertCollectionReportSize,
+  buildAnswerReport,
+  buildCollectionReport,
+  isReportFormat,
+  renderReport,
+  type ReportFormat,
+  type ResearchReport,
+} from "@do-sift/contracts";
 
 export interface CliDeps {
   client: Client;
@@ -33,6 +49,10 @@ const USAGE = `usage: do-sift-cli <command> [options]
   research list --owner <id> [--limit <n>] [--since <YYYY-MM-DD|ISO>] [--until <YYYY-MM-DD|ISO>] [--status <completed|failed|pending|degraded>] [--show-question] [--tenant <id>]
   research show --owner <id> --request <id> [--show-question] [--out <new-file.json>] [--tenant <id>]
   analytics summarize --in <eval-results.json> [--format <table|json>] [--out <new-file.json>]
+  report answer --owner <id> --answer <id> [--format <json|markdown|html|bibtex>] [--include-question] [--out <new-file>] [--checksum] [--manifest] [--tenant <id>]
+  report collection --owner <id> --collection <id> [--format <json|markdown|html|bibtex>] [--include-annotations] [--out <new-file>] [--checksum] [--manifest] [--tenant <id>]
+  report verify --in <report-file> [--sidecar <sha256-file>] [--manifest] [--manifest-file <json-file>]
+  collections backfill --owner <id> [--collection <id>] [--dry-run] [--tenant <id>]
   retention prune --owner <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>] [--tenant <id>] [--prune-collections]
   retention prune-changes --tenant <id> (--retention-days <n> | --cutoff <ISO|YYYY-MM-DD>) [--dry-run] [--confirm] [--out <new-file.json>]
 
@@ -41,7 +61,109 @@ its queries by tenant_id as well as owner_id, so one tenant's owner id never
 reaches another tenant's rows (plan 035).
 `;
 
-const BOOLEAN_FLAGS = new Set(["show-question", "dry-run", "confirm", "prune-collections"]);
+const BOOLEAN_FLAGS = new Set([
+  "show-question",
+  "include-question",
+  "include-annotations",
+  "checksum",
+  "manifest",
+  "dry-run",
+  "confirm",
+  "prune-collections",
+]);
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+async function writeChecksumSidecar(
+  write: (path: string, content: string) => Promise<void>,
+  out: string,
+  body: string,
+): Promise<void> {
+  await write(`${out}.sha256`, `${sha256Hex(body)}  ${basename(out)}\n`);
+}
+
+interface ReportManifest {
+  manifestVersion: 1;
+  reportSchemaVersion: number;
+  format: ReportFormat;
+  sha256: string;
+  bytes: number;
+  sourceCount: number;
+  claimCount: number;
+  annotationCount: number;
+  questionIncluded: boolean;
+}
+
+function buildReportManifest(
+  report: ResearchReport,
+  body: string,
+  format: ReportFormat,
+  options: { includeQuestion: boolean; includeAnnotations: boolean },
+): ReportManifest {
+  return {
+    manifestVersion: 1,
+    reportSchemaVersion: REPORT_SCHEMA_VERSION,
+    format,
+    sha256: sha256Hex(body),
+    bytes: Buffer.byteLength(body, "utf8"),
+    sourceCount: report.sources.length,
+    claimCount: report.claims.length,
+    annotationCount: options.includeAnnotations ? report.annotations.length : 0,
+    questionIncluded: options.includeQuestion && report.question !== undefined,
+  };
+}
+
+async function writeManifestSidecar(
+  write: (path: string, content: string) => Promise<void>,
+  out: string,
+  manifest: ReportManifest,
+): Promise<void> {
+  await write(`${out}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function parseReportManifest(raw: unknown): ReportManifest | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const value = raw as Record<string, unknown>;
+  if (value["manifestVersion"] !== 1) return undefined;
+  if (value["reportSchemaVersion"] !== REPORT_SCHEMA_VERSION) return undefined;
+  if (!isReportFormat(value["format"])) return undefined;
+  const sha256 = value["sha256"];
+  if (typeof sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(sha256)) return undefined;
+  const bytes = value["bytes"];
+  const sourceCount = value["sourceCount"];
+  const claimCount = value["claimCount"];
+  const annotationCount = value["annotationCount"];
+  if (!nonNegativeInteger(bytes)) return undefined;
+  if (!nonNegativeInteger(sourceCount)) return undefined;
+  if (!nonNegativeInteger(claimCount)) return undefined;
+  if (!nonNegativeInteger(annotationCount)) return undefined;
+  if (typeof value["questionIncluded"] !== "boolean") return undefined;
+  return {
+    manifestVersion: 1,
+    reportSchemaVersion: REPORT_SCHEMA_VERSION,
+    format: value["format"],
+    sha256,
+    bytes,
+    sourceCount,
+    claimCount,
+    annotationCount,
+    questionIncluded: value["questionIncluded"],
+  };
+}
+
+function reportFormat(flags: Map<string, string>): ReportFormat {
+  const format = flags.get("format") ?? "markdown";
+  if (!isReportFormat(format)) {
+    throw new CliUsageError(`--format must be one of: ${REPORT_FORMATS.join(", ")}`);
+  }
+  return format;
+}
 
 function parseFlags(args: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -519,6 +641,262 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         return 0;
       }
       for (const line of body.trimEnd().split("\n")) deps.out(line);
+      return 0;
+    }
+    if (group === "report" && action === "verify") {
+      const input = flags.get("in");
+      if (input === undefined || input === "") {
+        throw new CliUsageError("--in is required");
+      }
+      const sidecarPath = flags.get("sidecar") ?? `${input}.sha256`;
+      let content: string;
+      let sidecar: string;
+      try {
+        content = readFileSync(input, "utf8");
+      } catch {
+        deps.err(`error: cannot read report ${input}`);
+        return 1;
+      }
+      try {
+        sidecar = readFileSync(sidecarPath, "utf8");
+      } catch {
+        deps.err(`error: cannot read checksum ${sidecarPath}`);
+        return 1;
+      }
+      const match = /^([0-9a-f]{64}) [ *](.+?)\r?\n?$/u.exec(sidecar);
+      if (match === null) {
+        deps.err("error: checksum file must be '<sha256>  <filename>'");
+        return 1;
+      }
+      const expected = match[1] ?? "";
+      const named = match[2] ?? "";
+      if (named !== basename(input)) {
+        deps.err(`error: checksum names ${named}, expected ${basename(input)}`);
+        return 1;
+      }
+      const actual = sha256Hex(content);
+      if (actual !== expected) {
+        deps.err(`error: checksum mismatch for ${input}`);
+        return 1;
+      }
+      let manifestPath: string | undefined;
+      const manifestFile = flags.get("manifest-file");
+      if (flags.get("manifest") === "true" || (manifestFile !== undefined && manifestFile !== "")) {
+        manifestPath =
+          manifestFile === undefined || manifestFile === ""
+            ? `${input}.manifest.json`
+            : manifestFile;
+        let rawManifest: string;
+        try {
+          rawManifest = readFileSync(manifestPath, "utf8");
+        } catch {
+          deps.err(`error: cannot read manifest ${manifestPath}`);
+          return 1;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(rawManifest) as unknown;
+        } catch {
+          deps.err(`error: manifest is not valid JSON`);
+          return 1;
+        }
+        const manifest = parseReportManifest(parsed);
+        if (manifest === undefined) {
+          deps.err("error: manifest does not match the report manifest schema");
+          return 1;
+        }
+        if (manifest.sha256 !== actual) {
+          deps.err(`error: manifest checksum mismatch for ${input}`);
+          return 1;
+        }
+        if (manifest.bytes !== Buffer.byteLength(content, "utf8")) {
+          deps.err(`error: manifest byte count mismatch for ${input}`);
+          return 1;
+        }
+      }
+      deps.out(
+        `verified ${input} sha256 ${actual}` +
+          (manifestPath === undefined ? "" : ` manifest ${manifestPath}`),
+      );
+      return 0;
+    }
+    if (group === "report" && action === "answer") {
+      const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
+      const answerId = flags.get("answer");
+      if (answerId === undefined || answerId === "") {
+        throw new CliUsageError("--answer is required");
+      }
+      const format = reportFormat(flags);
+      const repos = new Repositories(deps.client, tenant);
+      const input = await repos.answers.reportInput(owner, answerId);
+      if (input === undefined) {
+        deps.err(`error: answer ${answerId} not found for owner ${owner} in tenant ${tenant}`);
+        return 1;
+      }
+      const report = buildAnswerReport({
+        question: input.question,
+        createdAt: input.createdAt,
+        blocks: input.blocks.map((block) => ({
+          kind: block.kind,
+          text: block.text,
+          citations: block.citations,
+          ...(block.unresolved === true ? { unresolved: true } : {}),
+        })),
+        sources: input.sources.map((source) => ({
+          id: source.evidenceId,
+          url: source.url,
+          ...(source.title === undefined ? {} : { title: source.title }),
+          ...(source.publishedAt === undefined ? {} : { publishedAt: source.publishedAt }),
+          fetchedAt: source.retrievedAt,
+          ...(source.contentHash === undefined ? {} : { contentHash: source.contentHash }),
+        })),
+      });
+      // The stored question stays private unless explicitly opted in, matching
+      // `POST /api/reports/export`.
+      const rendered = renderReport(report, format, {
+        includeQuestion: flags.get("include-question") === "true",
+        includeAnnotations: false,
+      });
+      const out = flags.get("out");
+      const writeChecksum = flags.get("checksum") === "true";
+      const writeManifest = flags.get("manifest") === "true";
+      if (writeChecksum && (out === undefined || out === "")) {
+        throw new CliUsageError("--checksum requires --out");
+      }
+      if (writeManifest && (out === undefined || out === "")) {
+        throw new CliUsageError("--manifest requires --out");
+      }
+      if (out !== undefined && out !== "") {
+        const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
+        await write(out, rendered.body);
+        if (writeChecksum) await writeChecksumSidecar(write, out, rendered.body);
+        if (writeManifest) {
+          await writeManifestSidecar(
+            write,
+            out,
+            buildReportManifest(report, rendered.body, format, {
+              includeQuestion: flags.get("include-question") === "true",
+              includeAnnotations: false,
+            }),
+          );
+        }
+        deps.out(
+          `exported ${format} report for ${answerId} to ${out}; sha256 ${sha256Hex(rendered.body)}`,
+        );
+        return 0;
+      }
+      deps.out(rendered.body.trimEnd());
+      return 0;
+    }
+    if (group === "report" && action === "collection") {
+      const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
+      const collectionId = flags.get("collection");
+      if (collectionId === undefined || collectionId === "") {
+        throw new CliUsageError("--collection is required");
+      }
+      const format = reportFormat(flags);
+      const repo = new CollectionsRepository(deps.client, owner, tenant);
+      const collection = await repo.get(collectionId);
+      if (collection === undefined) {
+        deps.err(
+          `error: collection ${collectionId} not found for owner ${owner} in tenant ${tenant}`,
+        );
+        return 1;
+      }
+      const [items, notes] = await Promise.all([
+        repo.itemsUpTo(collectionId, MAX_COLLECTION_REPORT_ATTACHMENTS + 1),
+        repo.notes(collectionId),
+      ]);
+      assertCollectionReportSize(items.length);
+      const report = buildCollectionReport({
+        title: collection.title,
+        description: collection.description,
+        createdAt: collection.createdAt,
+        // Legacy references without a metadata snapshot stay omitted; the
+        // report never invents a URL or retrieval time.
+        sources: items.flatMap((item) => {
+          if (item.evidenceUrl === undefined || item.evidenceFetchedAt === undefined) return [];
+          return [
+            {
+              id: item.itemId,
+              url: item.evidenceUrl,
+              ...(item.evidenceTitle === undefined ? {} : { title: item.evidenceTitle }),
+              fetchedAt: item.evidenceFetchedAt,
+            },
+          ];
+        }),
+        annotations: notes.map((note) => ({
+          id: note.id,
+          body: note.body,
+          createdAt: note.createdAt,
+        })),
+      });
+      // Owner notes stay private unless explicitly opted in, matching
+      // `POST /api/reports/export`.
+      const rendered = renderReport(report, format, {
+        includeQuestion: false,
+        includeAnnotations: flags.get("include-annotations") === "true",
+      });
+      const out = flags.get("out");
+      const writeChecksum = flags.get("checksum") === "true";
+      const writeManifest = flags.get("manifest") === "true";
+      if (writeChecksum && (out === undefined || out === "")) {
+        throw new CliUsageError("--checksum requires --out");
+      }
+      if (writeManifest && (out === undefined || out === "")) {
+        throw new CliUsageError("--manifest requires --out");
+      }
+      if (out !== undefined && out !== "") {
+        const write = deps.writeNewFile ?? ((p, c) => writeFile(p, c, { flag: "wx" }));
+        await write(out, rendered.body);
+        if (writeChecksum) await writeChecksumSidecar(write, out, rendered.body);
+        if (writeManifest) {
+          await writeManifestSidecar(
+            write,
+            out,
+            buildReportManifest(report, rendered.body, format, {
+              includeQuestion: false,
+              includeAnnotations: flags.get("include-annotations") === "true",
+            }),
+          );
+        }
+        deps.out(
+          `exported ${format} report for collection ${collectionId} to ${out}; sha256 ${sha256Hex(rendered.body)}`,
+        );
+        return 0;
+      }
+      deps.out(rendered.body.trimEnd());
+      return 0;
+    }
+    if (group === "collections" && action === "backfill") {
+      const owner = requireOwner(flags);
+      const tenant = tenantScope(flags);
+      const collectionId = flags.get("collection");
+      const repo = new CollectionsRepository(deps.client, owner, tenant);
+      if (collectionId !== undefined && collectionId !== "") {
+        const collection = await repo.get(collectionId);
+        if (collection === undefined) {
+          deps.err(
+            `error: collection ${collectionId} not found for owner ${owner} in tenant ${tenant}`,
+          );
+          return 1;
+        }
+      }
+      const receipt = await repo.backfillEvidenceMetadata({
+        ...(collectionId === undefined || collectionId === "" ? {} : { collectionId }),
+        dryRun: flags.get("dry-run") === "true",
+      });
+      deps.out(`owner_id\t${owner}`);
+      deps.out(`tenant_id\t${tenant}`);
+      deps.out(
+        `collection_id\t${collectionId === undefined || collectionId === "" ? "*" : collectionId}`,
+      );
+      deps.out(`mode\t${receipt.dryRun ? "dry-run" : "backfill"}`);
+      deps.out(`scanned\t${receipt.scanned}`);
+      deps.out(`updated\t${receipt.updated}`);
+      deps.out(`unresolved\t${receipt.unresolved}`);
       return 0;
     }
     if (group === "retention" && action === "prune") {
