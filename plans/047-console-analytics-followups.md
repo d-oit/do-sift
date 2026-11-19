@@ -1,6 +1,6 @@
 # 047 — Console, analytics, and export follow-ups
 
-Status: in-progress (2026-11-17). Owner: maintainer.
+Status: done (2026-11-19). Owner: maintainer. FUP-01..FUP-03 done with evidence; landed via #178, extended by 048/049 (#179).
 
 Follow-ups named by plan 045/046. Each row is `done` only with the evidence
 recorded here.

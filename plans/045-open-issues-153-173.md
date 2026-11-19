@@ -1,6 +1,6 @@
 # 045 — Open issue slices: 153–173
 
-Status: in-progress (2026-11-17). Owner: maintainer.
+Status: done (2026-11-19). Owner: maintainer. All OI-153..OI-173 rows done with evidence; slices landed via #178, follow-ups in 047/048/049.
 
 This plan records the smallest honest slice for each open issue after #159 and
 #174 landed on `main`. Several issues are epics (DuckDB, Parquet, workspaces)
