@@ -1,5 +1,7 @@
 # Plan 048 — report and analytics follow-ups (2026-11-17)
 
+Status: done (2026-11-19). Owner: maintainer. ANL-01, RPT-04, RPT-05 done with evidence; landed via #178, extended by 049 (#179).
+
 Extends plan 047's export and analytics slices with the three follow-ups it
 named. Each task is a thinnest honest slice: no new network, no model call, no
 widening of the stateless export contract's privacy defaults.
