@@ -22,6 +22,7 @@ see the [architecture index](../docs/architecture/README.md) and the
 ## Current queue
 
 - `046-analytics-benchmark.md` — decided (2026-11-17, issue #154): DuckDB adopted for optional offline analytics after a measured 11.7× query win and 0.16× RSS at 100k rows with identical results. `packages/analytics` is isolated from the request path.
+- `052-parquet-promotion-decision.md` — decided defer (2026-11-21, #155): JSON interchange stays the snapshot format; no Parquet consumer or measured size/latency need exists. Promotion gate recorded for revisit.
 - `045-open-issues-153-173.md` — done (2026-11-19, #178); one honest slice per open issue, with native/UI follow-ups named rather than claimed. See the task table for each issue's status and evidence.
 - `047-console-analytics-followups.md` — done (2026-11-19, #178); isolated analytics package, report-export route, and a real-browser console smoke test.
 - `048-report-and-analytics-followups.md` — done (2026-11-19, #178); analytics CLI, stored-answer reports with citations, and collection reports built from snapshotted evidence metadata.
