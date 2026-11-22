@@ -120,6 +120,14 @@ is **not** in this list — see Approval boundaries.
   bot-prohibiting sites (LinkedIn included) are out of scope and will not be
   merged — see ADR 0005.
 
+## Pull request and merge gate
+
+- Always create a pull request; never push directly to `main`.
+- All CI must pass before merge, including Codacy.
+- Merge only when every required check is green with no warnings or
+  failures; on any warning or failure, fix the cause and re-run — never
+  weaken a check to make it pass.
+
 ## Approval boundaries (stop and ask)
 
 - Publishing packages/images, creating public repos or releases
