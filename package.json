@@ -16,6 +16,8 @@
   "scripts": {
     "check:fast": "tsx scripts/check.ts --fast",
     "check": "tsx scripts/check.ts",
+    "verify:fast": "npm run check:fast",
+    "verify": "npm run check && npm run test:coverage",
     "policy": "tsx scripts/policy.ts",
     "skills:check": "tsx scripts/skills-check.ts",
     "eval:offline": "tsx scripts/eval.ts",

@@ -11,12 +11,28 @@ If you only read one other document, read the
 
 ```bash
 npm install
-npm run check:fast    # format, lint, typecheck, policy, guardrails, skills, governance, links, deps, docs
-npm run check         # the above + tests + evals + build
+npm run verify:fast   # canonical fast gate: format, lint, typecheck, policy, guardrails, skills, governance, links, deps
+npm run verify        # canonical full gate: check (fast + tests + evals + build) + test:coverage
 ```
 
-Node 22 or newer. If `npm run check` fails before you changed anything, stop —
-record the failure and ask, rather than working around a red baseline.
+`verify:fast` reuses `check:fast` and `verify` reuses `check` — there is one
+implementation per stage, not a parallel copy. Each stage fails closed with a
+non-zero exit, and the first failure stops the chain. No paid API key or
+live provider is needed: the default gate is deterministic and offline
+(`eval:live`, `eval:e2e`, and `nightly-live` stay explicit opt-ins).
+
+CI-only extras (not part of `verify`): `evals:dashboard` regenerates the
+tracked `evals/dashboard/index.html` from the deterministic eval artifacts
+`check` just produced, and the `container` job needs Docker to build and
+smoke the runtime image. `test:coverage` is included in `verify`.
+
+Prerequisites: Node >= 24 and `npm install` (`npm ci` in CI).
+Expected runtime: fast gate ~1 min, full gate ~5–10 min (tests + evals +
+coverage dominate). Safe cleanup: `coverage/` is gitignored; `verify` writes
+no tracked files.
+
+If `npm run verify` fails before you changed anything, stop — record the
+failure and ask, rather than working around a red baseline.
 
 ## 1. Build a mock search provider
 
@@ -174,8 +190,8 @@ zero-capability mock there is no network assertion to make.
 
 ## 6. Hand off
 
-1. `npm run signals -- verify --set verification` — the receipt-producing
-   form of the full gate.
+1. `npm run verify` — the canonical full gate. `npm run signals -- verify
+--set verification` is the receipt-producing form of the same gate.
 2. Record changed files, commands run, their results, and open risks in the
    relevant `plans/` task row. A task is done when a sensor exits 0, not when
    the code looks right.

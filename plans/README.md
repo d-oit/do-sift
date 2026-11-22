@@ -26,6 +26,7 @@ see the [architecture index](../docs/architecture/README.md) and the
 - `053-dep-review-round-2.md` — review done (2026-11-21): `npm audit` 0 vulnerabilities, all direct deps at wanted; six newer `latest`s outside pinned ranges all deferred with reasons (no upgrades, no lockfile churn).
 - `054-playwright-patch.md` — done (2026-11-21, #189): Playwright 1.65.0 → 1.65.1 lockfile refresh with the honest BRW-04 e2e as gate (real chromium, unskipped, 3 passed).
 - `055-dep-review-round-3.md` — review done (2026-11-22): `npm audit` 0 vulnerabilities, all direct deps at wanted; five newer `latest`s outside pinned ranges all deferred with reasons (no upgrades, no lockfile churn).
+- `056-verify-command.md` — in-progress (issue #180, slice 1): documented `verify:fast` / `verify` entry points reusing existing scripts; no workflow edits.
 - `045-open-issues-153-173.md` — done (2026-11-19, #178); one honest slice per open issue, with native/UI follow-ups named rather than claimed. See the task table for each issue's status and evidence.
 - `047-console-analytics-followups.md` — done (2026-11-19, #178); isolated analytics package, report-export route, and a real-browser console smoke test.
 - `048-report-and-analytics-followups.md` — done (2026-11-19, #178); analytics CLI, stored-answer reports with citations, and collection reports built from snapshotted evidence metadata.
