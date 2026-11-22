@@ -1,6 +1,6 @@
 # Plan 056 — Canonical verify command (issue #180, slice 1)
 
-Status: in-progress. Owner: maintainer.
+Status: done (2026-11-22). Owner: maintainer.
 
 Slice 1 is orchestration-only and changes no workflow: add documented
 `verify:fast` / `verify` entry points that reuse existing scripts, and point
@@ -9,11 +9,10 @@ changes, no duplicated check implementations.
 
 ## Task IDs
 
-| ID     | Task                                                               | Status      | Evidence                                                                                |
-| ------ | ------------------------------------------------------------------ | ----------- | --------------------------------------------------------------------------------------- |
-| VER-01 | Add `verify:fast` (`check:fast`) and `verify` (`check` + coverage) | done        | `npm run verify:fast` PASS 9/9; `npm run verify` PASS (check + coverage 1014+124 tests) |
-| VER-02 | Document canonical command, CI-only extras, runtime, cleanup       | done        | Contributing guide setup + handoff sections; AGENTS.md approved commands                |
-| VER-03 | Full green: PR CI incl. Codacy, then merge                         | in-progress | Awaiting PR checks                                                                      |
+| ID     | Task                                                               | Status | Evidence                                                                                |
+| ------ | ------------------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------- |
+| VER-01 | Add `verify:fast` (`check:fast`) and `verify` (`check` + coverage) | done   | `npm run verify:fast` PASS 9/9; `npm run verify` PASS (check + coverage 1014+124 tests) |
+| VER-02 | Document canonical command, CI-only extras, runtime, cleanup       | done   | Contributing guide setup + handoff sections; AGENTS.md approved commands                |     | VER-03 | Full green: PR CI incl. Codacy, then merge | done | PR #193: 14/14 checks pass incl. Codacy + CodeQL; squash-merged 2026-11-22 |
 
 ## Scope notes (issue #180)
 
