@@ -7,6 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@duckdb/node-api": "^1.4.1-r.5"
+    "@duckdb/node-api": "^2.0.0-r.1"
   }
 }
