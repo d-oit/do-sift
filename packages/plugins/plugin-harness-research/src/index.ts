@@ -57,8 +57,6 @@ export interface ResearchHarnessDeps {
    * built-in paragraph splitter; status flows into passage rows.
    */
   extract?: ((text: string) => Array<{ text: string; status: "ok" | "partial" }>) | undefined;
-  /** Progress hook (SRC-05 SSE): fired after each source is fully stored. */
-  onSource?: ((source: ResearchSourceEvent) => void) | undefined;
   /**
    * When present, newly stored passages are embedded for hybrid retrieval
    * (RET-03, ADR 0009): a backfill runs after storage and `embedded` counts
@@ -103,7 +101,7 @@ export interface ResearchHarnessInstance extends PluginInstance {
     task: {
       ownerId: string;
       question: string;
-      /** Per-run override; avoids sharing a mutable callback across requests. */
+      /** Per-run source hook (SRC-05 SSE): the only delivery channel. */
       onSource?: ((source: ResearchSourceEvent) => void) | undefined;
     },
     signal?: AbortSignal,
@@ -141,7 +139,7 @@ export function createResearchHarness(
     ): Promise<ResearchRunSummary> {
       if (!activated) throw new Error("research harness is not activated");
       throwIfAborted(signal);
-      const onSource = task.onSource ?? deps.onSource;
+      const onSource = task.onSource;
       const query = SearchQuery.parse({ text: task.question, ownerId: task.ownerId });
       const limits = SearchLimits.parse({ maxHits });
 

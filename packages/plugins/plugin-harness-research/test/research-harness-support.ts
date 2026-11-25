@@ -45,7 +45,6 @@ export async function makeDeps(
     extract?: (text: string) => Array<{ text: string; status: "ok" | "partial" }>;
     embedder?: TextEmbedder;
     onEvent?: (name: string, payload?: unknown) => void;
-    onSource?: (source: { url: string; title?: string | undefined; passageCount: number }) => void;
     /** SRC-25: a fresh owner isolates a test from earlier tests' stored
      * URLs now that cross-run dedup reuses them. */
     ownerId?: string;
@@ -87,7 +86,6 @@ export async function makeDeps(
       budget: overrides.budget,
       extract: overrides.extract,
       ...(overrides.embedder === undefined ? {} : { embedder: overrides.embedder }),
-      ...(overrides.onSource === undefined ? {} : { onSource: overrides.onSource }),
     },
   );
   if (overrides.ownerId !== undefined) {
