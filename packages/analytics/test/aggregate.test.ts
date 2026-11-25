@@ -104,6 +104,31 @@ describe("analytics aggregation (DuckDB, offline only)", () => {
     });
   });
 
+  it("rejects input over the row limit instead of aggregating", async () => {
+    const rows: EvalResultRow[] = [
+      row("r1", "alpha", "dataset-1", 0.5, 10),
+      row("r2", "alpha", "dataset-1", 0.5, 10),
+      row("r3", "alpha", "dataset-1", 0.5, 10),
+    ];
+    await expect(aggregateEvalResults(rows, { maxRows: 2 })).rejects.toThrow(/exceeds limit/u);
+  });
+
+  it("refuses a pre-aborted signal without touching DuckDB", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      aggregateEvalResults([row("r1", "alpha", "dataset-1", 0.5, 10)], {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow(/aborted/u);
+  });
+
+  it("times out immediately when timeoutMs is zero", async () => {
+    await expect(
+      aggregateEvalResults([row("r1", "alpha", "dataset-1", 0.5, 10)], { timeoutMs: 0 }),
+    ).rejects.toThrow(/timed out/u);
+  });
+
   it("rejects malformed and duplicated rows instead of aggregating them", async () => {
     await expect(aggregateEvalResults([row("r1", "", "dataset-1", 0.5, 10)])).rejects.toThrow(
       /provider is empty/u,
