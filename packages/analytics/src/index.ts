@@ -36,6 +36,17 @@ export {
   type RetrievalGroup,
   type RetrievalReport,
 } from "./report.js";
+export {
+  buildSourceQualityReport,
+  SOURCE_QUALITY_REPORT_VERSION,
+  type DomainBucket,
+  type NoiseBucket,
+  type SourceDocumentRow,
+  type SourcePassageRow,
+  type SourceQualityReport,
+  type StatusBucket,
+  type YearMonthBucket,
+} from "./source-quality.js";
 
 // No static DuckDB import: the binding is loaded dynamically so a missing
 // native package is a supported configuration with a pure-TS fallback
