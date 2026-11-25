@@ -1,17 +1,23 @@
 /**
- * Baseline analytics benchmark (#154, plan 046).
+ * Baseline analytics benchmark (#154, plans 046 + 057).
  *
  * Generates a deterministic dataset, stores it in an in-memory libSQL
  * database, and measures the aggregation work the offline reports need. The
  * DuckDB comparison is **not** run here: adding the native dependency is a
  * promotion decision (ADR 0013). The output records enough environment and
- * dataset metadata for a future run to be comparable, and repeat runs report
- * variance instead of hiding it.
+ * dataset metadata for a future run to be comparable, repeat runs report
+ * p50/p95 variance instead of hiding it, and an opt-in `--disk` mode measures
+ * on-disk storage size for the same dataset.
  *
  * This is a spike-level harness: it never writes to the operational database
  * and never runs in the request path.
  */
-import { createClient } from "@libsql/client";
+import { createRequire } from "node:module";
+import { readFileSync, statSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import os from "node:os";
+import { createClient, type Client } from "@libsql/client";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -22,6 +28,27 @@ function arg(name: string): string | undefined {
   }
   return value;
 }
+
+const require = createRequire(import.meta.url);
+function libsqlClientVersion(): string {
+  // `@libsql/client/package.json` is not an exported subpath, so resolve the
+  // module entry and walk up to its real package.json.
+  let dir = dirname(require.resolve("@libsql/client"));
+  for (let i = 0; i < 5; i++) {
+    try {
+      const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
+        name?: string;
+        version?: string;
+      };
+      if (manifest.name === "@libsql/client") return manifest.version ?? "unknown";
+    } catch {
+      // not the package root; keep walking up
+    }
+    dir = dirname(dir);
+  }
+  return "unknown";
+}
+const libsqlVersion: string = libsqlClientVersion();
 
 /** Deterministic 32-bit PRNG so every run generates identical rows. */
 function mulberry32(seed: number): () => number {
@@ -35,8 +62,19 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-async function run(rows: number, seed: number): Promise<number> {
-  const client = createClient({ url: ":memory:" });
+function percentile(sorted: number[], p: number): number | null {
+  if (sorted.length === 0) return null;
+  const index = Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1);
+  return sorted[Math.max(0, index)] ?? null;
+}
+
+const AGGREGATE_QUERY = `
+    SELECT provider, dataset, COUNT(*) AS n, AVG(recall) AS mean_recall,
+           MIN(recall) AS min_recall, MAX(recall) AS max_recall,
+           AVG(latency_ms) AS mean_latency
+    FROM eval_results GROUP BY provider, dataset ORDER BY provider, dataset`;
+
+async function load(client: Client, rows: number, seed: number): Promise<number> {
   const random = mulberry32(seed);
   const providers = ["alpha", "beta", "gamma"];
   const start = Date.now();
@@ -71,39 +109,105 @@ async function run(rows: number, seed: number): Promise<number> {
     }
   }
   if (chunk.length > 0) await client.batch(chunk, "write");
-  const loadMs = Date.now() - start;
+  return Date.now() - start;
+}
 
-  const queryStart = Date.now();
-  const result = await client.execute(`
-    SELECT provider, dataset, COUNT(*) AS n, AVG(recall) AS mean_recall,
-           MIN(recall) AS min_recall, MAX(recall) AS max_recall,
-           AVG(latency_ms) AS mean_latency
-    FROM eval_results GROUP BY provider, dataset ORDER BY provider, dataset`);
-  const queryMs = Date.now() - queryStart;
-  client.close();
+type DiskMode = "off" | "also" | "only";
+
+async function run(rows: number, seed: number, runs: number, diskMode: DiskMode): Promise<number> {
+  const useMemory = diskMode !== "only";
+  const measureDisk = diskMode !== "off";
+  const engine = diskMode === "only" ? "libsql/sqlite (on-disk)" : "libsql/sqlite (in-memory)";
+  const dbPath = join(tmpdir(), `analytics-bench-${process.pid}-${seed}.db`);
+
+  let memoryClient: Client | null = null;
+  let loadMs: number | null = null;
+  let diskClient: Client | null = null;
+  let diskLoadMs: number | null = null;
+  const queryMs: number[] = [];
+  let resultRows: Array<Record<string, unknown>> = [];
+  let resultsIdentical = true;
+  let diskBytes: number | null = null;
+  if (!useMemory && !measureDisk) throw new Error("unreachable disk mode");
+  try {
+    if (useMemory) {
+      memoryClient = createClient({ url: ":memory:" });
+      loadMs = await load(memoryClient, rows, seed);
+    }
+    if (measureDisk) {
+      diskClient = createClient({ url: `file:${dbPath}` });
+      diskLoadMs = await load(diskClient, rows, seed);
+    }
+    const queryClient: Client = (useMemory ? memoryClient : diskClient) as Client;
+
+    // First timed run is cold (fresh connection, cold page cache in-process);
+    // the remaining runs are warm. Results must be identical across runs.
+    for (let i = 0; i < runs; i++) {
+      const queryStart = Date.now();
+      const result = await queryClient.execute(AGGREGATE_QUERY);
+      queryMs.push(Date.now() - queryStart);
+      const serialized = JSON.stringify(result.rows.map((row) => ({ ...row })));
+      if (i === 0) {
+        resultRows = JSON.parse(serialized) as Array<Record<string, unknown>>;
+      } else if (serialized !== JSON.stringify(resultRows)) {
+        resultsIdentical = false;
+      }
+    }
+    queryClient.close();
+    if (useMemory) memoryClient = null;
+    else diskClient = null;
+
+    if (measureDisk) diskBytes = statSync(dbPath).size;
+  } finally {
+    memoryClient?.close();
+    diskClient?.close();
+    if (measureDisk) rmSync(dbPath, { force: true });
+  }
+
+  const sorted = [...queryMs].sort((a, b) => a - b);
+  const warmSorted = sorted.slice(1);
 
   console.log(
     JSON.stringify(
       {
         benchmark: "analytics-baseline",
-        engine: "libsql/sqlite (in-memory)",
+        engine,
         rows,
         seed,
-        groups: result.rows.length,
-        sample: result.rows[0] ?? null,
-        result: result.rows.map((row) => ({ ...row })),
+        runs,
+        groups: resultRows.length,
+        result: resultRows,
+        resultsIdentical,
         loadMs,
-        queryMs,
+        coldQueryMs: queryMs[0] ?? null,
+        warmQueryMs: queryMs.slice(1),
+        queryMsP50: percentile(sorted, 0.5),
+        queryMsP95: percentile(sorted, 0.95),
+        warmQueryMsP50: percentile(warmSorted, 0.5),
+        disk: measureDisk ? { loadMs: diskLoadMs, sizeBytes: diskBytes } : null,
         maxRssMb: Math.round(process.resourceUsage().maxRSS / 1024),
         node: process.version,
         platform: `${process.platform}/${process.arch}`,
+        cpu: os.cpus()[0]?.model ?? "unknown",
+        totalMemGb: Math.round(os.totalmem() / 1024 ** 3),
+        libsql: libsqlVersion,
         duckdb: "not installed (promotion gate: plans/046)",
       },
       null,
       2,
     ),
   );
-  return 0;
+  return resultsIdentical ? 0 : 1;
+}
+
+function parseDiskMode(): DiskMode {
+  const only = process.argv.includes("--disk-only");
+  const also = process.argv.includes("--disk");
+  if (only && also) {
+    console.error("bench: FAIL — --disk and --disk-only are mutually exclusive");
+    process.exit(1);
+  }
+  return only ? "only" : also ? "also" : "off";
 }
 
 const rawRows = arg("rows") ?? "10000";
@@ -117,4 +221,9 @@ if (!Number.isInteger(seed)) {
   console.error("bench: FAIL — --seed must be an integer");
   process.exit(1);
 }
-process.exit(await run(rows, seed));
+const runs = Number(arg("runs") ?? "3");
+if (!Number.isInteger(runs) || runs < 1 || runs > 100) {
+  console.error("bench: FAIL — --runs must be an integer from 1 to 100");
+  process.exit(1);
+}
+process.exit(await run(rows, seed, runs, parseDiskMode()));

@@ -21,6 +21,7 @@ see the [architecture index](../docs/architecture/README.md) and the
 
 ## Current queue
 
+- `057-duckdb-benchmark-closeout.md` — done (2026-11-23, issue #154): multi-size (10k/100k/250k/500k, 1M OOM recorded) baseline + DuckDB/Parquet measurements with p50/p95, storage size, and env metadata; per-workload benefit report; plan 046's adopt decision and plan 052's Parquet defer restated.
 - `046-analytics-benchmark.md` — decided (2026-11-17, issue #154): DuckDB adopted for optional offline analytics after a measured 11.7× query win and 0.16× RSS at 100k rows with identical results. `packages/analytics` is isolated from the request path.
 - `052-parquet-promotion-decision.md` — decided defer (2026-11-21, #155): JSON interchange stays the snapshot format; no Parquet consumer or measured size/latency need exists. Promotion gate recorded for revisit.
 - `053-dep-review-round-2.md` — review done (2026-11-21): `npm audit` 0 vulnerabilities, all direct deps at wanted; six newer `latest`s outside pinned ranges all deferred with reasons (no upgrades, no lockfile churn).
