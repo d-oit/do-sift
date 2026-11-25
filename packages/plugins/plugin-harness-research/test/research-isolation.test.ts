@@ -84,4 +84,46 @@ describe("research source-callback isolation (issue #158)", () => {
     expect(summary.documentsStored).toBeGreaterThan(0);
     expect(stray).toEqual([]);
   });
+
+  it("run failure events and source receipts carry run identity (plan 063, RCO-01)", async () => {
+    const seen: Array<{ name: string; payload: unknown }> = [];
+    const receipts: ResearchSourceEvent[] = [];
+    const { harness } = await makeDeps({
+      ownerId: "owner-corr",
+      embedder: {
+        modelId: "boom-corr-1",
+        async embedPassages() {
+          throw new Error("onnx hiccup");
+        },
+        async embedQuery() {
+          throw new Error("onnx hiccup");
+        },
+      },
+      onEvent: (name, payload) => seen.push({ name, payload }),
+    });
+    await harness.activate({
+      events: { emit: () => {} },
+      config: { maxHits: 6, maxFetches: 2 },
+    } as unknown as Parameters<typeof harness.activate>[0]);
+    const summary = await harness.run({
+      ownerId: "owner-corr",
+      question: "What does page A claim about the topic at hand?",
+      onSource: (source) => {
+        receipts.push(source);
+      },
+    });
+    expect(summary.requestId).toBeDefined();
+    const failures = seen.filter((e) => e.name === "research.relevance-failed");
+    expect(failures.length).toBeGreaterThan(0);
+    for (const failure of failures) {
+      const payload = failure.payload as Record<string, unknown>;
+      expect(payload.ownerId).toBe("owner-corr");
+      expect(payload.requestId).toBe(summary.requestId);
+      expect(typeof payload.tenantId).toBe("string");
+    }
+    expect(receipts.length).toBeGreaterThan(0);
+    for (const receipt of receipts) {
+      expect(receipt.requestId).toBe(summary.requestId);
+    }
+  });
 });
