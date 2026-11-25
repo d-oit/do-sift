@@ -28,6 +28,15 @@
  * The aggregation is identical to `scripts/bench/analytics-bench.ts`, which is
  * what the adoption gate measured.
  */
+export {
+  buildRetrievalReport,
+  MIN_PERCENTILE_N,
+  REPORT_VERSION,
+  type ReportProvenance,
+  type RetrievalGroup,
+  type RetrievalReport,
+} from "./report.js";
+
 // No static DuckDB import: the binding is loaded dynamically so a missing
 // native package is a supported configuration with a pure-TS fallback
 // (issue #156, plan 059), not an import-time crash.
