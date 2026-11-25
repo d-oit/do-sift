@@ -8,6 +8,19 @@ with an explicit 0.x compatibility policy (minor = breaking, patch = safe).
 
 ### Added
 
+- Analytics benchmark closeout (issue #154, plan 057): the offline analytics
+  benchmark harness now reports cold and warm query timing with p50/p95 and
+  run-to-run variance (`--runs`), on-disk storage size (`--disk`/`--disk-only`),
+  and full environment metadata (CPU model, total RAM, libSQL version), and
+  exits non-zero if repeated runs disagree — so equivalence is checked
+  mechanically rather than by eye. Recorded baselines at 10k/100k/250k/500k
+  rows on a second environment confirm plan 046's adopt decision (8.5–38×
+  query-time advantage at 100k–500k, DuckDB completing 1M rows where the
+  libSQL path is memory-bound), and a Parquet scan/export measurement
+  (export ~4× smaller than SQLite at 500k, single-digit-millisecond filtered
+  reads) is recorded without promoting a Parquet writer (plan 052 still
+  applies). No production dependency or runtime behavior changes.
+
 - Multi-tenant isolation closeout (issue #120, plan 035): the remaining
   storage entry points that could cross a tenant boundary — `searchPassages`,
   `searchByEmbedding`, `hybridSearch`, the embedding/noise backfills, and the
