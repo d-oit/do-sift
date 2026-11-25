@@ -25,11 +25,11 @@ import {
   describeError,
   jsonError,
   readQuestion,
+  createSseSink,
   rejectBodyOnBodylessRoute,
   requestPath,
   respondAuthFailure,
   safeMethod,
-  sse,
   startReadinessProbe,
 } from "./server-http.js";
 import type { ReadinessProbe } from "./server-http.js";
@@ -190,20 +190,25 @@ async function handleResearch(
       if (canWrite() && !cancellation.signal.aborted) res.write(": heartbeat\n\n");
     }, SSE_HEARTBEAT_MS);
     heartbeat.unref();
+    // #158: bounded SSE delivery — a saturated socket drops further
+    // source cards (counted, reported via "dropped") instead of
+    // buffering without bound across concurrent runs.
+    const sink = createSseSink(res, httpRequestId, canWrite, () => cancellation.signal.aborted);
     try {
       const outcome = await handlers.runResearch(
         ownerId,
         question,
-        (source) => {
-          if (canWrite() && !cancellation.signal.aborted) sse(res, "source", source, httpRequestId);
-        },
+        (source) => sink.pushSource(source),
         cancellation.signal,
       );
-      if (canWrite() && !cancellation.signal.aborted) sse(res, "done", outcome, httpRequestId);
+      if (sink.droppedSources > 0) {
+        sink.pushTerminal("dropped", { count: sink.droppedSources });
+      }
+      sink.pushTerminal("done", outcome);
     } catch (e) {
       console.error(`[${httpRequestId}] research failed: ${describeError(e)}`);
       if (canWrite() && !cancellation.signal.aborted) {
-        sse(res, "error", { message: "research failed" }, httpRequestId);
+        sink.pushTerminal("error", { message: "research failed" });
         // The SSE status is already committed as 200, but the operational
         // receipt must still classify a runner failure as a server error.
         throw e;
