@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { aggregateEvalResults, type EvalResultRow } from "../src/index.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { aggregateEvalResults, aggregateJs, type EvalResultRow } from "../src/index.js";
+
+afterEach(() => {
+  delete process.env["DO_SIFT_ANALYTICS_ENGINE"];
+});
 
 function row(
   id: string,
@@ -145,5 +149,29 @@ describe("analytics aggregation (DuckDB, offline only)", () => {
         row("r1", "alpha", "dataset-1", 0.5, 10),
       ]),
     ).rejects.toThrow(/duplicated/u);
+  });
+
+  it("matches the DuckDB engine with the pure JavaScript fallback", async () => {
+    const rows: EvalResultRow[] = [
+      row("r1", "alpha", "dataset-1", 0.5, 10),
+      row("r2", "alpha", "dataset-1", 1, 20),
+      row("r3", "beta", "dataset-1", 0, 30),
+    ];
+    expect(aggregateJs(rows)).toEqual(await aggregateEvalResults(rows));
+    expect(aggregateJs([])).toEqual([]);
+  });
+
+  it("uses the JavaScript fallback when the engine is forced", async () => {
+    process.env["DO_SIFT_ANALYTICS_ENGINE"] = "javascript";
+    const rows: EvalResultRow[] = [row("r1", "alpha", "dataset-1", 0.5, 10)];
+    await expect(aggregateEvalResults(rows)).resolves.toEqual(aggregateJs(rows));
+  });
+
+  it("handles concurrent aggregations without sharing state", async () => {
+    const first = [row("r1", "alpha", "dataset-1", 0.5, 10)];
+    const second = [row("r2", "beta", "dataset-2", 1, 20), row("r3", "beta", "dataset-2", 0, 40)];
+    const [a, b] = await Promise.all([aggregateEvalResults(first), aggregateEvalResults(second)]);
+    expect(a).toEqual(aggregateJs(first));
+    expect(b).toEqual(aggregateJs(second));
   });
 });
