@@ -39,6 +39,9 @@ export interface ResearchSourceEvent {
   url: string;
   title?: string | undefined;
   passageCount: number;
+  /** #158 RSC-03: the run's request row (ANS-07) — every receipt is
+   * attributable to its run even when forwarded across a bus or SSE. */
+  requestId: string;
   /** SRC-14: the raw store-time similarity receipt (undefined without
    * an embedder). The RUNTIME decides prominence — the floor is the
    * composition's option, not the harness's. */
@@ -247,6 +250,7 @@ export function createResearchHarness(
                 url: hit.url,
                 title: existing.title ?? hit.title ?? undefined,
                 passageCount: existingPassages,
+                requestId,
                 ...(existing.relevanceScore === undefined
                   ? {}
                   : { relevanceScore: existing.relevanceScore }),
@@ -275,6 +279,9 @@ export function createResearchHarness(
                   }
                 } catch (error) {
                   ctx.events.emit("research.relevance-failed", {
+                    ownerId: task.ownerId,
+                    requestId,
+                    tenantId: deps.repositories.tenantId,
                     message: error instanceof Error ? error.message : String(error),
                   });
                 }
@@ -321,6 +328,7 @@ export function createResearchHarness(
                 url: hit.url,
                 title: hit.title ?? undefined,
                 passageCount: extracted.length,
+                requestId,
                 ...(relevanceScore === undefined ? {} : { relevanceScore }),
               });
             } catch (error) {
@@ -355,6 +363,9 @@ export function createResearchHarness(
             );
             if (backfill.failureClass !== undefined) {
               ctx.events.emit("research.embeddings-failed", {
+                ownerId: task.ownerId,
+                requestId,
+                tenantId: deps.repositories.tenantId,
                 message: `embedding backfill stopped with ${backfill.failureClass}`,
               });
             } else {
@@ -362,6 +373,9 @@ export function createResearchHarness(
             }
           } catch (error) {
             ctx.events.emit("research.embeddings-failed", {
+              ownerId: task.ownerId,
+              requestId,
+              tenantId: deps.repositories.tenantId,
               message: error instanceof Error ? error.message : String(error),
             });
           }
@@ -380,6 +394,9 @@ export function createResearchHarness(
           );
         } catch (error) {
           ctx.events.emit("research.noise-backfill-failed", {
+            ownerId: task.ownerId,
+            requestId,
+            tenantId: deps.repositories.tenantId,
             message: error instanceof Error ? error.message : String(error),
           });
         }
