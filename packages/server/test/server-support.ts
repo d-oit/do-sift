@@ -61,14 +61,13 @@ export async function runResearch(
         maxFetches: 10,
       }),
       extract: (text) => createReadabilityExtractorOutput(text),
-      onSource,
     },
   );
   await harness.activate({
     events: { emit: () => {} },
     config: { maxHits: 6, maxFetches: 3 },
   } as unknown as Parameters<typeof createResearchHarness>[0]);
-  return harness.run({ ownerId, question });
+  return harness.run({ ownerId, question, onSource });
 }
 export function createReadabilityExtractorOutput(
   text: string,

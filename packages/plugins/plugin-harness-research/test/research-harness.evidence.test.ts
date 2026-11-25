@@ -246,10 +246,13 @@ describe("source-card relevance receipt (SRC-14)", () => {
           return [1, 0, 0];
         },
       },
-      onSource: (source) => seen.push(source as Record<string, unknown>),
     });
     await harness.activate(ACTIVATE);
-    await harness.run({ ownerId: "owner-card", question: "what is alpha?" });
+    await harness.run({
+      ownerId: "owner-card",
+      question: "what is alpha?",
+      onSource: (source) => seen.push(source as unknown as Record<string, unknown>),
+    });
     // The raw score is a receipt — the RUNTIME (floor owner) decides prominence.
     const a = seen.find((s) => s.url === "https://a.test/page");
     const b = seen.find((s) => s.url === "https://b.test/page");
@@ -258,11 +261,13 @@ describe("source-card relevance receipt (SRC-14)", () => {
 
     await ensureOwner("owner-card2");
     const plain: Array<Record<string, unknown>> = [];
-    const { harness: plainHarness } = await makeDeps({
-      onSource: (source) => plain.push(source as Record<string, unknown>),
-    });
+    const { harness: plainHarness } = await makeDeps();
     await plainHarness.activate(ACTIVATE);
-    await plainHarness.run({ ownerId: "owner-card2", question: "what is alpha?" });
+    await plainHarness.run({
+      ownerId: "owner-card2",
+      question: "what is alpha?",
+      onSource: (source) => plain.push(source as unknown as Record<string, unknown>),
+    });
     for (const card of plain) expect(card.relevanceScore).toBeUndefined();
   });
 });
