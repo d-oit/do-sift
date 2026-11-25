@@ -169,12 +169,54 @@ export function sse(
   event: string,
   data: unknown,
   httpRequestId: string,
-): void {
+): boolean {
   const payload =
     typeof data === "object" && data !== null && !Array.isArray(data)
       ? { ...(data as Record<string, unknown>), httpRequestId }
       : { httpRequestId, value: data };
-  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+  return res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+export interface SseSink {
+  pushSource(source: unknown): void;
+  pushTerminal(event: string, data: unknown): void;
+  readonly droppedSources: number;
+}
+/**
+ * Bounded SSE delivery for one research stream (#158): once the socket
+ * buffer fills (write() returns false) the stream is saturated and
+ * further source cards are dropped and counted instead of buffering
+ * without bound. Terminal events (done/error) always attempt a write.
+ * A gone stream (disconnect/end) skips silently without counting — the
+ * run itself aborts through the request cancellation signal.
+ */
+export function createSseSink(
+  res: ServerResponse,
+  httpRequestId: string,
+  canWrite: () => boolean,
+  isAborted: () => boolean,
+): SseSink {
+  let saturated = false;
+  let dropped = 0;
+  return {
+    pushSource(source: unknown): void {
+      if (saturated) {
+        dropped++;
+        return;
+      }
+      if (!canWrite() || isAborted()) return;
+      if (!sse(res, "source", source, httpRequestId)) {
+        saturated = true;
+        dropped++;
+      }
+    },
+    pushTerminal(event: string, data: unknown): void {
+      if (!canWrite() || isAborted()) return;
+      sse(res, event, data, httpRequestId);
+    },
+    get droppedSources(): number {
+      return dropped;
+    },
+  };
 }
 export function readBody(req: IncomingMessage, maxBytes: number): Promise<string> {
   return new Promise((resolve, reject) => {

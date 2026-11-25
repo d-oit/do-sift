@@ -291,3 +291,24 @@ the OPS tasks pick it up.
 (indexed → hybrid → measured). OPS tasks in plans/005-007 (other owner)
 or the owner-gated live provider adapter; committing the session's work
 remains the owner's call.
+
+## Addendum — issue #158 closed (2026-11, plans 061–064)
+
+The "concurrent research runs share the onSource slot (dev scale —
+serialize runs or queue if that ever changes)" risk above is retired:
+
+- RSC-01 (plan 061): overlapping runs on one harness instance deliver
+  each run's sources to its own per-run callback (isolation test).
+- RSC-02 (plan 062): the shared `deps.onSource` fallback is removed;
+  per-run is the only channel.
+- RSC-03 (plan 063): advisory failure events carry
+  `ownerId`/`requestId`/`tenantId`; every source receipt carries its
+  run's `requestId` (`research.completed` already did).
+- Backpressure (plan 064): `createSseSink` bounds SSE delivery — a
+  saturated socket drops further source cards (counted, reported via a
+  `dropped` event before `done`) instead of buffering without bound.
+
+Serialization is no longer required: admission still caps 2 concurrent
+runs per owner (429 + `retry-after` beyond that), disconnects abort the
+run via the request cancellation signal, and deployment wiring
+(`docs/deployment.md`) remains with its owner.
