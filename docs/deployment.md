@@ -503,6 +503,30 @@ consistent, portable snapshot:
   `turso db dump` or platform snapshots (documented, not yet executed —
   gated on the live database).
 
+## Storage boundaries and analytics deployment (ADR 0013)
+
+libSQL/SQLite is the sole operational source of truth
+([ADR 0013](./decisions/0013-analytical-storage-boundary.md)). If you deploy
+the optional offline analytics package (`packages/analytics`, which owns the
+everywhere-except-root `@duckdb/node-api` dependency), these constraints
+apply:
+
+- **Concurrency model (re-checked against the official DuckDB docs on
+  2026-11-18):** an in-process read/write DuckDB file has exactly one writer
+  process. Multiple processes may open the same file only with
+  `access_mode = 'READ_ONLY'`. Never share one writable DuckDB file across
+  service processes.
+- **Supported topology:** analytics runs offline — a scheduled job or a
+  human-invoked CLI on the same host as the operational database — reading a
+  versioned snapshot or an explicitly bounded read-only export. It never
+  opens the live operational database for writing and is never reachable from
+  search or answer execution.
+- **Client-server DuckDB (Quack remote protocol, DuckLake) would be a new
+  architectural decision**, not a configuration change; it is a non-goal in
+  ADR 0013.
+
+The application builds, tests, and deploys with the analytics package absent.
+
 ## Verification before handoff
 
 `npm run check` runs the full pipeline (format, lint, typecheck, policy,
