@@ -14,6 +14,12 @@
  * cooperative — the DuckDB JS binding has no mid-query abort, so an abort
  * surfaces at the next checkpoint, not mid-scan.
  *
+ * Missing-binding fallback (issue #156, plan 059): DuckDB is loaded with a
+ * dynamic import, so a host without the native binding still imports this
+ * package and aggregates via the pure-TS `aggregateJs` (same grouping and
+ * statistics). `DO_SIFT_ANALYTICS_ENGINE=javascript` forces the fallback
+ * for tests and binding-less hosts; anything else tries DuckDB first.
+ *
  * Platform: `@duckdb/node-api` prebuilt binaries cover the repo CI matrix
  * (Linux 24/26, macOS 24, Windows 24 x64); Windows arm64 has no binding and
  * is unsupported. The dependency stays in this package only; upgrades move
@@ -22,7 +28,9 @@
  * The aggregation is identical to `scripts/bench/analytics-bench.ts`, which is
  * what the adoption gate measured.
  */
-import { DuckDBInstance } from "@duckdb/node-api";
+// No static DuckDB import: the binding is loaded dynamically so a missing
+// native package is a supported configuration with a pure-TS fallback
+// (issue #156, plan 059), not an import-time crash.
 
 export interface EvalResultRow {
   id: string;
@@ -90,8 +98,60 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 /**
- * Aggregate provider/dataset recall and latency with DuckDB. Deterministic:
- * the same rows produce the same groups regardless of input order.
+ * Pure-TypeScript aggregation with the same deterministic grouping as the
+ * DuckDB path: groups by (provider, dataset), sorted by provider then
+ * dataset. Used when DuckDB is unavailable and when
+ * `DO_SIFT_ANALYTICS_ENGINE=javascript` forces the fallback (plan 059).
+ */
+export function aggregateJs(rows: readonly EvalResultRow[]): EvalAggregate[] {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    assertRow(row);
+    if (seen.has(row.id)) throw new Error(`analytics row id is duplicated: ${row.id}`);
+    seen.add(row.id);
+  }
+  const groups = new Map<string, EvalResultRow[]>();
+  for (const row of rows) {
+    const key = `${row.provider}\u0000${row.dataset}`;
+    const list = groups.get(key);
+    if (list === undefined) groups.set(key, [row]);
+    else list.push(row);
+  }
+  return [...groups.values()]
+    .sort((a, b) => {
+      const firstA = a[0];
+      const firstB = b[0];
+      if (firstA === undefined || firstB === undefined) return 0;
+      if (firstA.provider !== firstB.provider) return firstA.provider < firstB.provider ? -1 : 1;
+      return firstA.dataset < firstB.dataset ? -1 : firstA.dataset > firstB.dataset ? 1 : 0;
+    })
+    .map((list) => {
+      const first = list[0];
+      if (first === undefined) throw new Error("analytics group is empty");
+      const recalls = list.map((item) => item.recall);
+      return {
+        provider: first.provider,
+        dataset: first.dataset,
+        n: list.length,
+        meanRecall: recalls.reduce((sum, value) => sum + value, 0) / recalls.length,
+        minRecall: Math.min(...recalls),
+        maxRecall: Math.max(...recalls),
+        meanLatency: list.reduce((sum, item) => sum + item.latencyMs, 0) / list.length,
+      };
+    });
+}
+
+/** DuckDB is forced off only by the exact `javascript` value; anything else
+ * (including unset) means "try DuckDB first, fall back on import failure". */
+function isJsForced(): boolean {
+  return process.env["DO_SIFT_ANALYTICS_ENGINE"] === "javascript";
+}
+
+/**
+ * Aggregate provider/dataset recall and latency. DuckDB (`:memory:`, fixed
+ * SQL) is the default engine; a missing binding falls back to the pure-TS
+ * `aggregateJs` with identical grouping. Deterministic: the same rows
+ * produce the same groups regardless of input order.
  */
 export async function aggregateEvalResults(
   rows: readonly EvalResultRow[],
@@ -122,6 +182,14 @@ export async function aggregateEvalResults(
       seen.add(row.id);
     }
     throwIfAborted(signal);
+    if (isJsForced()) return aggregateJs(rows);
+
+    let DuckDBInstance: typeof import("@duckdb/node-api").DuckDBInstance;
+    try {
+      ({ DuckDBInstance } = await import("@duckdb/node-api"));
+    } catch {
+      return aggregateJs(rows);
+    }
 
     const instance = await DuckDBInstance.create(":memory:");
     const connection = await instance.connect();
