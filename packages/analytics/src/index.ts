@@ -47,6 +47,17 @@ export {
   type StatusBucket,
   type YearMonthBucket,
 } from "./source-quality.js";
+export {
+  buildProviderHealthReport,
+  MIN_LATENCY_SAMPLE_N,
+  PROVIDER_HEALTH_REPORT_VERSION,
+  type ProviderCallRow,
+  type ProviderFailureKind,
+  type ProviderGroup,
+  type ProviderHealthReport,
+  type ProviderOutcome,
+  type VerifiedProviderCost,
+} from "./provider-health.js";
 
 // No static DuckDB import: the binding is loaded dynamically so a missing
 // native package is a supported configuration with a pure-TS fallback
