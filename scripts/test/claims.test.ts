@@ -62,4 +62,32 @@ describe("claim assessment", () => {
       noCitation: 0,
     });
   });
+
+  it("assigns stable claim ids and machine-readable reasons", () => {
+    const result = assessClaims(
+      [
+        { kind: "paragraph", text: "a", citations: ["ev-1"] },
+        { kind: "paragraph", text: "b", citations: ["ev-1", "ev-missing"], id: "custom-b" },
+        { kind: "caveat", text: "c", citations: [] },
+      ],
+      stored,
+    );
+    expect(result.map((r) => r.id)).toEqual(["claim-1", "custom-b", "claim-3"]);
+    expect(result.map((r) => r.reason)).toEqual([
+      "all-citations-resolve",
+      "some-citations-missing",
+      "no-citations",
+    ]);
+  });
+
+  it("never resolves malformed citation ids", () => {
+    const [assessment] = assessClaims(
+      [{ kind: "paragraph", text: "x", citations: ["ev-1", "", "   "] }],
+      stored,
+    );
+    expect(assessment?.resolved).toEqual(["ev-1"]);
+    expect(assessment?.unresolved).toEqual(["", "   "]);
+    expect(assessment?.support).toBe("partially-supported");
+    expect(assessment?.reason).toBe("malformed-citations");
+  });
 });
