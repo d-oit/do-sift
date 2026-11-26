@@ -12,12 +12,28 @@ export interface ClaimInput {
   citations: readonly string[];
   /** The producer already flagged a citation failure. */
   unresolved?: boolean;
+  /**
+   * Stable caller-supplied claim id (plan 068, issue #160). Blank or
+   * absent generates `claim-<index+1>` in the assessment. Duplicate
+   * caller ids are echoed verbatim; uniqueness is the producer's contract.
+   */
+  id?: string;
 }
 
 export type ClaimSupport = "supported" | "partially-supported" | "unresolved" | "no-citation";
 
+export type ClaimReason =
+  | "all-citations-resolve"
+  | "some-citations-missing"
+  | "no-citations-resolve"
+  | "no-citations"
+  | "upstream-unresolved-flag"
+  | "malformed-citations";
+
 export interface ClaimAssessment {
   index: number;
+  /** Stable claim id: caller-supplied or `claim-<index+1>`. Always non-empty. */
+  id: string;
   /** Unique citation ids in first-seen order. */
   citations: string[];
   resolved: string[];
@@ -25,6 +41,8 @@ export interface ClaimAssessment {
   support: ClaimSupport;
   /** Display hint; `none` never means "verified true". */
   uncertainty: "none" | "partial" | "unsupported";
+  /** Machine-readable reason for the support value. */
+  reason: ClaimReason;
 }
 
 /**
@@ -36,14 +54,21 @@ export function assessClaims(
   storedEvidenceIds: ReadonlySet<string>,
 ): ClaimAssessment[] {
   return claims.map((claim, index) => {
+    const id =
+      typeof claim.id === "string" && claim.id.trim() !== "" ? claim.id : `claim-${index + 1}`;
     const citations: string[] = [];
     const resolved: string[] = [];
     const unresolved: string[] = [];
-    for (const id of claim.citations) {
-      if (citations.includes(id)) continue;
-      citations.push(id);
-      if (storedEvidenceIds.has(id)) resolved.push(id);
-      else unresolved.push(id);
+    let malformed = false;
+    for (const raw of claim.citations) {
+      // Malformed ids (non-string, empty/whitespace) are never resolved:
+      // they degrade the claim honestly instead of matching stored evidence.
+      if (typeof raw !== "string" || raw.trim() === "") malformed = true;
+      if (citations.includes(raw)) continue;
+      citations.push(raw);
+      if (typeof raw === "string" && raw.trim() !== "" && storedEvidenceIds.has(raw))
+        resolved.push(raw);
+      else unresolved.push(raw);
     }
     let support: ClaimSupport;
     if (citations.length === 0) support = "no-citation";
@@ -58,7 +83,15 @@ export function assessClaims(
           ? "partial"
           : "unsupported";
 
-    return { index, citations, resolved, unresolved, support, uncertainty };
+    let reason: ClaimReason;
+    if (citations.length === 0) reason = "no-citations";
+    else if (malformed) reason = "malformed-citations";
+    else if (resolved.length === 0) reason = "no-citations-resolve";
+    else if (unresolved.length > 0) reason = "some-citations-missing";
+    else if (claim.unresolved === true) reason = "upstream-unresolved-flag";
+    else reason = "all-citations-resolve";
+
+    return { index, id, citations, resolved, unresolved, support, uncertainty, reason };
   });
 }
 

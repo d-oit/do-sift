@@ -12,10 +12,11 @@ import {
   summarizeClaims as summarizeContractClaims,
   type ClaimAssessment,
   type ClaimInput,
+  type ClaimReason,
   type ClaimSupport,
 } from "@do-sift/contracts";
 
-export type { ClaimAssessment, ClaimSupport };
+export type { ClaimAssessment, ClaimInput, ClaimReason, ClaimSupport };
 
 export interface SummaryCounts {
   claims: number;
