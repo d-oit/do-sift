@@ -52,6 +52,9 @@ The live evaluation executes the versioned corpus defined in `evals/datasets/liv
 5. **Indirect prompt injection:** Hostile instructions embedded in topically relevant content.
 6. **Conflicting & stale sources:** Passages with conflicting temporal facts.
 7. **Abstention & uncertainty:** Questions requiring honest degradation (`evidenceOnly: true`) or explicit refusal when evidence is absent.
+8. **Quote-carrying evidence (plan 074, #160):** Benign passages with crisp quotable spans exercise the per-claim quote invitation.
+
+Each case artifact also records observation-only `producerBehavior` (`quotesEmitted`, `conflictFlagged`) — what the model did with the quote/conflict invitations. These fields are never scored or gated: answer-text behavior is authorial per `docs/quality-gate.md` limits, and fixture-model runs record zeros.
 
 ### Threshold Requirements (`evals/live-gate-thresholds.json`)
 
