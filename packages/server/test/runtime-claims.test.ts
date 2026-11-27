@@ -68,6 +68,47 @@ describe("answer claim assessment", () => {
     expect(second.claimAssessment?.claims.every((c) => c.support !== "supported")).toBe(true);
   });
 
+  it("downgrades a producer quote that appears in no cited excerpt (plan 071)", async () => {
+    const quotingModel = {
+      name: "quoting-fake",
+      modelId: "quoting-fake-1",
+      calls: [] as Array<{ question: string }>,
+      async complete(request: { question: string; passages: Array<{ id: string; text: string }> }) {
+        const [first] = request.passages;
+        if (first === undefined) throw new Error("no passages for quoting model");
+        return {
+          blocks: [
+            {
+              kind: "paragraph" as const,
+              text: "Claim with a fabricated span.",
+              citations: [first.id],
+              quote: "zz-no-such-span-12345",
+            },
+          ],
+          usage: { inputTokens: 10, outputTokens: 5, model: "quoting-fake-1", estimated: true },
+        };
+      },
+    };
+    const r = await createRuntime({
+      client,
+      search: new FakeSearchProvider({
+        hits: [{ url: "https://a.test/page", title: "Page A", snippet: "fts5", rank: 0 }],
+      }),
+      fetchPage: async () => ({
+        text: "FTS5 ranks keyword matches with bm25.\n\nThe bm25 function weighs rarer terms more heavily.",
+        contentType: "text/html",
+      }),
+      model: quotingModel,
+      maxFetches: 2,
+    });
+    await r.runResearch("owner-a", "how does fts5 ranking work?");
+    const response = await r.answerResponse("owner-a", "how does fts5 ranking work?");
+    expect(response.claimAssessment?.claims).toHaveLength(1);
+    expect(response.claimAssessment?.claims[0]?.quote).toBe("zz-no-such-span-12345");
+    expect(response.claimAssessment?.claims[0]?.support).toBe("partially-supported");
+    expect(response.claimAssessment?.claims[0]?.reason).toBe("quote-mismatch");
+  });
+
   it("reports no-citation claims rather than treating them as grounded", async () => {
     const r = await runtime();
     await r.runResearch("owner-a", "how does fts5 ranking work?");

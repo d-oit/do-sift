@@ -209,17 +209,24 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       // fresh answer; the receipt stays structural in both cases.)
       const cited = [...new Set(stored.blocks.flatMap((block) => block.citations))];
       const existing = await repositories.passages.existingIds(ownerId, cited);
+      // Plan 071: owner-scoped excerpts for quote substring validation.
+      // Only fetched when at least one block carries a quote (no extra
+      // read on the quote-less path, including the eval fixture).
+      const needsExcerpts = stored.blocks.some((block) => block.quote !== undefined);
+      const excerpts =
+        needsExcerpts === false
+          ? undefined
+          : await repositories.passages.excerptsById(ownerId, cited);
       const claims = assessClaims(
         stored.blocks.map((block) => ({
           kind: block.kind,
           text: block.text,
           citations: block.citations,
           ...(block.unresolved === undefined ? {} : { unresolved: block.unresolved }),
-          // Plan 070: the stored producer quote rides into the receipt
-          // verbatim; validation against excerpts is a follow-up.
           ...(block.quote === undefined ? {} : { quote: block.quote }),
         })),
         existing,
+        excerpts,
       );
       return {
         requestId: outcome.requestId,

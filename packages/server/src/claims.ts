@@ -29,8 +29,9 @@ export interface SummaryCounts {
 export function assessClaims(
   claims: readonly ClaimInput[],
   storedEvidenceIds: ReadonlySet<string>,
+  evidenceTexts?: ReadonlyMap<string, string> | undefined,
 ): ClaimAssessment[] {
-  return assessContractClaims(claims, storedEvidenceIds);
+  return assessContractClaims(claims, storedEvidenceIds, evidenceTexts);
 }
 
 export function summarizeClaims(assessments: readonly ClaimAssessment[]): SummaryCounts {

@@ -11,8 +11,9 @@ export interface ClaimInput {
   text: string;
   citations: readonly string[];
   /**
-   * Producer-supplied verbatim span (issue #160, plan 070). Carried
-   * verbatim into the assessment; never validated here.
+   * Producer-supplied verbatim span (issue #160, plan 070/071). Echoed
+   * verbatim into the assessment; validated against `evidenceTexts` when
+   * supplied (plan 071), otherwise carried without validation.
    */
   quote?: string | undefined;
   /** The producer already flagged a citation failure. */
@@ -33,7 +34,8 @@ export type ClaimReason =
   | "no-citations-resolve"
   | "no-citations"
   | "upstream-unresolved-flag"
-  | "malformed-citations";
+  | "malformed-citations"
+  | "quote-mismatch";
 
 export interface ClaimAssessment {
   index: number;
@@ -53,12 +55,44 @@ export interface ClaimAssessment {
 }
 
 /**
+ * Normalize a verbatim span for substring comparison (issue #160, plan 071):
+ * lowercase, collapse whitespace runs, trim. Case/whitespace differences
+ * never fail; semantic paraphrase still fails (quote means verbatim).
+ */
+export function normalizeQuoteSpan(span: string): string {
+  return span.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function quoteMatchesResolved(
+  quote: string,
+  resolved: readonly string[],
+  evidenceTexts: ReadonlyMap<string, string>,
+): boolean {
+  const needle = normalizeQuoteSpan(quote);
+  if (needle === "") return false;
+  return resolved.some((id) => {
+    const excerpt = evidenceTexts.get(id);
+    if (excerpt === undefined) return false;
+    return normalizeQuoteSpan(excerpt).includes(needle);
+  });
+}
+
+/**
  * Assess each claim against the set of stored evidence ids. Deterministic;
  * no model call and no network.
+ *
+ * When `evidenceTexts` (passage id → excerpt) is supplied, a present
+ * `quote` must appear verbatim (after normalization) in at least one
+ * resolved excerpt; otherwise the claim degrades to `partially-supported`
+ * with reason `quote-mismatch`. Structural failures (missing/malformed
+ * citations) take precedence, so the quote is only checked when every
+ * cited id exists and is well-formed. Absent `evidenceTexts` skips
+ * validation (plan-070 plumbing behavior).
  */
 export function assessClaims(
   claims: readonly ClaimInput[],
   storedEvidenceIds: ReadonlySet<string>,
+  evidenceTexts?: ReadonlyMap<string, string> | undefined,
 ): ClaimAssessment[] {
   return claims.map((claim, index) => {
     const id =
@@ -83,20 +117,26 @@ export function assessClaims(
     else if (unresolved.length > 0 || claim.unresolved === true) support = "partially-supported";
     else support = "supported";
 
+    let reason: ClaimReason;
+    if (citations.length === 0) reason = "no-citations";
+    else if (malformed) reason = "malformed-citations";
+    else if (resolved.length === 0) reason = "no-citations-resolve";
+    else if (unresolved.length > 0) reason = "some-citations-missing";
+    else if (
+      claim.quote !== undefined &&
+      evidenceTexts !== undefined &&
+      !quoteMatchesResolved(claim.quote, resolved, evidenceTexts)
+    )
+      reason = "quote-mismatch";
+    else if (claim.unresolved === true) reason = "upstream-unresolved-flag";
+    else reason = "all-citations-resolve";
+    if (reason === "quote-mismatch") support = "partially-supported";
     const uncertainty: ClaimAssessment["uncertainty"] =
       support === "supported"
         ? "none"
         : support === "partially-supported"
           ? "partial"
           : "unsupported";
-
-    let reason: ClaimReason;
-    if (citations.length === 0) reason = "no-citations";
-    else if (malformed) reason = "malformed-citations";
-    else if (resolved.length === 0) reason = "no-citations-resolve";
-    else if (unresolved.length > 0) reason = "some-citations-missing";
-    else if (claim.unresolved === true) reason = "upstream-unresolved-flag";
-    else reason = "all-citations-resolve";
 
     const echoed: ClaimAssessment = {
       index,
