@@ -140,7 +140,11 @@ Returns `200 application/json` with the answer outcome:
   `partially-supported`, `unresolved`, or `no-citation`. Citations are checked
   against the passages that still exist for the caller; `supported` means every
   citation exists, **never** that the evidence entails the claim. A summary
-  carries the counts.
+  carries the counts. Each claim also carries advisory `provenance`: one entry
+  per resolved citation with the parent document's `retrievedAt` (and
+  `publishedAt` when the source claimed one), so a reader can judge freshness.
+  Provenance is data, never a stale/fresh verdict — old evidence keeps whatever
+  structural verdict it earned.
 
 Status codes:
 

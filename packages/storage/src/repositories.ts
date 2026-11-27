@@ -368,6 +368,39 @@ export class Repositories {
       return out;
     },
     /**
+     * Advisory provenance for the claim receipt (issue #160, plan 073):
+     * parent-document fetch/publication time per passage id. Mirrors
+     * `excerptsById`: tenant + owner scoped, missing ids absent.
+     */
+    provenanceById: async (
+      ownerId: string,
+      ids: readonly string[],
+    ): Promise<Map<string, { retrievedAt: string; publishedAt?: string | undefined }>> => {
+      const unique = [...new Set(ids)];
+      if (unique.length === 0)
+        return new Map<string, { retrievedAt: string; publishedAt?: string | undefined }>();
+      const placeholders = unique.map(() => "?").join(", ");
+      const res = await this.client.execute({
+        sql: `SELECT p.id, d.published_at, d.fetched_at
+              FROM passages p
+              JOIN documents d
+                ON d.id = p.document_id
+               AND d.owner_id = p.owner_id
+               AND d.tenant_id = p.tenant_id
+              WHERE p.tenant_id = ? AND p.owner_id = ? AND p.id IN (${placeholders})`,
+        args: [this.tenantId, ownerId, ...unique],
+      });
+      const out = new Map<string, { retrievedAt: string; publishedAt?: string | undefined }>();
+      for (const row of res.rows) {
+        const publishedAt = strOrUndefined(row, "published_at");
+        out.set(str(row, "id"), {
+          retrievedAt: str(row, "fetched_at"),
+          ...(publishedAt === undefined ? {} : { publishedAt }),
+        });
+      }
+      return out;
+    },
+    /**
      * Provenance for the comparison view (issue #169): passage + parent
      * document, owner- and tenant-scoped. Missing ids are simply absent from
      * the result so the caller can reject an unknown selection.

@@ -43,6 +43,20 @@ export type ClaimReason =
   | "malformed-citations"
   | "quote-mismatch";
 
+/**
+ * Advisory provenance for one resolved citation (issue #160, plan 073):
+ * when the cited passage was retrieved and when its source claims
+ * publication. Data for the reader's freshness judgment — never a
+ * stale/fresh verdict (no cutoff exists that evidence could justify).
+ */
+export interface ClaimEvidenceProvenance {
+  id: string;
+  /** Parent document fetch time (passages carry no clock of their own). */
+  retrievedAt: string;
+  /** Parent document publication claim, when known; never invented. */
+  publishedAt?: string | undefined;
+}
+
 export interface ClaimAssessment {
   index: number;
   /** Stable claim id: caller-supplied or `claim-<index+1>`. Always non-empty. */
@@ -58,6 +72,12 @@ export interface ClaimAssessment {
   uncertainty: "none" | "partial" | "unsupported";
   /** Machine-readable reason for the support value. */
   reason: ClaimReason;
+  /**
+   * Advisory provenance echo (issue #160, plan 073): one entry per
+   * resolved citation with a metadata hit. Absent when no metadata
+   * supplied. Old evidence never changes support or reason.
+   */
+  provenance?: ClaimEvidenceProvenance[] | undefined;
 }
 
 /**
@@ -99,6 +119,8 @@ export function assessClaims(
   claims: readonly ClaimInput[],
   storedEvidenceIds: ReadonlySet<string>,
   evidenceTexts?: ReadonlyMap<string, string> | undefined,
+  evidenceProvenance?:
+    ReadonlyMap<string, { retrievedAt: string; publishedAt?: string | undefined }> | undefined,
 ): ClaimAssessment[] {
   return claims.map((claim, index) => {
     const id =
@@ -158,6 +180,20 @@ export function assessClaims(
       reason,
     };
     if (claim.quote !== undefined) echoed.quote = claim.quote;
+    // Plan 073: advisory only. Entries with a metadata hit are echoed for
+    // resolved citations; missing entries are omitted with no penalty —
+    // provenance asserts nothing, so unverifiable metadata cannot fail.
+    if (evidenceProvenance !== undefined) {
+      echoed.provenance = resolved.flatMap((id) => {
+        const meta = evidenceProvenance.get(id);
+        if (meta === undefined) return [];
+        return [
+          meta.publishedAt === undefined
+            ? { id, retrievedAt: meta.retrievedAt }
+            : { id, retrievedAt: meta.retrievedAt, publishedAt: meta.publishedAt },
+        ];
+      });
+    }
     return echoed;
   });
 }

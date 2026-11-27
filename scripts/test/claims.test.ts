@@ -171,6 +171,35 @@ describe("claim assessment", () => {
     expect(mismatch?.reason).toBe("quote-mismatch");
   });
 
+  it("echoes advisory provenance for resolved citations without changing the verdict (plan 073)", () => {
+    const provenance = new Map([
+      ["ev-1", { retrievedAt: "2026-10-01T00:00:00Z", publishedAt: "2026-09-01" }],
+      ["ev-2", { retrievedAt: "2026-11-01T00:00:00Z" }],
+    ]);
+    const [assessment] = assessClaims(
+      [{ kind: "paragraph", text: "a", citations: ["ev-1", "ev-missing"] }],
+      new Set(["ev-1"]),
+      undefined,
+      provenance,
+    );
+    // Unresolved cites are never echoed; missing entries are omitted, not failed.
+    expect(assessment?.provenance).toEqual([
+      { id: "ev-1", retrievedAt: "2026-10-01T00:00:00Z", publishedAt: "2026-09-01" },
+    ]);
+    // Advisory only: old evidence keeps its structural verdict.
+    expect(assessment?.support).toBe("partially-supported");
+    expect(assessment?.reason).toBe("some-citations-missing");
+  });
+
+  it("leaves provenance absent when no metadata is supplied (plan 073)", () => {
+    const [assessment] = assessClaims(
+      [{ kind: "paragraph", text: "a", citations: ["ev-1"] }],
+      stored,
+    );
+    expect(assessment?.provenance).toBeUndefined();
+    expect(assessment?.support).toBe("supported");
+  });
+
   it("never resolves malformed citation ids", () => {
     const [assessment] = assessClaims(
       [{ kind: "paragraph", text: "x", citations: ["ev-1", "", "   "] }],
