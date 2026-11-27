@@ -217,6 +217,11 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
         needsExcerpts === false
           ? undefined
           : await repositories.passages.excerptsById(ownerId, cited);
+      // Plan 073: advisory provenance for every cited answer (visible by
+      // default, not opt-in). Skipped only when nothing is cited; one
+      // indexed join read, never a verdict.
+      const provenance =
+        cited.length === 0 ? undefined : await repositories.passages.provenanceById(ownerId, cited);
       const claims = assessClaims(
         stored.blocks.map((block) => ({
           kind: block.kind,
@@ -228,6 +233,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
         })),
         existing,
         excerpts,
+        provenance,
       );
       return {
         requestId: outcome.requestId,

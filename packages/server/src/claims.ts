@@ -30,8 +30,10 @@ export function assessClaims(
   claims: readonly ClaimInput[],
   storedEvidenceIds: ReadonlySet<string>,
   evidenceTexts?: ReadonlyMap<string, string> | undefined,
+  evidenceProvenance?:
+    ReadonlyMap<string, { retrievedAt: string; publishedAt?: string | undefined }> | undefined,
 ): ClaimAssessment[] {
-  return assessContractClaims(claims, storedEvidenceIds, evidenceTexts);
+  return assessContractClaims(claims, storedEvidenceIds, evidenceTexts, evidenceProvenance);
 }
 
 export function summarizeClaims(assessments: readonly ClaimAssessment[]): SummaryCounts {

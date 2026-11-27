@@ -153,6 +153,27 @@ describe("answer claim assessment", () => {
     expect(response.claimAssessment?.claims[0]?.reason).toBe("upstream-conflict-flag");
   });
 
+  it("echoes cited-evidence provenance on every claim without changing support (plan 073)", async () => {
+    const r = await runtime();
+    await r.runResearch("owner-a", "how does fts5 ranking work?");
+    const response = await r.answerResponse("owner-a", "how does fts5 ranking work?");
+
+    expect(response.claimAssessment?.claims.length).toBeGreaterThan(0);
+    for (const claim of response.claimAssessment?.claims ?? []) {
+      // Every resolved citation carries its parent-document fetch time;
+      // publication time is present only when the source claimed one.
+      expect(claim.provenance).toBeDefined();
+      expect(claim.provenance?.map((p) => p.id).sort()).toEqual([...claim.resolved].sort());
+      for (const entry of claim.provenance ?? []) {
+        expect(typeof entry.retrievedAt).toBe("string");
+        expect(entry.retrievedAt.length).toBeGreaterThan(0);
+      }
+      // Advisory only: provenance never flips a structural verdict.
+      expect(claim.support).toBe("supported");
+      expect(claim.reason).toBe("all-citations-resolve");
+    }
+  });
+
   it("reports no-citation claims rather than treating them as grounded", async () => {
     const r = await runtime();
     await r.runResearch("owner-a", "how does fts5 ranking work?");
