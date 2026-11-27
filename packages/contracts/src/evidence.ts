@@ -37,6 +37,12 @@ export const AnswerBlock = z.object({
    * surviving claims keep their verified citations. Absent on grounded claims.
    */
   unresolved: z.boolean().optional(),
+  /**
+   * Producer honesty flag: the cited passages disagree with each other
+   * (issue #160, plan 072), so the claim is disputed even though every
+   * citation exists. System-never-inferred; absent/false = no signal.
+   */
+  conflicting: z.boolean().optional(),
 });
 export type AnswerBlock = z.infer<typeof AnswerBlock>;
 

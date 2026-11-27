@@ -50,11 +50,12 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
     // noise-classified passages excluded from packing; p1: ANS-08 —
     // retrieval became question-scoped.)
     policyRevision: options.revisions?.policyRevision ?? "p4",
-    // pr3: plan 070 — the live-model system prompt invites an optional
-    // verbatim quote per block, so pre-pr3 cache rows predate the
-    // producer-quote contract; the bump (D5) invalidates them. (pr2:
-    // ANS-11 neutralized JSON records; pr1: ANS-02 packing semantics.)
-    promptRevision: options.revisions?.promptRevision ?? "pr3",
+    // pr4: plan 072 — the live-model system prompt invites the producer
+    // to flag cited-passage disagreement via conflicting, so pre-pr4
+    // cache rows predate the conflict-flag contract; the bump (D5)
+    // invalidates them. (pr3: plan 070 quote; pr2: ANS-11 neutralized
+    // JSON records; pr1: ANS-02 packing semantics.)
+    promptRevision: options.revisions?.promptRevision ?? "pr4",
     modelRevision: options.revisions?.modelRevision ?? "m0",
   };
 

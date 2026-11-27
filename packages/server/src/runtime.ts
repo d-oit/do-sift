@@ -224,6 +224,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
           citations: block.citations,
           ...(block.unresolved === undefined ? {} : { unresolved: block.unresolved }),
           ...(block.quote === undefined ? {} : { quote: block.quote }),
+          ...(block.conflicting === undefined ? {} : { conflicting: block.conflicting }),
         })),
         existing,
         excerpts,

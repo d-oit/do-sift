@@ -40,6 +40,11 @@ export const DraftAnswer = z.object({
        * Same bounds and semantics as `AnswerBlock.quote`.
        */
       quote: z.string().min(1).max(8192).optional(),
+      /**
+       * Producer honesty flag: cited passages disagree (issue #160,
+       * plan 072). Same semantics as `AnswerBlock.conflicting`.
+       */
+      conflicting: z.boolean().optional(),
     }),
   ),
   usage: ModelUsage,

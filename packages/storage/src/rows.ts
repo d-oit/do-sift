@@ -97,6 +97,8 @@ export interface AnswerBlocks {
   unresolved?: boolean | undefined;
   /** Producer-supplied verbatim span (issue #160, plan 070); absent when none. */
   quote?: string | undefined;
+  /** Producer honesty flag: cited passages disagree (issue #160, plan 072). */
+  conflicting?: boolean | undefined;
 }
 export interface AnswerUsage {
   inputTokens: number;

@@ -19,6 +19,11 @@ export interface ClaimInput {
   /** The producer already flagged a citation failure. */
   unresolved?: boolean;
   /**
+   * Producer honesty flag: cited passages disagree (issue #160, plan 072).
+   * System-never-inferred; echoed into the assessment.
+   */
+  conflicting?: boolean | undefined;
+  /**
    * Stable caller-supplied claim id (plan 068, issue #160). Blank or
    * absent generates `claim-<index+1>` in the assessment. Duplicate
    * caller ids are echoed verbatim; uniqueness is the producer's contract.
@@ -34,6 +39,7 @@ export type ClaimReason =
   | "no-citations-resolve"
   | "no-citations"
   | "upstream-unresolved-flag"
+  | "upstream-conflict-flag"
   | "malformed-citations"
   | "quote-mismatch";
 
@@ -114,7 +120,8 @@ export function assessClaims(
     let support: ClaimSupport;
     if (citations.length === 0) support = "no-citation";
     else if (resolved.length === 0) support = "unresolved";
-    else if (unresolved.length > 0 || claim.unresolved === true) support = "partially-supported";
+    else if (unresolved.length > 0 || claim.unresolved === true || claim.conflicting === true)
+      support = "partially-supported";
     else support = "supported";
 
     let reason: ClaimReason;
@@ -128,9 +135,11 @@ export function assessClaims(
       !quoteMatchesResolved(claim.quote, resolved, evidenceTexts)
     )
       reason = "quote-mismatch";
+    else if (claim.conflicting === true) reason = "upstream-conflict-flag";
     else if (claim.unresolved === true) reason = "upstream-unresolved-flag";
     else reason = "all-citations-resolve";
-    if (reason === "quote-mismatch") support = "partially-supported";
+    if (reason === "quote-mismatch" || reason === "upstream-conflict-flag")
+      support = "partially-supported";
     const uncertainty: ClaimAssessment["uncertainty"] =
       support === "supported"
         ? "none"
