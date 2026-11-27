@@ -68,6 +68,13 @@ export interface RawCaseMetadata {
   citationOutcome: { valid: boolean; error?: string };
   responseFlags: { degraded: boolean; evidenceOnly: boolean };
   rawCompletionText: string;
+  /**
+   * Plan 074 (issue #160, live QUAL): observation-only producer behavior —
+   * how many blocks carried a quote, whether any block set conflicting.
+   * Never scored, never gated: fixture runs record zeros, a future live
+   * run records what the model actually did.
+   */
+  producerBehavior: { quotesEmitted: number; conflictFlagged: boolean };
 }
 
 export interface CaseScores {
@@ -270,7 +277,13 @@ export async function runLiveEval(
 
   // Set up model implementation
   type MinimalDraft = {
-    blocks: Array<{ kind: "paragraph" | "list" | "caveat"; text: string; citations: string[] }>;
+    blocks: Array<{
+      kind: "paragraph" | "list" | "caveat";
+      text: string;
+      citations: string[];
+      quote?: string | undefined;
+      conflicting?: boolean | undefined;
+    }>;
     usage: { inputTokens: number; outputTokens: number; estimated: boolean };
   };
 
@@ -417,6 +430,10 @@ export async function runLiveEval(
 
     const rawText = draft.blocks.map((b) => b.text).join(" ");
     const redactedCompletion = redactSecrets(rawText);
+    const producerBehavior = {
+      quotesEmitted: draft.blocks.filter((b) => typeof b.quote === "string").length,
+      conflictFlagged: draft.blocks.some((b) => b.conflicting === true),
+    };
 
     rawMetadataList.push({
       id: c.id,
@@ -429,6 +446,7 @@ export async function runLiveEval(
       citationOutcome,
       responseFlags,
       rawCompletionText: redactedCompletion,
+      producerBehavior,
     });
 
     // Scoring
