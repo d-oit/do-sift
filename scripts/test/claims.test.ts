@@ -99,6 +99,38 @@ describe("claim assessment", () => {
     expect(result[0]?.support).toBe("supported");
   });
 
+  it("validates quotes against resolved excerpts when evidence texts are supplied (plan 071)", () => {
+    const excerpts = new Map([["ev-1", "FTS5 ranks keyword matches with bm25."]]);
+    const [match] = assessClaims(
+      [{ kind: "paragraph", text: "a", citations: ["ev-1"], quote: "ranks keyword matches" }],
+      stored,
+      excerpts,
+    );
+    expect(match?.support).toBe("supported");
+    expect(match?.reason).toBe("all-citations-resolve");
+
+    const [mismatch] = assessClaims(
+      [{ kind: "paragraph", text: "a", citations: ["ev-1"], quote: "not in the passage" }],
+      stored,
+      excerpts,
+    );
+    expect(mismatch?.support).toBe("partially-supported");
+    expect(mismatch?.uncertainty).toBe("partial");
+    expect(mismatch?.reason).toBe("quote-mismatch");
+    expect(mismatch?.quote).toBe("not in the passage");
+  });
+
+  it("normalizes case and whitespace before substring comparison (plan 071)", () => {
+    const excerpts = new Map([["ev-1", "FTS5  ranks\n keyword   matches."]]);
+    const [assessment] = assessClaims(
+      [{ kind: "paragraph", text: "a", citations: ["ev-1"], quote: "  RANKS keyword MATCHES. " }],
+      stored,
+      excerpts,
+    );
+    expect(assessment?.reason).toBe("all-citations-resolve");
+    expect(assessment?.support).toBe("supported");
+  });
+
   it("never resolves malformed citation ids", () => {
     const [assessment] = assessClaims(
       [{ kind: "paragraph", text: "x", citations: ["ev-1", "", "   "] }],

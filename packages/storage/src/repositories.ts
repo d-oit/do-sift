@@ -352,6 +352,22 @@ export class Repositories {
       return new Set(res.rows.map((row) => str(row, "id")));
     },
     /**
+     * Owner-scoped excerpts for quote validation (issue #160, plan 071).
+     * Mirrors `existingIds`: tenant + owner scoped, missing ids absent.
+     */
+    excerptsById: async (ownerId: string, ids: readonly string[]): Promise<Map<string, string>> => {
+      const unique = [...new Set(ids)];
+      if (unique.length === 0) return new Map<string, string>();
+      const placeholders = unique.map(() => "?").join(", ");
+      const res = await this.client.execute({
+        sql: `SELECT id, excerpt FROM passages WHERE tenant_id = ? AND owner_id = ? AND id IN (${placeholders})`,
+        args: [this.tenantId, ownerId, ...unique],
+      });
+      const out = new Map<string, string>();
+      for (const row of res.rows) out.set(str(row, "id"), str(row, "excerpt"));
+      return out;
+    },
+    /**
      * Provenance for the comparison view (issue #169): passage + parent
      * document, owner- and tenant-scoped. Missing ids are simply absent from
      * the result so the caller can reject an unknown selection.
