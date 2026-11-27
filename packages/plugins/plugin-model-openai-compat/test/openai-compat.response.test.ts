@@ -103,6 +103,14 @@ describe("contract drift guards", () => {
     expect(items.required).not.toContain("quote");
   });
 
+  it("allows an optional producer conflict flag per block without requiring it (plan 072)", () => {
+    const items = DRAFT_BLOCKS_JSON_SCHEMA.properties.blocks.items;
+    expect(items.additionalProperties).toBe(false);
+    expect(items.properties.conflicting).toBeDefined();
+    expect(items.required).toEqual(["kind", "text", "citations"]);
+    expect(items.required).not.toContain("conflicting");
+  });
+
   it("builds the strict body the success path sends", () => {
     const body = buildChatBody(request(), {
       model: "probe-model",

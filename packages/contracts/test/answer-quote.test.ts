@@ -33,6 +33,34 @@ describe("producer quote plumbing (issue #160, plan 070)", () => {
     ).toThrow();
   });
 
+  it("carries the producer conflict flag on blocks and drafts (plan 072)", () => {
+    const block = AnswerBlock.parse({
+      kind: "paragraph",
+      text: "Sources disagree.",
+      citations: ["ev-1", "ev-2"],
+      conflicting: true,
+    });
+    expect(block.conflicting).toBe(true);
+    const plain = AnswerBlock.parse({
+      kind: "paragraph",
+      text: "Agreed.",
+      citations: ["ev-1"],
+    });
+    expect(plain.conflicting).toBeUndefined();
+    const draft = DraftAnswer.parse({
+      blocks: [
+        {
+          kind: "paragraph",
+          text: "Sources disagree.",
+          citations: ["ev-1", "ev-2"],
+          conflicting: true,
+        },
+      ],
+      usage: { inputTokens: 10, outputTokens: 5, model: "probe", estimated: true },
+    });
+    expect(draft.blocks[0]?.conflicting).toBe(true);
+  });
+
   it("preserves producer quotes through DraftAnswer.parse instead of stripping them", () => {
     const draft = DraftAnswer.parse({
       blocks: [

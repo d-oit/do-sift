@@ -379,6 +379,10 @@ export interface AnswerHttpResponse {
     citations: string[];
     /** Claim-level honesty flag: its citations did not resolve. */
     unresolved?: boolean | undefined;
+    /** Producer verbatim span (issue #160, plan 070); absent when none. */
+    quote?: string | undefined;
+    /** Producer honesty flag: cited passages disagree (plan 072). */
+    conflicting?: boolean | undefined;
   }>;
   usage?:
     | {

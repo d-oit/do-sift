@@ -131,6 +131,46 @@ describe("claim assessment", () => {
     expect(assessment?.support).toBe("supported");
   });
 
+  it("degrades producer-flagged passage disagreement without claiming entailment (plan 072)", () => {
+    const [conflict] = assessClaims(
+      [{ kind: "paragraph", text: "b is 0.75", citations: ["ev-1", "ev-2"], conflicting: true }],
+      new Set(["ev-1", "ev-2"]),
+    );
+    expect(conflict?.support).toBe("partially-supported");
+    expect(conflict?.uncertainty).toBe("partial");
+    expect(conflict?.reason).toBe("upstream-conflict-flag");
+    // absent/false is no signal: the same citations without the flag stay supported
+    const [plain] = assessClaims(
+      [{ kind: "paragraph", text: "b is 0.75", citations: ["ev-1", "ev-2"] }],
+      new Set(["ev-1", "ev-2"]),
+    );
+    expect(plain?.reason).toBe("all-citations-resolve");
+    expect(plain?.support).toBe("supported");
+  });
+
+  it("gives structural and quote reasons precedence over the conflict flag (plan 072)", () => {
+    const excerpts = new Map([["ev-1", "parameter b defaults to 0.75"]]);
+    const [missing] = assessClaims(
+      [{ kind: "paragraph", text: "x", citations: ["ev-1", "ev-missing"], conflicting: true }],
+      stored,
+    );
+    expect(missing?.reason).toBe("some-citations-missing");
+    const [mismatch] = assessClaims(
+      [
+        {
+          kind: "paragraph",
+          text: "x",
+          citations: ["ev-1"],
+          quote: "not in the passage",
+          conflicting: true,
+        },
+      ],
+      stored,
+      excerpts,
+    );
+    expect(mismatch?.reason).toBe("quote-mismatch");
+  });
+
   it("never resolves malformed citation ids", () => {
     const [assessment] = assessClaims(
       [{ kind: "paragraph", text: "x", citations: ["ev-1", "", "   "] }],

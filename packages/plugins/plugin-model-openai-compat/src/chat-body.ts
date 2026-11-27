@@ -21,6 +21,8 @@ export const DRAFT_BLOCKS_JSON_SCHEMA = {
           },
           // Plan 070: optional producer quote (verbatim span, validated later).
           quote: { type: "string", minLength: 1, maxLength: 8192 },
+          // Plan 072: producer honesty flag when cited passages disagree.
+          conflicting: { type: "boolean" },
         },
         required: ["kind", "text", "citations"],
         additionalProperties: false,
@@ -77,6 +79,8 @@ export function buildChatBody(
           "passage id from the provided records and no other ids. " +
           "Each block may carry a quote field: a short span copied exactly " +
           "from one cited passage, omitted when no span fits. " +
+          "Set conflicting true when the cited passages disagree with each " +
+          "other, omitted otherwise. " +
           "Respond with JSON only.",
       },
       {

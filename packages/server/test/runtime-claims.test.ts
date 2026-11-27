@@ -109,6 +109,50 @@ describe("answer claim assessment", () => {
     expect(response.claimAssessment?.claims[0]?.reason).toBe("quote-mismatch");
   });
 
+  it("surfaces producer-flagged passage disagreement as partially-supported (plan 072)", async () => {
+    const conflictingModel = {
+      name: "conflicting-fake",
+      modelId: "conflicting-fake-1",
+      calls: [] as Array<{ question: string }>,
+      async complete(request: { question: string; passages: Array<{ id: string; text: string }> }) {
+        const [first, second] = request.passages;
+        if (first === undefined || second === undefined)
+          throw new Error("need two passages for conflict case");
+        return {
+          blocks: [
+            {
+              kind: "paragraph" as const,
+              text: "Sources disagree on the default.",
+              citations: [first.id, second.id],
+              conflicting: true,
+            },
+          ],
+          usage: { inputTokens: 10, outputTokens: 5, model: "conflicting-fake-1", estimated: true },
+        };
+      },
+    };
+    const r = await createRuntime({
+      client,
+      search: new FakeSearchProvider({
+        hits: [
+          { url: "https://a.test/page", title: "Page A", snippet: "fts5", rank: 0 },
+          { url: "https://b.test/page", title: "Page B", snippet: "bm25", rank: 1 },
+        ],
+      }),
+      fetchPage: async () => ({
+        text: "FTS5 ranks keyword matches with bm25.\n\nThe bm25 function weighs rarer terms more heavily.",
+        contentType: "text/html",
+      }),
+      model: conflictingModel,
+      maxFetches: 2,
+    });
+    await r.runResearch("owner-a", "how does fts5 ranking work?");
+    const response = await r.answerResponse("owner-a", "how does fts5 ranking work?");
+    expect(response.claimAssessment?.claims).toHaveLength(1);
+    expect(response.claimAssessment?.claims[0]?.support).toBe("partially-supported");
+    expect(response.claimAssessment?.claims[0]?.reason).toBe("upstream-conflict-flag");
+  });
+
   it("reports no-citation claims rather than treating them as grounded", async () => {
     const r = await runtime();
     await r.runResearch("owner-a", "how does fts5 ranking work?");
