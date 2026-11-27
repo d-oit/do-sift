@@ -50,10 +50,11 @@ export function createAnswerService(deps: AnswerServiceDeps, options: AnswerServ
     // noise-classified passages excluded from packing; p1: ANS-08 —
     // retrieval became question-scoped.)
     policyRevision: options.revisions?.policyRevision ?? "p4",
-    // pr2: ANS-11 — evidence packs as neutralized JSON records, a
-    // different prompt than pr1's `[id] text` lines; the bump (D5)
-    // invalidates pre-ANS-11 cache rows. (pr1: ANS-02 packing semantics.)
-    promptRevision: options.revisions?.promptRevision ?? "pr2",
+    // pr3: plan 070 — the live-model system prompt invites an optional
+    // verbatim quote per block, so pre-pr3 cache rows predate the
+    // producer-quote contract; the bump (D5) invalidates them. (pr2:
+    // ANS-11 neutralized JSON records; pr1: ANS-02 packing semantics.)
+    promptRevision: options.revisions?.promptRevision ?? "pr3",
     modelRevision: options.revisions?.modelRevision ?? "m0",
   };
 

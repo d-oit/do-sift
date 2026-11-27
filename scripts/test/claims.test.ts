@@ -80,6 +80,25 @@ describe("claim assessment", () => {
     ]);
   });
 
+  it("echoes producer quotes verbatim and leaves absent quotes absent", () => {
+    const result = assessClaims(
+      [
+        {
+          kind: "paragraph",
+          text: "a",
+          citations: ["ev-1"],
+          quote: "ranks keyword matches with bm25",
+        },
+        { kind: "paragraph", text: "b", citations: ["ev-1"] },
+      ],
+      stored,
+    );
+    expect(result[0]?.quote).toBe("ranks keyword matches with bm25");
+    expect(result[1]?.quote).toBeUndefined();
+    // The receipt carries the quote; nothing validates it yet (plan 070 follow-up).
+    expect(result[0]?.support).toBe("supported");
+  });
+
   it("never resolves malformed citation ids", () => {
     const [assessment] = assessClaims(
       [{ kind: "paragraph", text: "x", citations: ["ev-1", "", "   "] }],

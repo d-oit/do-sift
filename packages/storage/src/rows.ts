@@ -95,6 +95,8 @@ export interface AnswerBlocks {
   citations: string[];
   /** Per-claim honesty flag (issue #127): citations did not resolve. */
   unresolved?: boolean | undefined;
+  /** Producer-supplied verbatim span (issue #160, plan 070); absent when none. */
+  quote?: string | undefined;
 }
 export interface AnswerUsage {
   inputTokens: number;
