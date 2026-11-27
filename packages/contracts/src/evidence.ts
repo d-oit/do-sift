@@ -26,6 +26,12 @@ export const AnswerBlock = z.object({
   text: z.string().min(1),
   citations: z.array(EvidenceId),
   /**
+   * Optional producer-supplied verbatim span from a cited passage
+   * (issue #160, plan 070). Carried, never validated here: substring
+   * validation against cited excerpts is a follow-up. Empty is absent.
+   */
+  quote: z.string().min(1).max(8192).optional(),
+  /**
    * Per-claim honesty flag: the model cited at least one unknown evidence id
    * (or cited nothing), so this claim is displayed as unresolved while any
    * surviving claims keep their verified citations. Absent on grounded claims.

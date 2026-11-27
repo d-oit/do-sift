@@ -215,6 +215,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
           text: block.text,
           citations: block.citations,
           ...(block.unresolved === undefined ? {} : { unresolved: block.unresolved }),
+          // Plan 070: the stored producer quote rides into the receipt
+          // verbatim; validation against excerpts is a follow-up.
+          ...(block.quote === undefined ? {} : { quote: block.quote }),
         })),
         existing,
       );

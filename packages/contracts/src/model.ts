@@ -35,6 +35,11 @@ export const DraftAnswer = z.object({
       kind: z.enum(["paragraph", "list", "caveat"]),
       text: z.string().min(1),
       citations: z.array(EvidenceId),
+      /**
+       * Optional producer-supplied verbatim span (issue #160, plan 070).
+       * Same bounds and semantics as `AnswerBlock.quote`.
+       */
+      quote: z.string().min(1).max(8192).optional(),
     }),
   ),
   usage: ModelUsage,

@@ -10,6 +10,11 @@ export interface ClaimInput {
   kind: "paragraph" | "list" | "caveat";
   text: string;
   citations: readonly string[];
+  /**
+   * Producer-supplied verbatim span (issue #160, plan 070). Carried
+   * verbatim into the assessment; never validated here.
+   */
+  quote?: string | undefined;
   /** The producer already flagged a citation failure. */
   unresolved?: boolean;
   /**
@@ -34,6 +39,8 @@ export interface ClaimAssessment {
   index: number;
   /** Stable claim id: caller-supplied or `claim-<index+1>`. Always non-empty. */
   id: string;
+  /** Producer quote echoed verbatim (issue #160, plan 070); absent when none. */
+  quote?: string | undefined;
   /** Unique citation ids in first-seen order. */
   citations: string[];
   resolved: string[];
@@ -91,7 +98,18 @@ export function assessClaims(
     else if (claim.unresolved === true) reason = "upstream-unresolved-flag";
     else reason = "all-citations-resolve";
 
-    return { index, id, citations, resolved, unresolved, support, uncertainty, reason };
+    const echoed: ClaimAssessment = {
+      index,
+      id,
+      citations,
+      resolved,
+      unresolved,
+      support,
+      uncertainty,
+      reason,
+    };
+    if (claim.quote !== undefined) echoed.quote = claim.quote;
+    return echoed;
   });
 }
 

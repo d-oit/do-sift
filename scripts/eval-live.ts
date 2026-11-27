@@ -9,7 +9,9 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { CitationError, SynthesisRequest, validateCitations } from "@do-sift/contracts";
 
-const PROMPT_REVISION = "pr2";
+// Plan 070: matches the live-model system prompt (quote invitation); pre-pr3
+// cached answers predate the producer-quote contract.
+const PROMPT_REVISION = "pr3";
 import { createModelFixture } from "@do-sift/plugin-model-fixture";
 import { createOpenAICompatModel } from "@do-sift/plugin-model-openai-compat";
 
