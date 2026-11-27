@@ -36,6 +36,7 @@ export {
   type RetrievalGroup,
   type RetrievalReport,
 } from "./report.js";
+export { readSnapshotDataset, type SnapshotDataset } from "./snapshots.js";
 export {
   buildSourceQualityReport,
   SOURCE_QUALITY_REPORT_VERSION,
