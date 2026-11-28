@@ -8,7 +8,12 @@ with an explicit 0.x compatibility policy (minor = breaking, patch = safe).
 
 ### Added
 
-- Analytics benchmark closeout (issue #154, plan 057): the offline analytics
+- CI failure triage (issues #181/#183, plan 075): an advisory six-category
+  failure classifier (`scripts/ci-diagnostics.ts`) plus a triage policy in
+  `docs/ci-failure-triage.md` — deterministic test failures are never retried
+  into a pass, and every other class names its next action — and a
+  `deps`-sensor regression guard that fails any Dockerfile stage running
+  `npm ci`/`npm install` without the canonical `.npmrc` in that stage.- Analytics benchmark closeout (issue #154, plan 057): the offline analytics
   benchmark harness now reports cold and warm query timing with p50/p95 and
   run-to-run variance (`--runs`), on-disk storage size (`--disk`/`--disk-only`),
   and full environment metadata (CPU model, total RAM, libSQL version), and

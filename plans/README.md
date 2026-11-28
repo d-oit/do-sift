@@ -21,6 +21,7 @@ see the [architecture index](../docs/architecture/README.md) and the
 
 ## Current queue
 
+- `075-ci-failure-triage.md` — in review (issues #181/#183): advisory six-category failure classifier (`scripts/ci-diagnostics.ts`), triage policy doc, and an install-parity regression guard in the `deps` sensor so a Docker stage can no longer run `npm ci` without `.npmrc` (the PR #179 onnxruntime failure class). Workflow-level failure summaries stay an owner-gated follow-up.
 - `057-duckdb-benchmark-closeout.md` — done (2026-11-23, issue #154): multi-size (10k/100k/250k/500k, 1M OOM recorded) baseline + DuckDB/Parquet measurements with p50/p95, storage size, and env metadata; per-workload benefit report; plan 046's adopt decision and plan 052's Parquet defer restated.
 - `046-analytics-benchmark.md` — decided (2026-11-17, issue #154): DuckDB adopted for optional offline analytics after a measured 11.7× query win and 0.16× RSS at 100k rows with identical results. `packages/analytics` is isolated from the request path.
 - `052-parquet-promotion-decision.md` — decided defer (2026-11-21, #155): JSON interchange stays the snapshot format; no Parquet consumer or measured size/latency need exists. Promotion gate recorded for revisit.

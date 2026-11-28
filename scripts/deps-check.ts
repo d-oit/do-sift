@@ -189,6 +189,65 @@ export function checkDependencies(
   return { findings, scanned, notes };
 }
 
+/**
+ * One npm install executed in a Dockerfile stage that never received the
+ * canonical `.npmrc` (issue #181, regression guard for PR #179's native
+ * install failure class).
+ */
+export type NpmStageViolation = { stage: string; line: number; command: string };
+
+const NPM_INSTALL = /\bnpm (?:ci|install)\b/;
+const COPY = /^(COPY|ADD)\b/;
+const FROM = /^FROM\s+(\S+)(?:\s+AS\s+(\S+))?/i;
+
+/**
+ * Parse a Dockerfile and flag every stage whose `npm ci`/`npm install` runs
+ * without `.npmrc` copied into that stage (directly or inherited from a base
+ * stage via `FROM <stage>`). Line-based on purpose: it has no Docker build
+ * semantics, only the file/layout contract this repo relies on. Multi-line
+ * `RUN`/`COPY` continuations are joined; heredocs and `--from=` re-exports of
+ * `.npmrc` count as present because a build would fail without the source.
+ */
+export function findUnconfiguredNpmStages(dockerfile: string): NpmStageViolation[] {
+  const violations: NpmStageViolation[] = [];
+  type Stage = { name: string; hasNpmrc: boolean };
+  const stages = new Map<string, Stage>();
+  let current: Stage | undefined;
+
+  const rawLines = dockerfile.split(/\r?\n/);
+  const statements: Array<{ text: string; line: number }> = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i] ?? "";
+    if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+    let text = line;
+    const lineNo = i + 1;
+    while (text.trimEnd().endsWith("\\") && i + 1 < rawLines.length) {
+      text = `${text.trimEnd().slice(0, -1)} ${rawLines[++i] ?? ""}`;
+    }
+    statements.push({ text, line: lineNo });
+  }
+
+  for (const { text, line } of statements) {
+    const from = text.match(FROM);
+    if (from !== null) {
+      const name = (from[2] ?? from[1] ?? "").trim();
+      const base = stages.get((from[1] ?? "").trim());
+      current = { name, hasNpmrc: base?.hasNpmrc ?? false };
+      stages.set(name, current);
+      continue;
+    }
+    if (current === undefined) continue;
+    if (COPY.test(text) && text.split(/\s+/).includes(".npmrc")) {
+      current.hasNpmrc = true;
+      continue;
+    }
+    if (/^RUN\b/i.test(text) && NPM_INSTALL.test(text) && !current.hasNpmrc) {
+      violations.push({ stage: current.name, line, command: text.trim() });
+    }
+  }
+  return violations;
+}
+
 /* CLI entrypoint: only when this file is run directly, so the module stays
  * importable by tests without executing checks or writing to stdout. */
 const isEntrypoint =
@@ -217,6 +276,16 @@ function main(): void {
   }
 
   const { findings, scanned } = checkDependencies(ROOT, lock, manifests, overrides);
+
+  const dockerfilePath = join(ROOT, "Dockerfile");
+  if (existsSync(dockerfilePath)) {
+    for (const violation of findUnconfiguredNpmStages(readFileSync(dockerfilePath, "utf8"))) {
+      findings.push({
+        kind: "npm-stage-missing-npmrc",
+        detail: `Dockerfile stage "${violation.stage}" (line ${violation.line}) runs an npm install without .npmrc: ${violation.command}`,
+      });
+    }
+  }
 
   if (findings.length > 0) {
     console.error(`deps: FAIL (${findings.length} finding(s) across ${scanned} resolved packages)`);

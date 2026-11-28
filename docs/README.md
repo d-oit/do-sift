@@ -25,6 +25,7 @@ New here? Read [the architecture index](architecture/README.md) first, then
 | [release.md](release.md)                                           | Assembling and verifying a release candidate                         | maintainers     |
 | [upgrading.md](upgrading.md)                                       | Node version requirements and upgrade paths                          | operators       |
 | [dependency-maintenance.md](dependency-maintenance.md)             | Scheduled dependency updates, scan triage, exceptions                | maintainers     |
+| [ci-failure-triage.md](ci-failure-triage.md)                       | CI failure taxonomy, bounded retries, and the advisory classifier    | maintainers     |
 | [supply-chain.md](supply-chain.md)                                 | SBOM, provenance, and image-scan evidence for releases               | maintainers     |
 | [github-hardening.md](github-hardening.md)                         | Repository protections and what they protect                         | maintainers     |
 | [outbound-transport-inventory.md](outbound-transport-inventory.md) | Every outbound call and the guard in front of it                     | security        |
